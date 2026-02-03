@@ -21,6 +21,66 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# P0.3: CANONICAL KEYS AND ALIASES
+# Single Source of Truth for field key normalization
+# =============================================================================
+
+# Canonical key -> list of aliases (bidirectional)
+KEY_ALIASES = {
+    # Pickup address fields
+    "pickup_postal_code": ["pickup_zip"],
+    "pickup_location_name": ["pickup_name"],
+    "pickup_contact_name": ["pickup_contact"],
+
+    # Delivery/Dropoff address fields (normalize to delivery_*)
+    "delivery_postal_code": ["delivery_zip", "dropoff_postal_code", "dropoff_zip"],
+    "delivery_location_name": ["delivery_name", "dropoff_location_name", "dropoff_name"],
+    "delivery_contact_name": ["delivery_contact", "dropoff_contact_name", "dropoff_contact"],
+    "delivery_address": ["dropoff_address"],
+    "delivery_city": ["dropoff_city"],
+    "delivery_state": ["dropoff_state"],
+    "delivery_phone": ["dropoff_phone"],
+
+    # Vehicle fields
+    "vehicle_is_inoperable": ["vehicle_condition", "is_inoperable"],
+}
+
+# Build reverse lookup: alias -> canonical
+ALIAS_TO_CANONICAL = {}
+for canonical, aliases in KEY_ALIASES.items():
+    for alias in aliases:
+        ALIAS_TO_CANONICAL[alias] = canonical
+    # Canonical key also maps to itself
+    ALIAS_TO_CANONICAL[canonical] = canonical
+
+
+def normalize_field_key(key: str) -> str:
+    """
+    Normalize a field key to its canonical form.
+
+    Args:
+        key: Field key to normalize (e.g., "pickup_zip", "dropoff_city")
+
+    Returns:
+        Canonical key (e.g., "pickup_postal_code", "delivery_city")
+    """
+    return ALIAS_TO_CANONICAL.get(key, key)
+
+
+def get_all_key_variants(key: str) -> list[str]:
+    """
+    Get all variants of a field key (canonical + aliases).
+
+    Useful for looking up values that might be stored under different keys.
+    """
+    canonical = normalize_field_key(key)
+    variants = [canonical]
+    if canonical in KEY_ALIASES:
+        variants.extend(KEY_ALIASES[canonical])
+    return variants
+
+
 class FieldValueSource(str, Enum):
     """Source of field value (in precedence order, high to low)."""
 
@@ -213,31 +273,54 @@ class FieldResolver:
         Returns:
             Dict of field_key -> ResolvedField
         """
-        # Collect all field keys to resolve
-        field_keys = set(extracted_fields.keys())
-        field_keys.update(context.user_overrides.keys())
-        field_keys.update(context.default_values.keys())
+        # P0.3: Normalize extracted fields to canonical keys
+        normalized_extracted = {}
+        for key, value in extracted_fields.items():
+            canonical_key = normalize_field_key(key)
+            # If we already have a value for canonical key, prefer non-empty
+            existing = normalized_extracted.get(canonical_key)
+            if existing is None or (not str(existing).strip() and value and str(value).strip()):
+                normalized_extracted[canonical_key] = value
+
+        # Collect all field keys to resolve (using canonical keys)
+        field_keys = set(normalized_extracted.keys())
+
+        # Normalize user_overrides keys
+        normalized_overrides = {normalize_field_key(k): v for k, v in context.user_overrides.items()}
+        field_keys.update(normalized_overrides.keys())
+
+        # Normalize default_values keys
+        normalized_defaults = {normalize_field_key(k): v for k, v in context.default_values.items()}
+        field_keys.update(normalized_defaults.keys())
 
         if additional_fields:
-            field_keys.update(additional_fields)
+            field_keys.update(normalize_field_key(k) for k in additional_fields)
 
         # Add fields from auction profile
         if context.auction_code:
             profile = self.auction_service.get_profile(context.auction_code)
             if profile:
-                field_keys.update(profile.field_defaults.keys())
+                field_keys.update(normalize_field_key(k) for k in profile.field_defaults.keys())
 
         # Add fields from warehouse constants
         if context.warehouse_code:
             wc = self.warehouse_service.get_constants(context.warehouse_code)
             if wc:
-                field_keys.update(wc.constants.keys())
+                field_keys.update(normalize_field_key(k) for k in wc.constants.keys())
+
+        # Create normalized context
+        normalized_context = ResolutionContext(
+            auction_code=context.auction_code,
+            warehouse_code=context.warehouse_code,
+            user_overrides=normalized_overrides,
+            default_values=normalized_defaults,
+        )
 
         # Resolve each field
         results = {}
         for field_key in sorted(field_keys):
-            extracted = extracted_fields.get(field_key)
-            results[field_key] = self.resolve_field(field_key, extracted, context)
+            extracted = normalized_extracted.get(field_key)
+            results[field_key] = self.resolve_field(field_key, extracted, normalized_context)
 
         return results
 

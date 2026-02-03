@@ -5,6 +5,7 @@ system, separate from the main SQLite-based database.py module.
 """
 
 from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
@@ -43,6 +44,7 @@ def init_training_db():
     )
 
 
+@contextmanager
 def get_session() -> Generator[Session, None, None]:
     """Get a SQLModel session for dependency injection."""
     with Session(engine) as session:
