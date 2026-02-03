@@ -1,0 +1,182 @@
+{
+  "filename": "ShowReport (4).pdf",
+  "file_path": "tests/sample_docs/ShowReport (4).pdf",
+  "file_size_bytes": 174771,
+  "text_extraction_success": true,
+  "raw_text_length": 1365,
+  "words_count": 206,
+  "pages_count": 1,
+  "text_mode": "native",
+  "text_preview": "Buyer Receipt\nReceipt # 25804258\nReceipt Date 12/29/2025\nReceived By AC/ASAP S\nInsurance Auto Auctions Corp\nSold At Branch 609 - Boston - Shirley\nPick-Up Location: Sale Date 12/25/2025\nBoston - Shirley\n2 Going Rd Buyer # 593509\nShirley Massachusetts 01464 Buyer Name Broadway Motoring Inc\n(978) 425-0990\nDealer 202610\nResale Certificate # 44939394688\nRegistration Expires 9/24/2026\nSale License\nStockNo Item # Year Make Model Color Mileage VIN Plate #\n000-43597865 2020 BMW 228I GRAN Gray 40,560 WBA7",
+  "classification_success": true,
+  "detected_source": "IAA",
+  "classification_score": 1.0,
+  "all_scores": [
+    {
+      "source": "IAA",
+      "score": 1.0,
+      "patterns": [
+        "Insurance Auto Auctions",
+        "Insurance Auto Auctions Corp",
+        "Buyer Receipt",
+        "IAAI",
+        "IAA"
+      ]
+    },
+    {
+      "source": "MANHEIM",
+      "score": 0.0,
+      "patterns": []
+    },
+    {
+      "source": "COPART",
+      "score": 0.0,
+      "patterns": []
+    }
+  ],
+  "matched_patterns": [
+    "Insurance Auto Auctions",
+    "Insurance Auto Auctions Corp",
+    "Buyer Receipt",
+    "IAAI",
+    "IAA",
+    "Pick-Up Location",
+    "StockNo",
+    "Sold At Branch",
+    "Receipt #"
+  ],
+  "extraction_success": true,
+  "extraction_score": 1.0,
+  "fields_total": 19,
+  "fields_filled": 17,
+  "fields_empty": 2,
+  "has_vehicle_vin": true,
+  "has_vehicle_ymm": true,
+  "has_pickup_address": true,
+  "has_pickup_city_state": true,
+  "has_reference_id": false,
+  "extracted_fields": {
+    "auction_source": "IAA",
+    "reference_id": "",
+    "buyer_id": "593509",
+    "buyer_name": "Broadway Motoring Inc",
+    "sale_date": "2025-12-25 00:00:00",
+    "total_amount": "10210.0",
+    "pickup_name": "IAA 609 - Boston - Shirley",
+    "pickup_address": "Sale Date 12/25/2025",
+    "pickup_city": "Shirley",
+    "pickup_state": "MA",
+    "pickup_zip": "01464",
+    "pickup_phone": null,
+    "vehicle_vin": "WBA73AK06L7F98003",
+    "vehicle_year": 2020,
+    "vehicle_make": "BMW",
+    "vehicle_model": "228I GRAN",
+    "vehicle_color": "Gray",
+    "vehicle_lot": "000-43597865",
+    "vehicle_mileage": "40560"
+  },
+  "field_sources": {
+    "auction_source": {
+      "value": "IAA",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "reference_id": {
+      "value": "",
+      "source": "EMPTY",
+      "method": "iaa_extractor"
+    },
+    "buyer_id": {
+      "value": "593509",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "buyer_name": {
+      "value": "Broadway Motoring Inc",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "sale_date": {
+      "value": "2025-12-25 00:00:00",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "total_amount": {
+      "value": "10210.0",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_name": {
+      "value": "IAA 609 - Boston - Shirley",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_address": {
+      "value": "Sale Date 12/25/2025",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_city": {
+      "value": "Shirley",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_state": {
+      "value": "MA",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_zip": {
+      "value": "01464",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_phone": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "iaa_extractor"
+    },
+    "vehicle_vin": {
+      "value": "WBA73AK06L7F98003",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_year": {
+      "value": 2020,
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_make": {
+      "value": "BMW",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_model": {
+      "value": "228I GRAN",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_color": {
+      "value": "Gray",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_lot": {
+      "value": "000-43597865",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_mileage": {
+      "value": "40560",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    }
+  },
+  "issues": [],
+  "recommendations": [],
+  "invariant_text_extracted": true,
+  "invariant_classified": true,
+  "invariant_anchor_fields": true,
+  "extraction_time_ms": 764
+}

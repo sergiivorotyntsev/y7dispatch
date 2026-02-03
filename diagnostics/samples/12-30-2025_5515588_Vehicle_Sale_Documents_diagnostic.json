@@ -1,0 +1,180 @@
+{
+  "filename": "12-30-2025_5515588_Vehicle_Sale_Documents.pdf",
+  "file_path": "tests/sample_docs/12-30-2025_5515588_Vehicle_Sale_Documents.pdf",
+  "file_size_bytes": 124873,
+  "text_extraction_success": true,
+  "raw_text_length": 5707,
+  "words_count": 878,
+  "pages_count": 4,
+  "text_mode": "native",
+  "text_preview": "BILL OF SALE\nTHIS IS NOT AN INVOICE DOCUMENT NOT VALID\nFOR EXPORT\n719 MANHEIM FORT Sale Date Vehicle Purchase Price\nLAUDERDALE 22-DEC-2025 10:24:17 Sale Price $ 7,300.00\n5353 S STATE ROAD 7 Adjustments $ 0.00\nDAVIE, FL 33314 US\nYr Wk Ln Rn Final Sale Price $ 7,300.00\n2025-52-94-2\nPlease refer to the vehicle release for the Sale Type Seller Buyer\npickup location\nOVE MERIDIAN REMARKETING BROADWAY MOTORING INC\n6325 PEACHTREE DUNWOODY RD STE 800 77 FITCHBURG RD\nAtlanta, GA 30328 US Ayer, MA 01432 US",
+  "classification_success": true,
+  "detected_source": "MANHEIM",
+  "classification_score": 0.8620689655172413,
+  "all_scores": [
+    {
+      "source": "IAA",
+      "score": 0.0,
+      "patterns": []
+    },
+    {
+      "source": "MANHEIM",
+      "score": 0.8620689655172413,
+      "patterns": [
+        "Manheim",
+        "Cox Automotive",
+        "BILL OF SALE",
+        "VEHICLE RELEASE",
+        "Manheim.com"
+      ]
+    },
+    {
+      "source": "COPART",
+      "score": 0.0,
+      "patterns": []
+    }
+  ],
+  "matched_patterns": [
+    "Manheim",
+    "Cox Automotive",
+    "BILL OF SALE",
+    "VEHICLE RELEASE",
+    "Manheim.com",
+    "Release ID",
+    "YMMT"
+  ],
+  "extraction_success": true,
+  "extraction_score": 0.8620689655172413,
+  "fields_total": 19,
+  "fields_filled": 17,
+  "fields_empty": 2,
+  "has_vehicle_vin": true,
+  "has_vehicle_ymm": true,
+  "has_pickup_address": true,
+  "has_pickup_city_state": true,
+  "has_reference_id": true,
+  "extracted_fields": {
+    "auction_source": "MANHEIM",
+    "reference_id": "430F2KHV44B96",
+    "buyer_id": "5515588",
+    "buyer_name": "pickup location",
+    "sale_date": "2025-12-22 00:00:00",
+    "total_amount": "7300.0",
+    "pickup_name": "Manheim",
+    "pickup_address": "Manheim Fort Lauderdale",
+    "pickup_city": "DAVIE",
+    "pickup_state": "FL",
+    "pickup_zip": "33314-6403",
+    "pickup_phone": null,
+    "vehicle_vin": "2FMPK3K96KBC02618",
+    "vehicle_year": 2019,
+    "vehicle_make": "Ford",
+    "vehicle_model": "EDGE TTN TITANIUM",
+    "vehicle_color": "Gray",
+    "vehicle_lot": null,
+    "vehicle_mileage": "101733"
+  },
+  "field_sources": {
+    "auction_source": {
+      "value": "MANHEIM",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "reference_id": {
+      "value": "430F2KHV44B96",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "buyer_id": {
+      "value": "5515588",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "buyer_name": {
+      "value": "pickup location",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "sale_date": {
+      "value": "2025-12-22 00:00:00",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "total_amount": {
+      "value": "7300.0",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_name": {
+      "value": "Manheim",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_address": {
+      "value": "Manheim Fort Lauderdale",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_city": {
+      "value": "DAVIE",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_state": {
+      "value": "FL",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_zip": {
+      "value": "33314-6403",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_phone": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "manheim_extractor"
+    },
+    "vehicle_vin": {
+      "value": "2FMPK3K96KBC02618",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_year": {
+      "value": 2019,
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_make": {
+      "value": "Ford",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_model": {
+      "value": "EDGE TTN TITANIUM",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_color": {
+      "value": "Gray",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_lot": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "manheim_extractor"
+    },
+    "vehicle_mileage": {
+      "value": "101733",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    }
+  },
+  "issues": [],
+  "recommendations": [],
+  "invariant_text_extracted": true,
+  "invariant_classified": true,
+  "invariant_anchor_fields": true,
+  "extraction_time_ms": 1446
+}

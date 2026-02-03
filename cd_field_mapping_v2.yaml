@@ -1,0 +1,161 @@
+# CD Listings API V2: POST /listings
+# Field Mapping: Sheet Column -> CD API Field
+#
+# Based on: Central Dispatch Listings API V2 (Create Listing endpoint)
+# Schema Version: 3
+#
+# Notes:
+# - dispatch_id -> externalId (<=50 chars, primary key)
+# - Dates are YYYY-MM-DD format (availableDate, expirationDate, desiredDeliveryDate)
+# - stops[] is flat structure (address, city, state, postalCode, country)
+# - vehicles[] must have pickupStopNumber, dropoffStopNumber, isInoperable
+# - marketplaces[] has marketplaceId (integer) and boolean flags
+# - price has total, cod{}, balance{} structure
+
+# =============================================================================
+# TOP-LEVEL FIELDS
+# =============================================================================
+
+# Primary identifier (dispatch_id -> externalId)
+externalId: dispatch_id
+
+# Optional order/reference IDs
+shipperOrderId: shipper_order_id
+partnerReferenceId: partner_reference_id
+
+# Listing type flags
+trailerType: trailer_type
+hasInOpVehicle: has_inop_vehicle
+loadSpecificTerms: load_specific_terms
+
+# Dates (YYYY-MM-DD format)
+availableDate: available_date
+expirationDate: expiration_date
+desiredDeliveryDate: desired_delivery_date
+
+# Release notes
+transportationReleaseNotes: transportation_release_notes
+
+# Tags (JSON array of strings)
+tags: tags_json
+
+# =============================================================================
+# PRICE STRUCTURE
+# =============================================================================
+
+price:
+  total: price_total
+  cod:
+    amount: cod_amount
+    paymentMethod: cod_payment_method
+    paymentLocation: cod_payment_location
+  balance:
+    amount: balance_amount
+    paymentTime: balance_payment_time
+    balancePaymentTermsBeginOn: balance_terms_begin_on
+    balancePaymentMethod: balance_payment_method
+
+# =============================================================================
+# SLA STRUCTURE
+# =============================================================================
+
+sla:
+  duration: sla_duration
+  timeZoneOffset: sla_time_zone_offset
+  rolloverTime: sla_rollover_time
+  includeCurrentDayAfterRollOver: sla_include_current_day_after_rollover
+
+# =============================================================================
+# STOPS ARRAY (Flat structure per CD V2)
+# =============================================================================
+
+stops:
+  # Pickup (stop index 0, stopNumber=1)
+  - stopNumber: pickup_stop_number
+    locationName: pickup_location_name
+    address: pickup_address
+    city: pickup_city
+    state: pickup_state
+    postalCode: pickup_postal_code
+    country: pickup_country
+    phone: pickup_phone
+    contactName: pickup_contact_name
+    contactPhone: pickup_contact_phone
+    locationType: pickup_location_type
+
+  # Dropoff (stop index 1, stopNumber=2)
+  - stopNumber: dropoff_stop_number
+    locationName: dropoff_location_name
+    address: dropoff_address
+    city: dropoff_city
+    state: dropoff_state
+    postalCode: dropoff_postal_code
+    country: dropoff_country
+    phone: dropoff_phone
+    contactName: dropoff_contact_name
+    contactPhone: dropoff_contact_phone
+    locationType: dropoff_location_type
+
+# =============================================================================
+# VEHICLES ARRAY (Per CD V2 structure)
+# =============================================================================
+
+vehicles:
+  - pickupStopNumber: pickup_stop_number
+    dropoffStopNumber: dropoff_stop_number
+    externalVehicleId: vehicle_external_vehicle_id
+    vin: vehicle_vin
+    year: vehicle_year
+    make: vehicle_make
+    model: vehicle_model
+    trim: vehicle_trim
+    vehicleType: vehicle_type
+    color: vehicle_color
+    licensePlate: vehicle_license_plate
+    licensePlateState: vehicle_license_plate_state
+    lotNumber: vehicle_lot_number
+    isInoperable: vehicle_is_inoperable
+    tariff: vehicle_tariff
+    additionalInfo: vehicle_additional_info
+
+# =============================================================================
+# MARKETPLACES ARRAY (Per CD V2 structure)
+# =============================================================================
+
+marketplaces:
+  - marketplaceId: marketplace_id
+    digitalOffersEnabled: digital_offers_enabled
+    searchable: searchable
+    offersAutoAcceptEnabled: offers_auto_accept_enabled
+    autoDispatchOnOfferAccepted: auto_dispatch_on_offer_accepted
+    predispatchNotes: predispatch_notes
+    customersExcludedFromOffers: customers_excluded_from_offers_json
+
+# =============================================================================
+# OVERRIDE MAPPINGS (for source-of-truth logic)
+# =============================================================================
+
+# Override fields are not sent to CD API directly.
+# They are used during export to compute final values:
+# final_value = override_X if override_X else X
+#
+# Supported overrides:
+# - override_trailer_type -> trailer_type
+# - override_available_date -> available_date
+# - override_expiration_date -> expiration_date
+# - override_desired_delivery_date -> desired_delivery_date
+# - override_price_total -> price_total
+# - override_transportation_release_notes -> transportation_release_notes
+# - override_pickup_address -> pickup_address
+# - override_pickup_city -> pickup_city
+# - override_pickup_state -> pickup_state
+# - override_pickup_postal_code -> pickup_postal_code
+# - override_dropoff_address -> dropoff_address
+# - override_dropoff_city -> dropoff_city
+# - override_dropoff_state -> dropoff_state
+# - override_dropoff_postal_code -> dropoff_postal_code
+# - override_vehicle_vin -> vehicle_vin
+# - override_vehicle_year -> vehicle_year
+# - override_vehicle_make -> vehicle_make
+# - override_vehicle_model -> vehicle_model
+# - override_vehicle_is_inoperable -> vehicle_is_inoperable

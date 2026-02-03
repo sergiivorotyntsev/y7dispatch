@@ -1,0 +1,181 @@
+{
+  "filename": "12-31-2025_5515588_Vehicle_Sale_Documents1.pdf",
+  "file_path": "tests/sample_docs/12-31-2025_5515588_Vehicle_Sale_Documents1.pdf",
+  "file_size_bytes": 120953,
+  "text_extraction_success": true,
+  "raw_text_length": 5734,
+  "words_count": 881,
+  "pages_count": 4,
+  "text_mode": "native",
+  "text_preview": "BILL OF SALE\nTHIS IS NOT AN INVOICE DOCUMENT NOT VALID\nFOR EXPORT\n638 myCentralAuction Sale Date Vehicle Purchase Price\n6305 PEACHTREE DUNWOODY RD 23-DEC-2025 16:21:16 Sale Price $ 8,200.00\nBLDG B FL 6\nAdjustments $ 0.00\nAtlanta, GA 30328 US\nYr Wk Ln Rn Final Sale Price $ 8,200.00\n2025-52-94-1164\nPlease refer to the vehicle release for the Sale Type Seller Buyer\npickup location\nOVE CARVANA, LLC BROADWAY MOTORING INC\n10615 ROCKET BLVD 77 FITCHBURG RD\nORLANDO, FL 32824 US Ayer, MA 01432 US\nSeller ",
+  "classification_success": true,
+  "detected_source": "MANHEIM",
+  "classification_score": 1.0,
+  "all_scores": [
+    {
+      "source": "IAA",
+      "score": 0.0,
+      "patterns": []
+    },
+    {
+      "source": "MANHEIM",
+      "score": 1.0,
+      "patterns": [
+        "Manheim",
+        "Cox Automotive",
+        "BILL OF SALE",
+        "VEHICLE RELEASE",
+        "Manheim.com"
+      ]
+    },
+    {
+      "source": "COPART",
+      "score": 0.0,
+      "patterns": []
+    }
+  ],
+  "matched_patterns": [
+    "Manheim",
+    "Cox Automotive",
+    "BILL OF SALE",
+    "VEHICLE RELEASE",
+    "Manheim.com",
+    "Release ID",
+    "YMMT",
+    "OFFSITE VEHICLE RELEASE"
+  ],
+  "extraction_success": true,
+  "extraction_score": 1.0,
+  "fields_total": 19,
+  "fields_filled": 17,
+  "fields_empty": 2,
+  "has_vehicle_vin": true,
+  "has_vehicle_ymm": true,
+  "has_pickup_address": true,
+  "has_pickup_city_state": true,
+  "has_reference_id": true,
+  "extracted_fields": {
+    "auction_source": "MANHEIM",
+    "reference_id": "4V4E7F0Y44B96",
+    "buyer_id": "5515588",
+    "buyer_name": "pickup location",
+    "sale_date": "2025-12-23 00:00:00",
+    "total_amount": "8200.0",
+    "pickup_name": "Manheim",
+    "pickup_address": "63 Western Ave",
+    "pickup_city": "Framingham",
+    "pickup_state": "MA",
+    "pickup_zip": "01702",
+    "pickup_phone": null,
+    "vehicle_vin": "YV4A22PN5G1003540",
+    "vehicle_year": 2016,
+    "vehicle_make": "Volvo",
+    "vehicle_model": "XC90 T6 FIRST E",
+    "vehicle_color": "Black",
+    "vehicle_lot": null,
+    "vehicle_mileage": "121515"
+  },
+  "field_sources": {
+    "auction_source": {
+      "value": "MANHEIM",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "reference_id": {
+      "value": "4V4E7F0Y44B96",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "buyer_id": {
+      "value": "5515588",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "buyer_name": {
+      "value": "pickup location",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "sale_date": {
+      "value": "2025-12-23 00:00:00",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "total_amount": {
+      "value": "8200.0",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_name": {
+      "value": "Manheim",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_address": {
+      "value": "63 Western Ave",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_city": {
+      "value": "Framingham",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_state": {
+      "value": "MA",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_zip": {
+      "value": "01702",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "pickup_phone": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "manheim_extractor"
+    },
+    "vehicle_vin": {
+      "value": "YV4A22PN5G1003540",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_year": {
+      "value": 2016,
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_make": {
+      "value": "Volvo",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_model": {
+      "value": "XC90 T6 FIRST E",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_color": {
+      "value": "Black",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    },
+    "vehicle_lot": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "manheim_extractor"
+    },
+    "vehicle_mileage": {
+      "value": "121515",
+      "source": "EXTRACTED",
+      "method": "manheim_extractor"
+    }
+  },
+  "issues": [],
+  "recommendations": [],
+  "invariant_text_extracted": true,
+  "invariant_classified": true,
+  "invariant_anchor_fields": true,
+  "extraction_time_ms": 607
+}

@@ -1,0 +1,31 @@
+{
+  "source_file": "ShowReport1.pdf",
+  "auction_type": "IAA",
+  "expected_fields": {
+    "vehicle_vin": "2T3W1RFV4SW396639",
+    "vehicle_year": 2025,
+    "vehicle_make": "TOYOTA",
+    "vehicle_model": "RAV4",
+    "vehicle_color": "Red",
+    "vehicle_lot": "000-43602559",
+    "pickup_name": "IAA 760 - Lafayette",
+    "pickup_address": "Sale Date 12/29/2025",
+    "pickup_city": "Scott",
+    "pickup_state": "LA",
+    "pickup_zip": "70583",
+    "reference_id": "",
+    "buyer_id": "593509",
+    "buyer_name": "Broadway Motoring Inc",
+    "sale_date": "2025-12-29 00:00:00",
+    "total_amount": "15060.0"
+  },
+  "validation": {
+    "min_fields_required": 12,
+    "vin_must_be_17_chars": true,
+    "state_must_be_2_chars": true
+  },
+  "metadata": {
+    "created_from_diagnostic": "diagnostics/samples/ShowReport1_diagnostic.json",
+    "classification_score": 1.0
+  }
+}

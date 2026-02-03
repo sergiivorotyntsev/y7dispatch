@@ -1,0 +1,470 @@
+# =============================================================================
+# Central Dispatch Listings API V2 - Field Mapping Configuration
+# =============================================================================
+# This file defines how data flows from parsed documents to CD API payload.
+#
+# Field Types:
+#   - constant: Always the same value
+#   - variable: Comes from parsed data (email/PDF)
+#   - derived: Calculated from other fields
+#   - template: String template with placeholders
+#
+# =============================================================================
+
+version: "2.0"
+
+# =============================================================================
+# CONSTANTS - Same for all listings
+# =============================================================================
+constants:
+  # Trailer type (OPEN, ENCLOSED, DRIVEAWAY)
+  trailer_type: "OPEN"
+
+  # Currency
+  total_currency: "USD"
+
+  # Country (2-letter ISO)
+  country: "US"
+
+  # Marketplace settings
+  marketplace:
+    id: 10000  # Public CD marketplace
+    searchable: true
+    make_offers_enabled: true
+    offers_auto_accept_enabled: false
+    digital_offers_enabled: false  # Set true only if SLA configured
+    auto_dispatch_on_offer_accepted: false
+
+  # Inspection/verification
+  requires_inspection: false
+  requires_driver_verification_at_pickup: false
+
+  # Date offsets
+  available_date_offset_days: 0  # 0 = today
+  expiration_days: 14
+
+  # Default vehicle settings
+  vehicle:
+    type: "AUTO"
+    is_operable: true
+    wheel_less: false
+    convertible_less: false
+    has_oversized_tires: false
+    no_keys: false
+
+
+# =============================================================================
+# VARIABLES - Mapped from parsed data
+# =============================================================================
+variables:
+  # Top-level listing fields
+  listing:
+    shipper_order_id:
+      source: "clickup_task_id"
+      max_length: 255
+      required: false
+
+    external_id:
+      source: "idempotency_key"  # thread_root_id:attachment_hash
+      max_length: 255
+      required: true
+
+    partner_reference_id:
+      source: "lot_number"
+      max_length: 255
+      required: false
+
+  # Pickup stop (stop #1)
+  pickup_stop:
+    company_name:
+      source: "pickup_name"
+      fallback: "auction_source"  # COPART/IAA/MANHEIM
+      max_length: 80
+
+    address1:
+      source: "pickup_address_raw"
+      max_length: 80
+      required: true
+
+    address2:
+      source: null
+      max_length: 80
+
+    city:
+      source: "pickup_city"
+      max_length: 50
+      required: true
+
+    state:
+      source: "pickup_state"
+      max_length: 2
+      required: true
+
+    postal_code:
+      source: "pickup_zip"
+      max_length: 20
+      required: true
+
+    contact_name:
+      source: "pickup_contact"
+      max_length: 80
+
+    contact_phone:
+      source: "pickup_phone"
+      max_length: 20
+
+    contact_email:
+      source: "pickup_email"
+      max_length: 320
+
+  # Delivery stop (stop #2) - from warehouse routing
+  delivery_stop:
+    company_name:
+      source: "warehouse.name"
+      max_length: 80
+
+    address1:
+      source: "warehouse.address"
+      max_length: 80
+      required: true
+
+    city:
+      source: "warehouse.city"
+      max_length: 50
+      required: true
+
+    state:
+      source: "warehouse.state"
+      max_length: 2
+      required: true
+
+    postal_code:
+      source: "warehouse.zip_code"
+      max_length: 20
+      required: true
+
+    contact_name:
+      source: "warehouse.contact"
+      max_length: 80
+
+    contact_phone:
+      source: "warehouse.phone"
+      max_length: 20
+
+    contact_email:
+      source: "warehouse.email"
+      max_length: 320
+
+  # Vehicle fields
+  vehicle:
+    year:
+      source: "vehicle_year"
+      type: "integer"
+      required: true
+
+    make:
+      source: "vehicle_make"
+      max_length: 80
+      required: true
+
+    model:
+      source: "vehicle_model"
+      max_length: 80
+      required: true
+
+    vin:
+      source: "vin"
+      pattern: "^[A-HJ-NPR-Z0-9]{17}$"
+      required: true
+
+    lot_number:
+      source: "lot_number"
+      max_length: 80
+
+    is_operable:
+      source: "is_operable"
+      type: "boolean"
+      default: true
+
+  # Price
+  price:
+    total:
+      source: "transport_price"
+      type: "float"
+      required: true
+      min: 1.0
+
+
+# =============================================================================
+# DERIVED FIELDS - Calculated at runtime
+# =============================================================================
+derived:
+  # True if any vehicle is inoperable
+  has_inop_vehicle:
+    logic: "any(v.is_operable == false for v in vehicles)"
+    type: "boolean"
+
+  # Available date (today + offset)
+  available_date:
+    logic: "utcnow() + timedelta(days=constants.available_date_offset_days)"
+    format: "%Y-%m-%dT00:00:00Z"
+
+  # Expiration date
+  expiration_date:
+    logic: "available_date + timedelta(days=constants.expiration_days)"
+    format: "%Y-%m-%dT00:00:00Z"
+
+  # Trailer type override for luxury vehicles
+  trailer_type_final:
+    logic: |
+      if vehicle_make in LUXURY_MAKES:
+        return "ENCLOSED"
+      return constants.trailer_type
+    luxury_makes:
+      - "BMW"
+      - "MERCEDES"
+      - "MERCEDES-BENZ"
+      - "PORSCHE"
+      - "AUDI"
+      - "LEXUS"
+      - "TESLA"
+      - "MASERATI"
+      - "FERRARI"
+      - "LAMBORGHINI"
+      - "BENTLEY"
+      - "ROLLS-ROYCE"
+      - "ASTON MARTIN"
+
+  # Nearest warehouse selection
+  delivery_warehouse:
+    logic: "find_nearest_warehouse(pickup_address, warehouses)"
+    fallback: "default_warehouse_id"
+
+
+# =============================================================================
+# TEMPLATES - String templates with placeholders
+# =============================================================================
+templates:
+  # Transportation release notes (where Gate Pass goes)
+  transportation_release_notes:
+    copart: |
+      LOT#: {lot_number}
+      Gate Pass: {gate_pass}
+
+      COPART lot pickup. Present LOT# and Gate Pass at gate.
+      Driver must verify vehicle condition before loading.
+
+    iaa: |
+      Stock#: {lot_number}
+      Gate Pass: {gate_pass}
+
+      IAA/Insurance Auto Auctions pickup.
+      Present Stock# and Gate Pass at gate.
+      Driver must verify vehicle condition before loading.
+
+    manheim: |
+      Release ID: {release_id}
+      Gate Pass: {gate_pass}
+      Location: {location_type}
+
+      Manheim pickup. Present Release ID at gate.
+      {offsite_note}
+
+    unknown: |
+      Reference: {lot_number}
+      Gate Pass: {gate_pass}
+
+      Verify all documentation before loading.
+
+  # Offsite note for Manheim
+  offsite_note:
+    template: "OFFSITE LOCATION - Vehicle not at Manheim facility."
+    condition: "location_type == 'OFFSITE'"
+
+  # Load specific terms
+  load_specific_terms:
+    default: |
+      Standard auto transport terms apply.
+      Driver must call 30 minutes prior to pickup.
+      Photo documentation required at pickup and delivery.
+
+  # Predispatch notes (visible before dispatch)
+  predispatch_notes:
+    default: "Call dispatch for pickup appointment: {company_phone}"
+
+
+# =============================================================================
+# AUCTION-SPECIFIC OVERRIDES
+# =============================================================================
+auction_overrides:
+  copart:
+    pickup_stop:
+      company_name_prefix: "Copart - "
+    tags:
+      - name: "auctionSource"
+        value: "COPART"
+      - name: "auctionType"
+        value: "SALVAGE"
+
+  iaa:
+    pickup_stop:
+      company_name_prefix: "IAA - "
+    tags:
+      - name: "auctionSource"
+        value: "IAA"
+      - name: "auctionType"
+        value: "SALVAGE"
+
+  manheim:
+    pickup_stop:
+      company_name_prefix: "Manheim - "
+    tags:
+      - name: "auctionSource"
+        value: "MANHEIM"
+      - name: "auctionType"
+        value: "DEALER"
+    # Manheim may have offsite locations
+    location_type_handling:
+      onsite:
+        notes_suffix: ""
+      offsite:
+        notes_suffix: "OFFSITE - Call for exact location"
+
+
+# =============================================================================
+# TAGS - Always included for tracking/filtering
+# =============================================================================
+default_tags:
+  - name: "automationVersion"
+    value: "v2.0"
+
+  - name: "sourceSystem"
+    value: "email-automation"
+
+  # These are populated from variables
+  - name: "gatePass"
+    source: "gate_pass"
+
+  - name: "warehouseId"
+    source: "warehouse.id"
+
+  - name: "idempotencyKey"
+    source: "idempotency_key"
+
+  - name: "parserConfidence"
+    source: "extraction_score"
+    format: "{:.2f}"
+
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+validation:
+  # Required fields for a valid listing
+  required_fields:
+    - "vin"
+    - "vehicle_year"
+    - "vehicle_make"
+    - "vehicle_model"
+    - "pickup_city"
+    - "pickup_state"
+    - "pickup_zip"
+    - "transport_price"
+
+  # VIN validation
+  vin:
+    pattern: "^[A-HJ-NPR-Z0-9]{17}$"
+    message: "VIN must be exactly 17 characters (no I, O, Q)"
+
+  # State validation (2-letter)
+  state:
+    pattern: "^[A-Z]{2}$"
+    message: "State must be 2-letter code"
+
+  # Postal code validation
+  postal_code:
+    pattern: "^\\d{5}(-\\d{4})?$"
+    message: "Postal code must be 5 or 9 digits"
+
+  # Price validation
+  price:
+    min: 1.0
+    max: 100000.0
+    message: "Price must be between $1 and $100,000"
+
+  # Year validation
+  year:
+    min: 1900
+    max: 2030
+    message: "Year must be between 1900 and 2030"
+
+
+# =============================================================================
+# SLA CONFIGURATION (for digital offers)
+# =============================================================================
+sla:
+  # Only used if marketplace.digital_offers_enabled = true
+  enabled: false
+
+  # SLA duration in days
+  duration_days: 2  # P2D in ISO8601
+
+  # Timezone offset
+  timezone_offset: "-05:00"  # Eastern
+
+  # Rollover time (end of business day)
+  rollover_time: "17:00:00"
+
+  # Include current day after rollover
+  include_current_day_after_rollover: false
+
+
+# =============================================================================
+# COD/BALANCE CONFIGURATION
+# =============================================================================
+payment:
+  # COD (Cash on Delivery) settings
+  cod:
+    enabled: true
+    amount_source: "transport_price"  # Same as total
+    payment_method: "CASH_CERTIFIED_FUNDS"
+    payment_location: "DELIVERY"
+
+  # Balance settings (if split payment)
+  balance:
+    enabled: false
+    amount: 0
+    payment_method: "CHECK"
+    payment_location: "BILLING"
+
+
+# =============================================================================
+# ERROR HANDLING
+# =============================================================================
+error_handling:
+  # What to do if parsing fails
+  on_parse_failure:
+    create_listing: false  # Don't create CD listing
+    create_clickup_task: true
+    clickup_status: "PARSE_FAILED"
+    notify: true
+
+  # What to do if gate pass is missing
+  on_missing_gate_pass:
+    create_listing: true
+    gate_pass_placeholder: "NOT FOUND - VERIFY BEFORE PICKUP"
+    clickup_warning: true
+
+  # What to do if warehouse routing fails
+  on_routing_failure:
+    create_listing: true
+    use_default_warehouse: true
+    default_warehouse_id: "NJ"
+    clickup_warning: true
+
+  # Retry policy for CD API
+  cd_api_retry:
+    max_attempts: 3
+    backoff_multiplier: 2
+    initial_wait_seconds: 2
+    max_wait_seconds: 30

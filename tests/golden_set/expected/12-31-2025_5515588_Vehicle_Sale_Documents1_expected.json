@@ -1,0 +1,31 @@
+{
+  "source_file": "12-31-2025_5515588_Vehicle_Sale_Documents1.pdf",
+  "auction_type": "MANHEIM",
+  "expected_fields": {
+    "vehicle_vin": "YV4A22PN5G1003540",
+    "vehicle_year": 2016,
+    "vehicle_make": "Volvo",
+    "vehicle_model": "XC90 T6 FIRST E",
+    "vehicle_color": "Black",
+    "vehicle_lot": null,
+    "pickup_name": "Manheim",
+    "pickup_address": "63 Western Ave",
+    "pickup_city": "Framingham",
+    "pickup_state": "MA",
+    "pickup_zip": "01702",
+    "reference_id": "4V4E7F0Y44B96",
+    "buyer_id": "5515588",
+    "buyer_name": "pickup location",
+    "sale_date": "2025-12-23 00:00:00",
+    "total_amount": "8200.0"
+  },
+  "validation": {
+    "min_fields_required": 12,
+    "vin_must_be_17_chars": true,
+    "state_must_be_2_chars": true
+  },
+  "metadata": {
+    "created_from_diagnostic": "diagnostics/samples/12-31-2025_5515588_Vehicle_Sale_Documents1_diagnostic.json",
+    "classification_score": 1.0
+  }
+}

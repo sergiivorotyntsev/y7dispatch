@@ -1,0 +1,47 @@
+# Warehouse configuration
+# Edit this file to add/update warehouse locations
+
+warehouses:
+  - id: NJ
+    name: New Jersey Warehouse
+    state: NJ
+    address: "123 Industrial Blvd"
+    city: Newark
+    zip_code: "07102"
+    phone: "(555) 111-1111"
+    email: nj@warehouse.com
+    hours: "Mon-Fri 8am-5pm"
+    contact: John Smith
+
+  - id: GA
+    name: Georgia Warehouse
+    state: GA
+    address: "456 Logistics Way"
+    city: Atlanta
+    zip_code: "30301"
+    phone: "(555) 222-2222"
+    email: ga@warehouse.com
+    hours: "Mon-Fri 8am-5pm"
+    contact: Jane Doe
+
+  - id: CA
+    name: California Warehouse
+    state: CA
+    address: "789 Transport Dr"
+    city: Los Angeles
+    zip_code: "90001"
+    phone: "(555) 333-3333"
+    email: ca@warehouse.com
+    hours: "Mon-Fri 7am-4pm"
+    contact: Bob Wilson
+
+  - id: TX
+    name: Texas Warehouse
+    state: TX
+    address: "321 Freight Ln"
+    city: Houston
+    zip_code: "77001"
+    phone: "(555) 444-4444"
+    email: tx@warehouse.com
+    hours: "Mon-Fri 8am-5pm"
+    contact: Alice Brown

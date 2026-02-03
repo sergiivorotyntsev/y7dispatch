@@ -1,0 +1,181 @@
+{
+  "filename": "invoice (1).pdf",
+  "file_path": "tests/sample_docs/invoice (1).pdf",
+  "file_size_bytes": 136593,
+  "text_extraction_success": true,
+  "raw_text_length": 2367,
+  "words_count": 312,
+  "pages_count": 1,
+  "text_mode": "native",
+  "text_preview": "Sales Receipt/Bill of Sale Date: 12/31/25 01:45 PM\nMEMBER:535527 PHYSICAL ADDRESS OF LOT: SELLER:\nSTATE FARM\nBROADWAY MOTORING INC\n8300 BLAKELAND DRIVE SOLD THROUGH COPART 942867490\n77 FITCHBURG ROAD\nLITTLETON CO 80125 8300 BLAKELAND DRIVE\nAYER, MA 01432\nLITTLETON, CO 80125\nLOT#: 90758145 Sale Yard: 193 Item#: 2025/D\nVEHICLE: 2022 FORD EDGE TITAN GRAY Phy Yard: 193 Keys: YES\nVIN: 2FMPK4K9XNBA29051 Row: J010 Sale: 12/29/2025\nCharges and Payments\nDate Charges Amount Description\n12/29/2025 Sale Pri",
+  "classification_success": true,
+  "detected_source": "COPART",
+  "classification_score": 0.7714285714285715,
+  "all_scores": [
+    {
+      "source": "IAA",
+      "score": 0.0,
+      "patterns": []
+    },
+    {
+      "source": "MANHEIM",
+      "score": 0.06896551724137931,
+      "patterns": [
+        "BILL OF SALE"
+      ]
+    },
+    {
+      "source": "COPART",
+      "score": 0.7714285714285715,
+      "patterns": [
+        "Copart",
+        "SOLD THROUGH COPART",
+        "Sales Receipt/Bill of Sale",
+        "MEMBER:",
+        "PHYSICAL ADDRESS OF LOT"
+      ]
+    }
+  ],
+  "matched_patterns": [
+    "Copart",
+    "SOLD THROUGH COPART",
+    "Sales Receipt/Bill of Sale",
+    "MEMBER:",
+    "PHYSICAL ADDRESS OF LOT",
+    "LOT#"
+  ],
+  "extraction_success": true,
+  "extraction_score": 0.7714285714285715,
+  "fields_total": 19,
+  "fields_filled": 17,
+  "fields_empty": 2,
+  "has_vehicle_vin": true,
+  "has_vehicle_ymm": true,
+  "has_pickup_address": true,
+  "has_pickup_city_state": true,
+  "has_reference_id": true,
+  "extracted_fields": {
+    "auction_source": "COPART",
+    "reference_id": "90758145",
+    "buyer_id": "535527",
+    "buyer_name": "STATE FARM",
+    "sale_date": "2025-12-29 00:00:00",
+    "total_amount": "6500.0",
+    "pickup_name": "Copart",
+    "pickup_address": "8300 BLAKELAND DRIVE",
+    "pickup_city": "LITTLETON",
+    "pickup_state": "CO",
+    "pickup_zip": "80125",
+    "pickup_phone": null,
+    "vehicle_vin": "2FMPK4K9XNBA29051",
+    "vehicle_year": 2022,
+    "vehicle_make": "Ford",
+    "vehicle_model": "Edge Titan",
+    "vehicle_color": "Gray",
+    "vehicle_lot": "90758145",
+    "vehicle_mileage": null
+  },
+  "field_sources": {
+    "auction_source": {
+      "value": "COPART",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "reference_id": {
+      "value": "90758145",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "buyer_id": {
+      "value": "535527",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "buyer_name": {
+      "value": "STATE FARM",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "sale_date": {
+      "value": "2025-12-29 00:00:00",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "total_amount": {
+      "value": "6500.0",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_name": {
+      "value": "Copart",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_address": {
+      "value": "8300 BLAKELAND DRIVE",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_city": {
+      "value": "LITTLETON",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_state": {
+      "value": "CO",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_zip": {
+      "value": "80125",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_phone": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "copart_extractor"
+    },
+    "vehicle_vin": {
+      "value": "2FMPK4K9XNBA29051",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_year": {
+      "value": 2022,
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_make": {
+      "value": "Ford",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_model": {
+      "value": "Edge Titan",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_color": {
+      "value": "Gray",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_lot": {
+      "value": "90758145",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_mileage": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "copart_extractor"
+    }
+  },
+  "issues": [],
+  "recommendations": [],
+  "invariant_text_extracted": true,
+  "invariant_classified": true,
+  "invariant_anchor_fields": true,
+  "extraction_time_ms": 168
+}

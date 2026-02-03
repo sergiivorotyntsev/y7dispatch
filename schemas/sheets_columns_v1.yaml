@@ -1,0 +1,213 @@
+# Google Sheets Column Schema v1
+# Vehicle Transport Automation - Pickup Records
+#
+# This schema defines the columns for the Google Sheets audit log.
+# Version: 1
+# Last Updated: 2026-01-30
+
+version: 1
+sheet_name: "Pickups"
+
+columns:
+  # Run/Processing Metadata
+  - name: run_id
+    type: string
+    description: "Unique run identifier (YYYYMMDD_HHMMSS)"
+
+  - name: row_id
+    type: string
+    description: "Unique row identifier (UUID)"
+
+  - name: processed_at
+    type: datetime
+    format: "%Y-%m-%d %H:%M:%S"
+    description: "When this record was processed"
+
+  # Source Information
+  - name: source_type
+    type: string
+    enum: ["email", "upload", "batch"]
+    description: "How the document was ingested"
+
+  - name: source_email_id
+    type: string
+    description: "Email message ID (if from email)"
+
+  - name: source_email_subject
+    type: string
+    description: "Email subject line"
+
+  - name: source_email_from
+    type: string
+    description: "Email sender address"
+
+  - name: attachment_name
+    type: string
+    description: "Original filename of the PDF"
+
+  - name: attachment_hash
+    type: string
+    description: "SHA256 hash of file (for deduplication)"
+
+  # Auction/Document Classification
+  - name: auction
+    type: string
+    enum: ["COPART", "IAA", "MANHEIM", "UNKNOWN"]
+    description: "Detected auction source"
+
+  - name: extraction_score
+    type: float
+    description: "Confidence score (0-100)"
+
+  - name: status
+    type: string
+    enum: ["OK", "NEEDS_REVIEW", "FAIL", "ERROR"]
+    description: "Extraction status"
+
+  - name: matched_patterns
+    type: string
+    description: "Patterns that matched (comma-separated)"
+
+  # Vehicle Information
+  - name: vin
+    type: string
+    max_length: 17
+    description: "Vehicle Identification Number"
+
+  - name: vehicle_year
+    type: integer
+    description: "Model year"
+
+  - name: vehicle_make
+    type: string
+    description: "Manufacturer"
+
+  - name: vehicle_model
+    type: string
+    description: "Model name"
+
+  - name: vehicle_color
+    type: string
+    description: "Exterior color"
+
+  - name: lot_number
+    type: string
+    description: "Auction lot number"
+
+  - name: mileage
+    type: integer
+    description: "Odometer reading"
+
+  - name: is_operable
+    type: boolean
+    description: "Vehicle runs and drives"
+
+  # Pickup Location
+  - name: pickup_name
+    type: string
+    description: "Pickup location name"
+
+  - name: pickup_address
+    type: string
+    description: "Street address"
+
+  - name: pickup_city
+    type: string
+    description: "City"
+
+  - name: pickup_state
+    type: string
+    max_length: 2
+    description: "State (2-letter)"
+
+  - name: pickup_zip
+    type: string
+    description: "ZIP code"
+
+  - name: pickup_phone
+    type: string
+    description: "Contact phone"
+
+  # Gate Pass / Release Info
+  - name: gate_pass
+    type: string
+    description: "Gate pass or release code"
+
+  - name: gate_pass_source
+    type: string
+    enum: ["email_body", "pdf", "manual"]
+    description: "Where gate pass was found"
+
+  # Buyer Information
+  - name: buyer_id
+    type: string
+    description: "Buyer member ID"
+
+  - name: buyer_name
+    type: string
+    description: "Buyer name"
+
+  - name: reference_id
+    type: string
+    description: "Receipt/reference number"
+
+  - name: total_amount
+    type: float
+    description: "Total purchase amount"
+
+  # Warehouse Routing
+  - name: warehouse_id
+    type: string
+    description: "Assigned warehouse ID"
+
+  - name: warehouse_name
+    type: string
+    description: "Warehouse name"
+
+  - name: warehouse_distance_miles
+    type: float
+    description: "Distance from pickup to warehouse"
+
+  # Export Status
+  - name: clickup_task_id
+    type: string
+    description: "ClickUp task ID (if created)"
+
+  - name: clickup_task_url
+    type: string
+    description: "ClickUp task URL"
+
+  - name: cd_listing_id
+    type: string
+    description: "Central Dispatch listing ID"
+
+  - name: export_status
+    type: string
+    enum: ["PENDING", "EXPORTED", "SKIPPED", "ERROR"]
+    description: "Export status"
+
+  # Manual Override Fields
+  - name: override_vin
+    type: string
+    description: "Manual VIN correction"
+
+  - name: override_pickup_address
+    type: string
+    description: "Manual pickup address correction"
+
+  - name: override_notes
+    type: string
+    description: "Notes for manual review"
+
+  - name: override_auction
+    type: string
+    description: "Manual auction type override"
+
+  # Error Tracking
+  - name: warnings
+    type: string
+    description: "Warnings (comma-separated)"
+
+  - name: error
+    type: string
+    description: "Error message if failed"

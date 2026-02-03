@@ -1,0 +1,31 @@
+{
+  "source_file": "ShowReport (4).pdf",
+  "auction_type": "IAA",
+  "expected_fields": {
+    "vehicle_vin": "WBA73AK06L7F98003",
+    "vehicle_year": 2020,
+    "vehicle_make": "BMW",
+    "vehicle_model": "228I GRAN",
+    "vehicle_color": "Gray",
+    "vehicle_lot": "000-43597865",
+    "pickup_name": "IAA 609 - Boston - Shirley",
+    "pickup_address": "Sale Date 12/25/2025",
+    "pickup_city": "Shirley",
+    "pickup_state": "MA",
+    "pickup_zip": "01464",
+    "reference_id": "",
+    "buyer_id": "593509",
+    "buyer_name": "Broadway Motoring Inc",
+    "sale_date": "2025-12-25 00:00:00",
+    "total_amount": "10210.0"
+  },
+  "validation": {
+    "min_fields_required": 12,
+    "vin_must_be_17_chars": true,
+    "state_must_be_2_chars": true
+  },
+  "metadata": {
+    "created_from_diagnostic": "diagnostics/samples/ShowReport (4)_diagnostic.json",
+    "classification_score": 1.0
+  }
+}

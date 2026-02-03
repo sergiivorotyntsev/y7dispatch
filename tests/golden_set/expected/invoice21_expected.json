@@ -1,0 +1,31 @@
+{
+  "source_file": "invoice21.pdf",
+  "auction_type": "COPART",
+  "expected_fields": {
+    "vehicle_vin": "1C4RDJEGXFC177587",
+    "vehicle_year": 2015,
+    "vehicle_make": "Dodge",
+    "vehicle_model": "Durango Ci",
+    "vehicle_color": "Black",
+    "vehicle_lot": "92495695",
+    "pickup_name": "Copart",
+    "pickup_address": "1746 US ROUTE 60",
+    "pickup_city": "HURRICANE",
+    "pickup_state": "WV",
+    "pickup_zip": "25526",
+    "reference_id": "92495695",
+    "buyer_id": "535527",
+    "buyer_name": "PROGRESSIVE - WV -",
+    "sale_date": "2025-12-12 00:00:00",
+    "total_amount": "3100.0"
+  },
+  "validation": {
+    "min_fields_required": 12,
+    "vin_must_be_17_chars": true,
+    "state_must_be_2_chars": true
+  },
+  "metadata": {
+    "created_from_diagnostic": "diagnostics/samples/invoice21_diagnostic.json",
+    "classification_score": 0.6571428571428571
+  }
+}

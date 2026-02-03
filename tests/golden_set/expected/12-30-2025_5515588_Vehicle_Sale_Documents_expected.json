@@ -1,0 +1,31 @@
+{
+  "source_file": "12-30-2025_5515588_Vehicle_Sale_Documents.pdf",
+  "auction_type": "MANHEIM",
+  "expected_fields": {
+    "vehicle_vin": "2FMPK3K96KBC02618",
+    "vehicle_year": 2019,
+    "vehicle_make": "Ford",
+    "vehicle_model": "EDGE TTN TITANIUM",
+    "vehicle_color": "Gray",
+    "vehicle_lot": null,
+    "pickup_name": "Manheim",
+    "pickup_address": "Manheim Fort Lauderdale",
+    "pickup_city": "DAVIE",
+    "pickup_state": "FL",
+    "pickup_zip": "33314-6403",
+    "reference_id": "430F2KHV44B96",
+    "buyer_id": "5515588",
+    "buyer_name": "pickup location",
+    "sale_date": "2025-12-22 00:00:00",
+    "total_amount": "7300.0"
+  },
+  "validation": {
+    "min_fields_required": 12,
+    "vin_must_be_17_chars": true,
+    "state_must_be_2_chars": true
+  },
+  "metadata": {
+    "created_from_diagnostic": "diagnostics/samples/12-30-2025_5515588_Vehicle_Sale_Documents_diagnostic.json",
+    "classification_score": 0.8620689655172413
+  }
+}

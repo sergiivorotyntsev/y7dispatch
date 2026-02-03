@@ -1,0 +1,56 @@
+# Environment variables (NEVER commit!)
+.env
+.env.local
+.env.production
+
+# Google API credentials (NEVER commit!)
+credentials.json
+token.json
+*.pickle
+
+# Auth secrets (NEVER commit!)
+config/.jwt_secret
+*.jwt_secret
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# SQLite databases
+*.db
+processed_emails.db
+geocode_cache.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Runtime data
+data/
+uploads/
+
+# Node.js
+node_modules/
+web/node_modules/
+
+# Build output
+static/
+web/dist/
+
+# Package manager locks (optional - can be committed for reproducibility)
+# Uncomment if you want to track package-lock.json
+# !web/package-lock.json
+vehicle_transport_automation.egg-info/

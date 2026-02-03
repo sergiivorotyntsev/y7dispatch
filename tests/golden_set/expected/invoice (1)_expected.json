@@ -1,0 +1,31 @@
+{
+  "source_file": "invoice (1).pdf",
+  "auction_type": "COPART",
+  "expected_fields": {
+    "vehicle_vin": "2FMPK4K9XNBA29051",
+    "vehicle_year": 2022,
+    "vehicle_make": "Ford",
+    "vehicle_model": "Edge Titan",
+    "vehicle_color": "Gray",
+    "vehicle_lot": "90758145",
+    "pickup_name": "Copart",
+    "pickup_address": "8300 BLAKELAND DRIVE",
+    "pickup_city": "LITTLETON",
+    "pickup_state": "CO",
+    "pickup_zip": "80125",
+    "reference_id": "90758145",
+    "buyer_id": "535527",
+    "buyer_name": "STATE FARM",
+    "sale_date": "2025-12-29 00:00:00",
+    "total_amount": "6500.0"
+  },
+  "validation": {
+    "min_fields_required": 12,
+    "vin_must_be_17_chars": true,
+    "state_must_be_2_chars": true
+  },
+  "metadata": {
+    "created_from_diagnostic": "diagnostics/samples/invoice (1)_diagnostic.json",
+    "classification_score": 0.7714285714285715
+  }
+}

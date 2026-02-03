@@ -1,0 +1,32 @@
+# Core dependencies
+pdfplumber>=0.10.0
+requests>=2.28.0
+python-dotenv>=1.0.0
+tenacity>=8.0.0
+pyyaml>=6.0.0
+
+# FastAPI Control Panel
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+
+# Database (Training System)
+sqlmodel>=0.0.16
+sqlalchemy>=2.0.0
+
+# Google Sheets integration
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.1.0
+google-auth-oauthlib>=1.0.0
+
+# Excel parsing (for warehouse data)
+openpyxl>=3.1.0
+
+# Development/testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# Optional: OCR support (uncomment if needed)
+# pytesseract>=0.3.10
+# pdf2image>=1.16.0

@@ -1,0 +1,182 @@
+{
+  "filename": "ShowReport1.pdf",
+  "file_path": "tests/sample_docs/ShowReport1.pdf",
+  "file_size_bytes": 172892,
+  "text_extraction_success": true,
+  "raw_text_length": 1321,
+  "words_count": 193,
+  "pages_count": 1,
+  "text_mode": "native",
+  "text_preview": "Buyer Receipt\nReceipt # 25818920\nReceipt Date 12/31/2025\nReceived By AC/ASAP S\nInsurance Auto Auctions Corp\nSold At Branch 760 - Lafayette\nPick-Up Location: Sale Date 12/29/2025\nLafayette\n425 Highway 93 N Buyer # 593509\nScott Louisiana 70583 Buyer Name Broadway Motoring Inc\n(337) 896-3829\nDealer 202610\nResale Certificate # 44939394688\nRegistration Expires 9/24/2026\nSale License\nStockNo Item # Year Make Model Color Mileage VIN Plate #\n000-43602559 2025 TOYOTA RAV4 Red 11,326 2T3W1RFV4SW396639\nInv",
+  "classification_success": true,
+  "detected_source": "IAA",
+  "classification_score": 1.0,
+  "all_scores": [
+    {
+      "source": "IAA",
+      "score": 1.0,
+      "patterns": [
+        "Insurance Auto Auctions",
+        "Insurance Auto Auctions Corp",
+        "Buyer Receipt",
+        "IAAI",
+        "IAA"
+      ]
+    },
+    {
+      "source": "MANHEIM",
+      "score": 0.0,
+      "patterns": []
+    },
+    {
+      "source": "COPART",
+      "score": 0.0,
+      "patterns": []
+    }
+  ],
+  "matched_patterns": [
+    "Insurance Auto Auctions",
+    "Insurance Auto Auctions Corp",
+    "Buyer Receipt",
+    "IAAI",
+    "IAA",
+    "Pick-Up Location",
+    "StockNo",
+    "Sold At Branch",
+    "Receipt #"
+  ],
+  "extraction_success": true,
+  "extraction_score": 1.0,
+  "fields_total": 19,
+  "fields_filled": 17,
+  "fields_empty": 2,
+  "has_vehicle_vin": true,
+  "has_vehicle_ymm": true,
+  "has_pickup_address": true,
+  "has_pickup_city_state": true,
+  "has_reference_id": false,
+  "extracted_fields": {
+    "auction_source": "IAA",
+    "reference_id": "",
+    "buyer_id": "593509",
+    "buyer_name": "Broadway Motoring Inc",
+    "sale_date": "2025-12-29 00:00:00",
+    "total_amount": "15060.0",
+    "pickup_name": "IAA 760 - Lafayette",
+    "pickup_address": "Sale Date 12/29/2025",
+    "pickup_city": "Scott",
+    "pickup_state": "LA",
+    "pickup_zip": "70583",
+    "pickup_phone": null,
+    "vehicle_vin": "2T3W1RFV4SW396639",
+    "vehicle_year": 2025,
+    "vehicle_make": "TOYOTA",
+    "vehicle_model": "RAV4",
+    "vehicle_color": "Red",
+    "vehicle_lot": "000-43602559",
+    "vehicle_mileage": "11326"
+  },
+  "field_sources": {
+    "auction_source": {
+      "value": "IAA",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "reference_id": {
+      "value": "",
+      "source": "EMPTY",
+      "method": "iaa_extractor"
+    },
+    "buyer_id": {
+      "value": "593509",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "buyer_name": {
+      "value": "Broadway Motoring Inc",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "sale_date": {
+      "value": "2025-12-29 00:00:00",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "total_amount": {
+      "value": "15060.0",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_name": {
+      "value": "IAA 760 - Lafayette",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_address": {
+      "value": "Sale Date 12/29/2025",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_city": {
+      "value": "Scott",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_state": {
+      "value": "LA",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_zip": {
+      "value": "70583",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "pickup_phone": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "iaa_extractor"
+    },
+    "vehicle_vin": {
+      "value": "2T3W1RFV4SW396639",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_year": {
+      "value": 2025,
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_make": {
+      "value": "TOYOTA",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_model": {
+      "value": "RAV4",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_color": {
+      "value": "Red",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_lot": {
+      "value": "000-43602559",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    },
+    "vehicle_mileage": {
+      "value": "11326",
+      "source": "EXTRACTED",
+      "method": "iaa_extractor"
+    }
+  },
+  "issues": [],
+  "recommendations": [],
+  "invariant_text_extracted": true,
+  "invariant_classified": true,
+  "invariant_anchor_fields": true,
+  "extraction_time_ms": 706
+}

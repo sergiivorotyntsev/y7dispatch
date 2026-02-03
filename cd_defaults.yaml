@@ -1,0 +1,77 @@
+# Central Dispatch listing defaults and rules
+# Edit this file to customize CD export behavior
+
+defaults:
+  # Trailer type: OPEN, ENCLOSED, or DRIVEAWAY
+  trailer_type: OPEN
+
+  # Payment settings
+  payment_method: CASH_CERTIFIED_FUNDS
+  payment_location: DELIVERY
+
+  # Marketplace ID (10000 = public CD marketplace)
+  marketplace_id: 10000
+
+  # Date offsets
+  available_date_offset_days: 0  # 0 = today
+  expiration_days: 14
+
+  # Company info (shipper) - fill in your details
+  company_name: "Your Transport Company"
+  company_address: ""
+  company_city: ""
+  company_state: ""
+  company_zip: ""
+  company_phone: ""
+  company_contact: ""
+
+  # Default instructions
+  pickup_instructions: "Call ahead for appointment"
+  delivery_instructions: ""
+
+# Conditional rules - applied in order
+rules:
+  # Use enclosed trailer for luxury vehicles
+  - name: enclosed_for_luxury
+    condition:
+      vehicle_make:
+        - BMW
+        - MERCEDES
+        - MERCEDES-BENZ
+        - PORSCHE
+        - AUDI
+        - LEXUS
+        - TESLA
+        - MASERATI
+        - FERRARI
+        - LAMBORGHINI
+    overrides:
+      trailer_type: ENCLOSED
+
+  # Higher priority for inoperable vehicles
+  - name: inoperable_priority
+    condition:
+      is_inoperable: true
+    overrides:
+      expiration_days: 7
+
+  # Specific instructions for Copart
+  - name: copart_instructions
+    condition:
+      auction_source: COPART
+    overrides:
+      pickup_instructions: "Copart lot - present LOT# at gate"
+
+  # Specific instructions for IAA
+  - name: iaa_instructions
+    condition:
+      auction_source: IAA
+    overrides:
+      pickup_instructions: "IAA lot - present Stock# at gate"
+
+  # Specific instructions for Manheim
+  - name: manheim_instructions
+    condition:
+      auction_source: MANHEIM
+    overrides:
+      pickup_instructions: "Manheim - present Release ID at gate"

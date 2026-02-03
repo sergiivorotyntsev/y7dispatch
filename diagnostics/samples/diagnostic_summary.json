@@ -1,0 +1,29 @@
+{
+  "total_docs": 6,
+  "text_extraction_success": 6,
+  "classification_success": 6,
+  "extraction_success": 6,
+  "invariant_pass_all": 6,
+  "by_auction_type": {
+    "MANHEIM": {
+      "count": 2,
+      "success": 2,
+      "avg_fields_filled": 17.0,
+      "common_missing_fields": []
+    },
+    "COPART": {
+      "count": 2,
+      "success": 2,
+      "avg_fields_filled": 17.0,
+      "common_missing_fields": []
+    },
+    "IAA": {
+      "count": 2,
+      "success": 2,
+      "avg_fields_filled": 17.0,
+      "common_missing_fields": []
+    }
+  },
+  "common_issues": {},
+  "timestamp": "2026-02-02T15:55:17.182058"
+}

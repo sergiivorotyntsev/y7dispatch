@@ -1,0 +1,180 @@
+{
+  "filename": "invoice21.pdf",
+  "file_path": "tests/sample_docs/invoice21.pdf",
+  "file_size_bytes": 136684,
+  "text_extraction_success": true,
+  "raw_text_length": 2375,
+  "words_count": 317,
+  "pages_count": 1,
+  "text_mode": "native",
+  "text_preview": "Sales Receipt/Bill of Sale Date: 12/15/25 02:48 PM\nPHYSICAL ADDRESS OF\nMEMBER:535527 SELLER:\nLOT:\nPROGRESSIVE - WV -\nBROADWAY MOTORING\nINC 1746 US ROUTE 60\nCHARLESTON\nSOLD THROUGH COPART\n77 FITCHBURG ROAD HURRICANE WV 25526 1746 US ROUTE 60 061423251\nAYER, MA 01432\nHURRICANE, WV 25526\nLOT#: 92495695 Sale Yard: 89 Item#: 1/D\nVEHICLE: 2015 DODGE DURANGO CI BLACK Phy Yard: 89 Keys: YES\nVIN: 1C4RDJEGXFC177587 Row: O020 Sale: 12/12/2025\nCharges and Payments\nDate Charges Amount Description\n12/12/2025 ",
+  "classification_success": true,
+  "detected_source": "COPART",
+  "classification_score": 0.6571428571428571,
+  "all_scores": [
+    {
+      "source": "IAA",
+      "score": 0.0,
+      "patterns": []
+    },
+    {
+      "source": "MANHEIM",
+      "score": 0.06896551724137931,
+      "patterns": [
+        "BILL OF SALE"
+      ]
+    },
+    {
+      "source": "COPART",
+      "score": 0.6571428571428571,
+      "patterns": [
+        "Copart",
+        "SOLD THROUGH COPART",
+        "Sales Receipt/Bill of Sale",
+        "MEMBER:",
+        "LOT#"
+      ]
+    }
+  ],
+  "matched_patterns": [
+    "Copart",
+    "SOLD THROUGH COPART",
+    "Sales Receipt/Bill of Sale",
+    "MEMBER:",
+    "LOT#"
+  ],
+  "extraction_success": true,
+  "extraction_score": 0.6571428571428571,
+  "fields_total": 19,
+  "fields_filled": 17,
+  "fields_empty": 2,
+  "has_vehicle_vin": true,
+  "has_vehicle_ymm": true,
+  "has_pickup_address": true,
+  "has_pickup_city_state": true,
+  "has_reference_id": true,
+  "extracted_fields": {
+    "auction_source": "COPART",
+    "reference_id": "92495695",
+    "buyer_id": "535527",
+    "buyer_name": "PROGRESSIVE - WV -",
+    "sale_date": "2025-12-12 00:00:00",
+    "total_amount": "3100.0",
+    "pickup_name": "Copart",
+    "pickup_address": "1746 US ROUTE 60",
+    "pickup_city": "HURRICANE",
+    "pickup_state": "WV",
+    "pickup_zip": "25526",
+    "pickup_phone": null,
+    "vehicle_vin": "1C4RDJEGXFC177587",
+    "vehicle_year": 2015,
+    "vehicle_make": "Dodge",
+    "vehicle_model": "Durango Ci",
+    "vehicle_color": "Black",
+    "vehicle_lot": "92495695",
+    "vehicle_mileage": null
+  },
+  "field_sources": {
+    "auction_source": {
+      "value": "COPART",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "reference_id": {
+      "value": "92495695",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "buyer_id": {
+      "value": "535527",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "buyer_name": {
+      "value": "PROGRESSIVE - WV -",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "sale_date": {
+      "value": "2025-12-12 00:00:00",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "total_amount": {
+      "value": "3100.0",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_name": {
+      "value": "Copart",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_address": {
+      "value": "1746 US ROUTE 60",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_city": {
+      "value": "HURRICANE",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_state": {
+      "value": "WV",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_zip": {
+      "value": "25526",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "pickup_phone": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "copart_extractor"
+    },
+    "vehicle_vin": {
+      "value": "1C4RDJEGXFC177587",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_year": {
+      "value": 2015,
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_make": {
+      "value": "Dodge",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_model": {
+      "value": "Durango Ci",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_color": {
+      "value": "Black",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_lot": {
+      "value": "92495695",
+      "source": "EXTRACTED",
+      "method": "copart_extractor"
+    },
+    "vehicle_mileage": {
+      "value": null,
+      "source": "EMPTY",
+      "method": "copart_extractor"
+    }
+  },
+  "issues": [],
+  "recommendations": [],
+  "invariant_text_extracted": true,
+  "invariant_classified": true,
+  "invariant_anchor_fields": true,
+  "extraction_time_ms": 210
+}
