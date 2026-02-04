@@ -970,31 +970,59 @@ def run_extraction(
 
         metrics["anchor_fields_count"] = anchor_count
 
-        if anchor_count < 3:
+        # Track which anchors passed/failed for debugging
+        metrics["anchors_breakdown"] = {
+            "vehicle_id": bool(outputs.get("vehicle_vin") or outputs.get("vehicle_lot") or outputs.get("reference_id")),
+            "city_state": bool(outputs.get("pickup_city") and outputs.get("pickup_state")),
+            "address_or_name": bool(outputs.get("pickup_address") or outputs.get("pickup_name")),
+        }
+
+        # P0.2: Relaxed anchor validation
+        # - 3/3 anchors: fully ready for review
+        # - 2/3 anchors: needs_review with warning (not blocking)
+        # - < 2 anchors: failed (not enough data)
+        invariant_warnings = []
+
+        if anchor_count < 2:
+            # Critical failure - not enough data to proceed
             invariant_errors.append(
                 {
                     "code": "INV_ANCHOR_FIELDS",
                     "message": f"Only {anchor_count}/3 anchor fields extracted",
-                    "details": "Need: vehicle identifier, city/state, and facility. Check debug endpoint for details.",
+                    "details": "Need at least: vehicle identifier AND (city/state OR address/name). Check debug endpoint for details.",
+                    "severity": "error",
+                }
+            )
+        elif anchor_count < 3:
+            # Warning - can proceed but some data missing
+            invariant_warnings.append(
+                {
+                    "code": "WARN_ANCHOR_FIELDS",
+                    "message": f"Partial extraction: {anchor_count}/3 anchor fields",
+                    "details": "Some fields may need manual entry. Check: " +
+                              ", ".join(k for k, v in metrics["anchors_breakdown"].items() if not v),
+                    "severity": "warning",
                 }
             )
 
         # Store invariant check results in metrics
         metrics["invariants_passed"] = len(invariant_errors) == 0
         metrics["invariant_errors"] = [e["code"] for e in invariant_errors]
+        metrics["invariant_warnings"] = [w["code"] for w in invariant_warnings]
 
         # Determine status based on extraction quality and invariants
         if not outputs:
             run_status = "failed"
             errors_to_save = [{"error": "No fields extracted"}]
         elif invariant_errors:
-            # Invariants failed - mark as failed with details
+            # Critical invariants failed - mark as failed
             run_status = "failed"
             errors_to_save = invariant_errors
         else:
-            # All invariants pass - ready for review
+            # Ready for review (may have warnings but not blocking errors)
             run_status = "needs_review"
-            errors_to_save = None
+            # Store warnings in errors_json for visibility but don't block
+            errors_to_save = invariant_warnings if invariant_warnings else None
 
         # Update run with results including metrics and field sources
         update_kwargs = {

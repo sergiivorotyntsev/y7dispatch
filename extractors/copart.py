@@ -366,6 +366,33 @@ class CopartExtractor(BaseExtractor):
                         zip_code = potential_zip
                         break
 
+        # Strategy 4: If we have street but no city, try to parse city/state/zip
+        # from lines near the street address using address_parser
+        if street and not city:
+            from extractors.address_parser import extract_address_from_section, parse_city_state_zip
+
+            # Look for "City, ST ZIP" pattern anywhere in text (case-insensitive)
+            # This handles formats like "Houston, TX 77001"
+            csz_pattern_mixed = r"([A-Za-z][A-Za-z\s\.]+),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)"
+            csz_match = re.search(csz_pattern_mixed, text)
+            if csz_match:
+                potential_city = csz_match.group(1).strip()
+                potential_state = csz_match.group(2).upper()
+                potential_zip = csz_match.group(3)
+
+                # Validate it's not a buyer/seller address by checking context
+                match_start = csz_match.start()
+                context_before = text[max(0, match_start - 100):match_start].upper()
+
+                # Accept if near lot address markers or not near buyer/member markers
+                if ("PHYSICAL ADDRESS" in context_before or
+                    "LOT" in context_before or
+                    "COPART" in context_before or
+                    ("MEMBER" not in context_before and "BUYER" not in context_before)):
+                    city = potential_city
+                    state = potential_state
+                    zip_code = potential_zip
+
         # If we couldn't find address parts, try the universal method as fallback
         if not street and not city:
             copart_patterns = [
