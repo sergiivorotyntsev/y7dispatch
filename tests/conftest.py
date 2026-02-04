@@ -2,6 +2,7 @@
 Pytest configuration and shared fixtures.
 """
 
+import importlib
 import os
 import sys
 import tempfile
@@ -27,18 +28,13 @@ def setup_test_environment():
 
     # Reload database module to pick up the new DATABASE_PATH
     # This is needed because DB_PATH is computed at import time
-    import importlib
-
-    import api.database
-
-    importlib.reload(api.database)
+    db = importlib.import_module("api.database")
+    importlib.reload(db)
 
     # Initialize database schema
-    from api.database import init_db
-    from api.models import init_schema
-
-    init_db()  # Creates runs, logs, config_snapshots tables
-    init_schema()  # Creates auction_types, documents, extraction_runs, etc.
+    db.init_db()  # Creates runs, logs, config_snapshots tables
+    models = importlib.import_module("api.models")
+    models.init_schema()  # Creates auction_types, documents, extraction_runs, etc.
 
     yield
     # Cleanup
