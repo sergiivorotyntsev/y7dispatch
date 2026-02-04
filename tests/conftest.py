@@ -28,7 +28,9 @@ def setup_test_environment():
     # Reload database module to pick up the new DATABASE_PATH
     # This is needed because DB_PATH is computed at import time
     import importlib
+
     import api.database
+
     importlib.reload(api.database)
 
     # Initialize database schema
