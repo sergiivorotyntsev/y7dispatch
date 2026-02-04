@@ -110,9 +110,9 @@ class TestGatePassExtractor:
             results = GatePassExtractor.extract_from_text(text)
             # Filter out the common word codes
             valid_codes = [r.code for r in results if r.code not in {"CODE", "PASS", "PIN"}]
-            assert len(valid_codes) == 0 or all(
-                len(c) >= 4 for c in valid_codes
-            ), f"Failed for: {text}"
+            assert len(valid_codes) == 0 or all(len(c) >= 4 for c in valid_codes), (
+                f"Failed for: {text}"
+            )
 
     def test_case_normalization(self):
         """Test that codes are normalized to uppercase."""

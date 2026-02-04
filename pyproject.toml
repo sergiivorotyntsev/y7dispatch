@@ -78,9 +78,10 @@ line-length = 100
 target-version = ["py39", "py310", "py311"]
 
 [tool.ruff]
-required-version = ">=0.12.4"
+required-version = ">=0.14.0"
 line-length = 100
 target-version = "py39"
+src = ["."]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
@@ -92,6 +93,9 @@ ignore = [
     "N806",   # Variable in function should be lowercase (constants in functions)
     "N815",   # Mixed case variable in class scope (match external APIs)
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "extractors", "models", "services", "core"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "UP035"]  # Unused imports + legacy typing

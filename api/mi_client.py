@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MIStop:
     """Stop data for Market Intelligence request."""
+
     stop_number: int
     city: str
     state: str
@@ -54,6 +55,7 @@ class MIStop:
 @dataclass
 class MIVehicle:
     """Vehicle data for Market Intelligence request."""
+
     vin: Optional[str] = None
     year: Optional[int] = None
     make: Optional[str] = None
@@ -85,6 +87,7 @@ class MIVehicle:
 @dataclass
 class MIPriceQuote:
     """Price quote response from Market Intelligence."""
+
     suggested_price: float
     low_price: Optional[float] = None
     high_price: Optional[float] = None
@@ -97,6 +100,7 @@ class MIPriceQuote:
 @dataclass
 class MIClientConfig:
     """Configuration for Market Intelligence client."""
+
     base_url: str = "https://api.centraldispatch.com"
     api_key: Optional[str] = None
     timeout_seconds: float = 15.0
@@ -288,9 +292,11 @@ class MarketIntelligenceClient:
 # PRICING SERVICE
 # =============================================================================
 
+
 @dataclass
 class PricingRequest:
     """Request for price recommendation."""
+
     pickup_city: str
     pickup_state: str
     pickup_postal_code: Optional[str] = None

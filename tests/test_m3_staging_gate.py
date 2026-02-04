@@ -114,14 +114,17 @@ class TestOCRDecision:
         strategy = OCRStrategy()
 
         # Good quality text - should not need OCR
-        good_text = """
+        good_text = (
+            """
         Vehicle Transport Invoice
         VIN: 1HGBH41JXMN109186
         Year: 2020 Make: Toyota Model: Camry
         Pickup Location: 123 Main Street, Dallas, TX 75201
         Delivery Location: 456 Oak Avenue, Houston, TX 77001
         Contact: John Doe Phone: 555-123-4567
-        """ * 10  # Make it substantial
+        """
+            * 10
+        )  # Make it substantial
 
         should_ocr, reason = strategy.should_use_ocr(good_text)
         assert not should_ocr, f"Good quality text should not need OCR: {reason}"
@@ -145,11 +148,14 @@ class TestOCRDecision:
         strategy = OCRStrategy()
 
         # Borderline text - some good, some bad
-        mixed_text = """
+        mixed_text = (
+            """
         VIN: 1HGBH41JXMN109186
         Some readable text here
         @#$ garbled section %^&
-        """ * 5
+        """
+            * 5
+        )
 
         should_ocr, reason = strategy.should_use_ocr(mixed_text)
         # Either decision is acceptable for borderline
@@ -206,9 +212,9 @@ class TestLocationClassifier:
             address_text="123 Main St, Dallas, TX", context_text="Pickup Location"
         )
 
-        assert (
-            result.location_type == LocationType.PICKUP
-        ), f"Expected pickup, got {result.location_type}"
+        assert result.location_type == LocationType.PICKUP, (
+            f"Expected pickup, got {result.location_type}"
+        )
 
     def test_explicit_delivery_label(self):
         """Text with 'Delivery' label should classify as delivery."""
@@ -218,9 +224,9 @@ class TestLocationClassifier:
             address_text="456 Oak Ave, Houston, TX", context_text="Delivery Address"
         )
 
-        assert (
-            result.location_type == LocationType.DELIVERY
-        ), f"Expected delivery, got {result.location_type}"
+        assert result.location_type == LocationType.DELIVERY, (
+            f"Expected delivery, got {result.location_type}"
+        )
 
     def test_ship_to_as_delivery(self):
         """'Ship To' should classify as delivery."""
@@ -230,9 +236,9 @@ class TestLocationClassifier:
             address_text="ABC Motors, 789 Auto Blvd, Austin, TX", context_text="Ship To"
         )
 
-        assert (
-            result.location_type == LocationType.DELIVERY
-        ), f"Ship To should be delivery, got {result.location_type}"
+        assert result.location_type == LocationType.DELIVERY, (
+            f"Ship To should be delivery, got {result.location_type}"
+        )
 
     def test_origin_as_pickup(self):
         """'Origin' should classify as pickup."""
@@ -242,9 +248,9 @@ class TestLocationClassifier:
             address_text="Copart Dallas, 1234 Auction Way, Dallas, TX", context_text="Origin"
         )
 
-        assert (
-            result.location_type == LocationType.PICKUP
-        ), f"Origin should be pickup, got {result.location_type}"
+        assert result.location_type == LocationType.PICKUP, (
+            f"Origin should be pickup, got {result.location_type}"
+        )
 
 
 class TestAddressParser:
@@ -292,9 +298,9 @@ class TestAddressParser:
         complete_conf = calculate_address_confidence(complete)
         partial_conf = calculate_address_confidence(partial)
 
-        assert (
-            partial_conf < complete_conf
-        ), f"Partial ({partial_conf}) should be lower than complete ({complete_conf})"
+        assert partial_conf < complete_conf, (
+            f"Partial ({partial_conf}) should be lower than complete ({complete_conf})"
+        )
 
     def test_state_validation_for_cd(self):
         """State validation for CD API."""

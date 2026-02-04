@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e ".[dev]"
-          pip install "ruff>=0.12.4" black mypy
+          pip install "ruff>=0.14.0" black mypy
 
       - name: Ruff lint
         run: ruff check . --output-format=github

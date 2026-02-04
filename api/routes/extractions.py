@@ -972,7 +972,11 @@ def run_extraction(
 
         # Track which anchors passed/failed for debugging
         metrics["anchors_breakdown"] = {
-            "vehicle_id": bool(outputs.get("vehicle_vin") or outputs.get("vehicle_lot") or outputs.get("reference_id")),
+            "vehicle_id": bool(
+                outputs.get("vehicle_vin")
+                or outputs.get("vehicle_lot")
+                or outputs.get("reference_id")
+            ),
             "city_state": bool(outputs.get("pickup_city") and outputs.get("pickup_state")),
             "address_or_name": bool(outputs.get("pickup_address") or outputs.get("pickup_name")),
         }
@@ -999,8 +1003,8 @@ def run_extraction(
                 {
                     "code": "WARN_ANCHOR_FIELDS",
                     "message": f"Partial extraction: {anchor_count}/3 anchor fields",
-                    "details": "Some fields may need manual entry. Check: " +
-                              ", ".join(k for k, v in metrics["anchors_breakdown"].items() if not v),
+                    "details": "Some fields may need manual entry. Check: "
+                    + ", ".join(k for k, v in metrics["anchors_breakdown"].items() if not v),
                     "severity": "warning",
                 }
             )

@@ -380,13 +380,15 @@ class CopartExtractor(BaseExtractor):
 
                 # Validate it's not a buyer/seller address by checking context
                 match_start = csz_match.start()
-                context_before = text[max(0, match_start - 100):match_start].upper()
+                context_before = text[max(0, match_start - 100) : match_start].upper()
 
                 # Accept if near lot address markers or not near buyer/member markers
-                if ("PHYSICAL ADDRESS" in context_before or
-                    "LOT" in context_before or
-                    "COPART" in context_before or
-                    ("MEMBER" not in context_before and "BUYER" not in context_before)):
+                if (
+                    "PHYSICAL ADDRESS" in context_before
+                    or "LOT" in context_before
+                    or "COPART" in context_before
+                    or ("MEMBER" not in context_before and "BUYER" not in context_before)
+                ):
                     city = potential_city
                     state = potential_state
                     zip_code = potential_zip

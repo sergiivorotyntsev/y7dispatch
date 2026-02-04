@@ -32,7 +32,6 @@ KEY_ALIASES = {
     "pickup_postal_code": ["pickup_zip"],
     "pickup_location_name": ["pickup_name"],
     "pickup_contact_name": ["pickup_contact"],
-
     # Delivery/Dropoff address fields (normalize to delivery_*)
     "delivery_postal_code": ["delivery_zip", "dropoff_postal_code", "dropoff_zip"],
     "delivery_location_name": ["delivery_name", "dropoff_location_name", "dropoff_name"],
@@ -41,7 +40,6 @@ KEY_ALIASES = {
     "delivery_city": ["dropoff_city"],
     "delivery_state": ["dropoff_state"],
     "delivery_phone": ["dropoff_phone"],
-
     # Vehicle fields
     "vehicle_is_inoperable": ["vehicle_condition", "is_inoperable"],
 }
@@ -286,7 +284,9 @@ class FieldResolver:
         field_keys = set(normalized_extracted.keys())
 
         # Normalize user_overrides keys
-        normalized_overrides = {normalize_field_key(k): v for k, v in context.user_overrides.items()}
+        normalized_overrides = {
+            normalize_field_key(k): v for k, v in context.user_overrides.items()
+        }
         field_keys.update(normalized_overrides.keys())
 
         # Normalize default_values keys
