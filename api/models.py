@@ -190,6 +190,7 @@ def init_extended_schema():
                 extraction_score REAL,
                 outputs_json TEXT,
                 errors_json TEXT,
+                error_message TEXT,
                 metrics_json TEXT,
                 field_sources_json TEXT,
                 processing_time_ms INTEGER,
@@ -2296,5 +2297,11 @@ def _run_migrations():
             conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_is_test ON documents(is_test)")
         except Exception:
             pass
+
+        # Migration: Add error_message column to extraction_runs
+        try:
+            conn.execute("ALTER TABLE extraction_runs ADD COLUMN error_message TEXT")
+        except Exception:
+            pass  # Column already exists
 
         conn.commit()
