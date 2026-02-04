@@ -1,6 +1,7 @@
 """SQLite database for Run History and API state."""
 
 import json
+import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -9,8 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-# Database path
-DB_PATH = Path(__file__).parent.parent / "data" / "control_panel.db"
+# Database path - can be overridden via DATABASE_PATH environment variable
+_default_db_path = Path(__file__).parent.parent / "data" / "control_panel.db"
+DB_PATH = Path(os.environ.get("DATABASE_PATH", str(_default_db_path)))
 
 
 def init_db():

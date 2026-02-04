@@ -19,11 +19,25 @@ TEST_DB_PATH = tempfile.mktemp(suffix=".db")
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
-    """Set up test environment variables."""
+    """Set up test environment variables and initialize database schema."""
     os.environ["DATABASE_PATH"] = TEST_DB_PATH
     os.environ["DATA_DIR"] = tempfile.mkdtemp()
     os.environ["UPLOADS_DIR"] = tempfile.mkdtemp()
     os.environ["LOG_LEVEL"] = "WARNING"
+
+    # Reload database module to pick up the new DATABASE_PATH
+    # This is needed because DB_PATH is computed at import time
+    import importlib
+    import api.database
+    importlib.reload(api.database)
+
+    # Initialize database schema
+    from api.database import init_db
+    from api.models import init_schema
+
+    init_db()  # Creates runs, logs, config_snapshots tables
+    init_schema()  # Creates auction_types, documents, extraction_runs, etc.
+
     yield
     # Cleanup
     if os.path.exists(TEST_DB_PATH):
@@ -87,7 +101,7 @@ startxref
 @pytest.fixture
 def db_connection():
     """Get database connection for test assertions."""
-    from api.models import get_connection
+    from api.database import get_connection
 
     with get_connection() as conn:
         yield conn
