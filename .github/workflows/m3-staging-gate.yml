@@ -36,13 +36,13 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e ".[dev]"
-          pip install --upgrade "ruff==0.14.14" black mypy
+          pip install "ruff==0.14.14" mypy
 
       - name: Ruff lint
         run: ruff check . --output-format=github
 
-      - name: Black format check
-        run: black --check --diff .
+      - name: Ruff format check
+        run: ruff format --check .
 
       - name: Mypy typecheck
         run: mypy api/ extractors/ --ignore-missing-imports --no-error-summary || true
