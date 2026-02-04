@@ -14,32 +14,59 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Use a test database
+# Use test databases (temp files, cleaned up after session)
 TEST_DB_PATH = tempfile.mktemp(suffix=".db")
+TEST_TRAINING_DB_PATH = tempfile.mktemp(suffix="_training.db")
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Set up test environment variables and initialize database schema."""
     os.environ["DATABASE_PATH"] = TEST_DB_PATH
+    os.environ["TRAINING_DB_PATH"] = TEST_TRAINING_DB_PATH
     os.environ["DATA_DIR"] = tempfile.mkdtemp()
     os.environ["UPLOADS_DIR"] = tempfile.mkdtemp()
     os.environ["LOG_LEVEL"] = "WARNING"
 
-    # Reload database module to pick up the new DATABASE_PATH
-    # This is needed because DB_PATH is computed at import time
+    # Reload database modules to pick up the env-var overrides
+    # (both modules compute their paths at import time)
     db = importlib.import_module("api.database")
     importlib.reload(db)
 
-    # Initialize database schema
+    training_db = importlib.import_module("api.training_db")
+    importlib.reload(training_db)
+
+    # Initialize main database schema
     db.init_db()  # Creates runs, logs, config_snapshots tables
     models = importlib.import_module("api.models")
     models.init_schema()  # Creates auction_types, documents, extraction_runs, etc.
 
+    # Initialize training database schema
+    training_db.init_training_db()  # Creates TrainingExample, ExtractionRule, etc.
+
+    # Regression assertion: verify all critical tables exist
+    import sqlite3
+
+    for db_path, expected_tables in [
+        (TEST_DB_PATH, ["auction_types", "documents", "extraction_runs", "training_examples"]),
+        (TEST_TRAINING_DB_PATH, ["training_examples", "extraction_rules", "field_corrections"]),
+    ]:
+        conn = sqlite3.connect(db_path)
+        actual = {
+            r[0]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        conn.close()
+        for table in expected_tables:
+            assert table in actual, (
+                f"Table '{table}' missing from {db_path}. Existing tables: {sorted(actual)}"
+            )
+
     yield
     # Cleanup
-    if os.path.exists(TEST_DB_PATH):
-        os.remove(TEST_DB_PATH)
+    for p in (TEST_DB_PATH, TEST_TRAINING_DB_PATH):
+        if os.path.exists(p):
+            os.remove(p)
 
 
 @pytest.fixture(scope="session")

@@ -4,14 +4,16 @@ This module provides SQLModel/SQLAlchemy session management for the training
 system, separate from the main SQLite-based database.py module.
 """
 
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
 
-# Training database path (separate from main control_panel.db for modularity)
-TRAINING_DB_PATH = Path(__file__).parent.parent / "data" / "training.db"
+# Training database path - can be overridden via TRAINING_DB_PATH env var
+_default_training_path = Path(__file__).parent.parent / "data" / "training.db"
+TRAINING_DB_PATH = Path(os.environ.get("TRAINING_DB_PATH", str(_default_training_path)))
 
 # Ensure data directory exists
 TRAINING_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
