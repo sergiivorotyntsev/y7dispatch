@@ -367,10 +367,8 @@ class CopartExtractor(BaseExtractor):
                         break
 
         # Strategy 4: If we have street but no city, try to parse city/state/zip
-        # from lines near the street address using address_parser
+        # from lines near the street address
         if street and not city:
-            from extractors.address_parser import extract_address_from_section, parse_city_state_zip
-
             # Look for "City, ST ZIP" pattern anywhere in text (case-insensitive)
             # This handles formats like "Houston, TX 77001"
             csz_pattern_mixed = r"([A-Za-z][A-Za-z\s\.]+),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)"
