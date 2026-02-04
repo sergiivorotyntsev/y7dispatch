@@ -17,7 +17,7 @@ export default defineConfig({
   reporter: 'html',
 
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.BASE_URL || 'http://127.0.0.1:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -41,13 +41,13 @@ export default defineConfig({
   webServer: [
     {
       command: 'cd ../web && npm run dev',
-      url: 'http://localhost:3000',
+      url: 'http://127.0.0.1:3000',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
     },
     {
       command: 'cd .. && uvicorn api.main:app --port 8000',
-      url: 'http://localhost:8000/api/health',
+      url: 'http://127.0.0.1:8000/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
     },

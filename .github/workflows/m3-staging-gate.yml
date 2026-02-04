@@ -285,6 +285,7 @@ jobs:
         run: npx playwright test --project=chromium --reporter=html
         env:
           CI: true
+          NODE_OPTIONS: '--dns-result-order=ipv4first'
 
       - name: Upload E2E report
         uses: actions/upload-artifact@v4
