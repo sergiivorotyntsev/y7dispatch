@@ -33,7 +33,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
 from api.database import init_db
-from api.models import init_schema, seed_base_auction_types
+from api.models import init_schema, seed_base_auction_types, seed_default_field_mappings
 from api.routes import (
     auction_types,
     cd_listings,
@@ -189,10 +189,12 @@ async def stop_email_worker():
 async def startup():
     # Initialize original schema
     init_db()
-    # Seed base auction types FIRST — field_mappings seeder needs them
-    seed_base_auction_types()
-    # Initialize new MVP schema (creates tables + seeds field_mappings)
+    # Initialize new MVP schema (creates tables + runs migrations)
     init_schema()
+    # Seed base auction types (needs auction_types table from init_schema)
+    seed_base_auction_types()
+    # Seed field mappings (needs auction_type rows from seed above)
+    seed_default_field_mappings()
     # Initialize warehouses schema
     from api.routes.warehouses import init_warehouses_schema
 

@@ -40,6 +40,8 @@ def setup_test_environment():
     db.init_db()  # Creates runs, logs, config_snapshots tables
     models = importlib.import_module("api.models")
     models.init_schema()  # Creates auction_types, documents, extraction_runs, etc.
+    models.seed_base_auction_types()
+    models.seed_default_field_mappings()
 
     # Initialize training database schema
     training_db.init_training_db()  # Creates TrainingExample, ExtractionRule, etc.

@@ -2268,7 +2268,6 @@ class FieldEvidenceRepository:
 def init_schema():
     """Initialize the extended database schema. Alias for init_extended_schema."""
     init_extended_schema()
-    seed_default_field_mappings()
     _run_migrations()
 
 
