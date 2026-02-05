@@ -330,6 +330,17 @@ export const api = {
   // CD Listing Info (ETag tracking)
   getCDListingInfo: (runId) => request(`/exports/cd-listing/${runId}`),
 
+  // CD Listings API v2 — Preview & Push
+  getCDPayload: (docId, warehouseCode = null) => {
+    const qs = warehouseCode ? `?warehouse_code=${warehouseCode}` : ''
+    return request(`/documents/${docId}/cd-payload${qs}`)
+  },
+  pushCDListing: (docId, { warehouseCode = null, sandbox = true, dryRun = false } = {}) =>
+    request('/central-dispatch/listings', {
+      method: 'POST',
+      body: JSON.stringify({ document_id: docId, warehouse_code: warehouseCode, sandbox, dry_run: dryRun }),
+    }),
+
   // Batch Posting
   batchPostPreflight: (runIds) => request('/exports/batch-post/preflight', {
     method: 'POST',

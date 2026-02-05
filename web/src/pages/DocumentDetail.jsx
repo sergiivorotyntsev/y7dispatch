@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../api'
+import CDPayloadPreview from '../components/CDPayloadPreview'
 
 /**
  * Document Detail / Export Preview Page
@@ -17,6 +18,7 @@ function DocumentDetail() {
   const [data, setData] = useState(null)
   const [exporting, setExporting] = useState(false)
   const [exportResult, setExportResult] = useState(null)
+  const [showPayloadPreview, setShowPayloadPreview] = useState(false)
 
   useEffect(() => {
     async function loadExportPreview() {
@@ -155,6 +157,12 @@ function DocumentDetail() {
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
           >
             Re-extract
+          </button>
+          <button
+            onClick={() => setShowPayloadPreview(true)}
+            className="px-4 py-2 border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50"
+          >
+            Preview JSON
           </button>
           <button
             onClick={handleExport}
@@ -302,6 +310,14 @@ function DocumentDetail() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* CD Payload Preview Modal */}
+      {showPayloadPreview && (
+        <CDPayloadPreview
+          documentId={parseInt(id, 10)}
+          onClose={() => setShowPayloadPreview(false)}
+        />
       )}
     </div>
   )
