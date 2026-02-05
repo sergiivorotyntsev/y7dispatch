@@ -20,25 +20,25 @@ test.describe('Smoke Tests', () => {
     test('should navigate to Documents page', async ({ page }) => {
       await page.goto('/');
       await page.click('text=Documents');
-      await expect(page.locator('h1')).toContainText('Documents');
+      await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible();
     });
 
     test('should navigate to Runs page', async ({ page }) => {
       await page.goto('/');
       await page.click('text=Runs');
-      await expect(page.locator('h1')).toContainText('Runs');
+      await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
     });
 
     test('should navigate to Settings page', async ({ page }) => {
       await page.goto('/');
       await page.click('text=Settings');
-      await expect(page.locator('h1')).toContainText('Settings');
+      await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
     });
 
     test('should navigate to Test Lab page', async ({ page }) => {
       await page.goto('/');
       await page.click('text=Test Lab');
-      await expect(page.locator('h1')).toContainText('Test Lab');
+      await expect(page.getByRole('heading', { name: 'Test Lab' })).toBeVisible();
     });
   });
 
@@ -199,14 +199,14 @@ test.describe('Smoke Tests', () => {
 
   test.describe('API Health', () => {
     test('should have healthy API', async ({ request }) => {
-      const response = await request.get('http://localhost:8000/api/health');
+      const response = await request.get('http://127.0.0.1:8000/api/health');
       expect(response.ok()).toBeTruthy();
       const data = await response.json();
-      expect(data.status).toBe('ok');
+      expect(data.status).toBe('healthy');
     });
 
     test('should return auction types', async ({ request }) => {
-      const response = await request.get('http://localhost:8000/api/auction-types/');
+      const response = await request.get('http://127.0.0.1:8000/api/auction-types/');
       expect(response.ok()).toBeTruthy();
       const data = await response.json();
       expect(Array.isArray(data)).toBeTruthy();
