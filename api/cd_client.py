@@ -105,8 +105,8 @@ class CDClient:
         """Build request headers."""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Content-Type": "application/vnd.coxauto.v2+json",
+            "Accept": "application/vnd.coxauto.v2+json",
         }
         if etag:
             headers["If-Match"] = etag
