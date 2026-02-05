@@ -36,6 +36,7 @@ from api.database import init_db
 from api.models import init_schema, seed_base_auction_types
 from api.routes import (
     auction_types,
+    cd_listings,
     documents,
     exports,
     extractions,
@@ -125,6 +126,7 @@ app.include_router(warehouses.router)
 app.include_router(field_mappings.router)
 app.include_router(training.router, prefix="/api")
 app.include_router(metrics.router)  # M3.P1.5: Metrics endpoints
+app.include_router(cd_listings.router)  # CD Listings API v2 preview + push
 
 
 # =============================================================================
