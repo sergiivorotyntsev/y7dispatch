@@ -29,14 +29,10 @@ from models.cd_enums import (
 from models.cd_listing import (
     CDCOD,
     CDListingDraft,
-    CDMarketplace,
     CDPrice,
-    CDSLA,
     CDStop,
-    CDTag,
     CDVehicle,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
