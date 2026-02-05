@@ -60,8 +60,8 @@ test.describe('Smoke Tests', () => {
   test.describe('Documents', () => {
     test('should display documents list', async ({ page }) => {
       await page.goto('/documents');
-      // Should have a table or list
-      await expect(page.locator('table, .document-list, [class*="list"]').first()).toBeVisible();
+      // Should have a table or empty-state message (fresh DB has no documents)
+      await expect(page.locator('table, text=No documents found').first()).toBeVisible();
     });
 
     test('should have upload button', async ({ page }) => {
@@ -91,7 +91,8 @@ test.describe('Smoke Tests', () => {
   test.describe('Runs', () => {
     test('should display runs list with timeline', async ({ page }) => {
       await page.goto('/runs');
-      await expect(page.locator('table, .run-list, [class*="timeline"]').first()).toBeVisible();
+      // Should have a table or empty-state message (fresh DB has no runs)
+      await expect(page.locator('table, text=No runs found').first()).toBeVisible();
     });
 
     test('should have source filter', async ({ page }) => {
@@ -186,7 +187,8 @@ test.describe('Smoke Tests', () => {
 
     test('should have upload section', async ({ page }) => {
       await page.goto('/test-lab');
-      await expect(page.locator('text=Upload, input[type="file"]').first()).toBeVisible();
+      // File input is visually hidden behind a label; assert the visible label text
+      await expect(page.locator('text=Click to select PDF').first()).toBeVisible();
     });
 
     test('should show test documents list', async ({ page }) => {
@@ -209,7 +211,8 @@ test.describe('Smoke Tests', () => {
       const response = await request.get('http://127.0.0.1:8000/api/auction-types/');
       expect(response.ok()).toBeTruthy();
       const data = await response.json();
-      expect(Array.isArray(data)).toBeTruthy();
+      // Endpoint returns { items: [...] }
+      expect(Array.isArray(data.items)).toBeTruthy();
     });
   });
 });
