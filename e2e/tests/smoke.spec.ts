@@ -61,7 +61,7 @@ test.describe('Smoke Tests', () => {
     test('should display documents list', async ({ page }) => {
       await page.goto('/documents');
       // Should have a table or empty-state message (fresh DB has no documents)
-      await expect(page.locator('table, text=No documents found').first()).toBeVisible();
+      await expect(page.locator('table').or(page.getByText('No documents found')).first()).toBeVisible();
     });
 
     test('should have upload button', async ({ page }) => {
@@ -92,7 +92,7 @@ test.describe('Smoke Tests', () => {
     test('should display runs list with timeline', async ({ page }) => {
       await page.goto('/runs');
       // Should have a table or empty-state message (fresh DB has no runs)
-      await expect(page.locator('table, text=No runs found').first()).toBeVisible();
+      await expect(page.locator('table').or(page.getByText('No runs found')).first()).toBeVisible();
     });
 
     test('should have source filter', async ({ page }) => {
