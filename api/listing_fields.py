@@ -64,6 +64,7 @@ class ListingField:
     cd_api_key: str  # CD API path (e.g., "vehicles[0].vin")
     field_type: FieldType = FieldType.TEXT
     required: bool = False  # Required for CD submission
+    export_only: bool = False  # If True, only required at export time (not during training)
     display_order: int = 0  # Order within section
     validation_regex: Optional[str] = None
     validation_message: Optional[str] = None
@@ -155,6 +156,7 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="vehicles[0].vehicleType",
         field_type=FieldType.SELECT,
         required=True,
+        export_only=True,
         display_order=6,
         options=[
             "SEDAN",
@@ -177,6 +179,7 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="vehicles[0].isOperable",
         field_type=FieldType.SELECT,
         required=True,
+        export_only=True,
         display_order=7,
         options=["OPERABLE", "INOPERABLE"],
         default_value="OPERABLE",
@@ -323,6 +326,7 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="stops[1].address.street",
         field_type=FieldType.TEXT,
         required=True,
+        export_only=True,
         display_order=2,
         max_length=200,
         help_text="Street address for delivery",
@@ -334,6 +338,7 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="stops[1].address.city",
         field_type=FieldType.TEXT,
         required=True,
+        export_only=True,
         display_order=3,
         max_length=100,
     ),
@@ -344,6 +349,7 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="stops[1].address.state",
         field_type=FieldType.TEXT,
         required=True,
+        export_only=True,
         display_order=4,
         validation_regex=r"^[A-Z]{2}$",
         validation_message="State must be 2-letter code",
@@ -357,6 +363,7 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="stops[1].address.postalCode",
         field_type=FieldType.TEXT,
         required=True,
+        export_only=True,
         display_order=5,
         validation_regex=r"^\d{5}(-\d{4})?$",
         validation_message="ZIP must be 5 digits or 5+4 format",
@@ -459,7 +466,9 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="availableDate",
         field_type=FieldType.DATE,
         required=True,
+        export_only=True,
         display_order=2,
+        default_value="today",
         help_text="Date vehicle is available for pickup (today to 30 days)",
     ),
     ListingField(
@@ -479,6 +488,7 @@ LISTING_FIELDS: list[ListingField] = [
         cd_api_key="trailerType",
         field_type=FieldType.SELECT,
         required=True,
+        export_only=True,
         display_order=4,
         options=["OPEN", "ENCLOSED"],
         default_value="OPEN",
@@ -683,12 +693,44 @@ class ListingFieldRegistry:
                 errors.append({"field": field_def.key, "error": error})
         return errors
 
+    def apply_defaults(self, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Apply default values to empty fields.
+        Returns a copy of data with defaults filled in.
+
+        Special handling:
+        - "today" default_value is resolved to current date string (YYYY-MM-DD)
+        """
+        result = dict(data)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        for field_def in LISTING_FIELDS:
+            value = result.get(field_def.key)
+            if (value is None or value == "") and field_def.default_value:
+                default = field_def.default_value
+                if default == "today":
+                    default = today_str
+                result[field_def.key] = default
+        return result
+
     def get_blocking_issues(
-        self, data: dict[str, Any], warehouse_selected: bool = False
+        self,
+        data: dict[str, Any],
+        warehouse_selected: bool = False,
+        mode: str = "export",
     ) -> list[dict[str, str]]:
         """
         Get issues that block posting.
         Returns list of {field: key, issue: message}.
+
+        Args:
+            data: Field values dict
+            warehouse_selected: Whether a warehouse has been selected
+            mode: "export" for full CD API validation, "training" for extraction review only
+
+        In "training" mode, fields marked export_only=True are skipped
+        (delivery address from warehouse, vehicle_type/condition with defaults,
+        available_date, trailer_type).
 
         Validates against CD API V2 requirements:
         - Minimum 2 unique stops (pickup and delivery must have different addresses)
@@ -699,10 +741,18 @@ class ListingFieldRegistry:
         """
         issues = []
 
+        # Apply defaults before validation
+        effective_data = self.apply_defaults(data)
+
         # Check required fields
         for field_key in self._required_fields:
             field_def = self._fields[field_key]
-            value = data.get(field_key)
+
+            # In training mode, skip fields that are only required at export
+            if mode == "training" and field_def.export_only:
+                continue
+
+            value = effective_data.get(field_key)
             if value is None or value == "":
                 issues.append(
                     {
@@ -711,15 +761,15 @@ class ListingFieldRegistry:
                     }
                 )
 
-        # Check warehouse (delivery fields)
-        if not warehouse_selected:
+        # Check warehouse (delivery fields) — only in export mode
+        if mode == "export" and not warehouse_selected:
             delivery_fields = [
                 "delivery_address",
                 "delivery_city",
                 "delivery_state",
                 "delivery_zip",
             ]
-            delivery_filled = all(data.get(f) for f in delivery_fields)
+            delivery_filled = all(effective_data.get(f) for f in delivery_fields)
             if not delivery_filled:
                 issues.append(
                     {
@@ -734,14 +784,14 @@ class ListingFieldRegistry:
         # If business logic requires different addresses, make it configurable.
 
         # CD API Rule: 1-12 vehicles (we currently support single vehicle, so just check VIN exists)
-        vehicle_vin = data.get("vehicle_vin")
+        vehicle_vin = effective_data.get("vehicle_vin")
         if not vehicle_vin:
             # Already caught by required fields check, but adding for clarity
             pass
         # Note: Multi-vehicle support would need vehicle count validation here
 
         # CD API Rule: externalId max 50 characters
-        external_id = data.get("external_id", "")
+        external_id = effective_data.get("external_id", "")
         if external_id and len(external_id) > 50:
             issues.append(
                 {
@@ -750,11 +800,15 @@ class ListingFieldRegistry:
                 }
             )
 
+        # Date and advanced validations only apply in export mode
+        if mode == "training":
+            return issues
+
         # Check available_date rules (CD API requirement)
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         max_date = today + timedelta(days=30)
 
-        available_date = data.get("available_date")
+        available_date = effective_data.get("available_date")
         if available_date:
             try:
                 if isinstance(available_date, str):
@@ -793,7 +847,7 @@ class ListingFieldRegistry:
                 )
 
         # Check expiration_date rules (CD API requirement)
-        expiration_date = data.get("expiration_date")
+        expiration_date = effective_data.get("expiration_date")
         if expiration_date:
             try:
                 if isinstance(expiration_date, str):
@@ -827,7 +881,7 @@ class ListingFieldRegistry:
 
         # Check desiredDeliveryDate rules (CD API requirement)
         # Must be: >= availableDate, >= today, <= today + 30 days
-        desired_delivery_date = data.get("desired_delivery_date")
+        desired_delivery_date = effective_data.get("desired_delivery_date")
         if desired_delivery_date:
             try:
                 if isinstance(desired_delivery_date, str):
@@ -870,9 +924,13 @@ class ListingFieldRegistry:
             except Exception:
                 pass  # Desired delivery date is optional
 
-        # Validation errors
-        validation_errors = self.validate_all(data)
+        # Validation errors (format/regex checks)
+        validation_errors = self.validate_all(effective_data)
         for err in validation_errors:
+            field_def = self._fields.get(err["field"])
+            # In training mode, skip validation errors for export_only fields
+            if mode == "training" and field_def and field_def.export_only:
+                continue
             # Avoid duplicate errors
             existing = [i for i in issues if i["field"] == err["field"]]
             if not existing:

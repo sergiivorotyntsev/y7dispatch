@@ -1293,7 +1293,7 @@ async def get_field_registry():
 
 
 @router.get("/field-registry/blocking-issues/{run_id}")
-async def get_blocking_issues(run_id: int):
+async def get_blocking_issues(run_id: int, mode: str = "export"):
     """
     Get blocking issues for a specific extraction run.
 
@@ -1323,7 +1323,7 @@ async def get_blocking_issues(run_id: int):
     warehouse_selected = bool(data.get("warehouse_id") or data.get("delivery_address"))
 
     registry = get_registry()
-    issues = registry.get_blocking_issues(data, warehouse_selected=warehouse_selected)
+    issues = registry.get_blocking_issues(data, warehouse_selected=warehouse_selected, mode=mode)
 
     return {
         "run_id": run_id,

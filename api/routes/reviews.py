@@ -615,12 +615,17 @@ async def get_run_evidence(run_id: int):
 
 
 @router.get("/{run_id}/preflight", response_model=PreflightResponse)
-async def get_run_preflight(run_id: int):
+async def get_run_preflight(run_id: int, mode: str = "training"):
     """
     Get preflight validation for a run before export.
 
     Checks for blocking issues like missing required fields,
     warehouse not selected, etc.
+
+    Args:
+        mode: "training" skips export-only fields (delivery address,
+              vehicle_type, trailer_type, available_date, etc.)
+              "export" checks all CD API required fields.
     """
     import json
 
@@ -640,7 +645,9 @@ async def get_run_preflight(run_id: int):
 
     # Get blocking issues from field registry
     registry = get_registry()
-    raw_issues = registry.get_blocking_issues(outputs, warehouse_selected=warehouse_selected)
+    raw_issues = registry.get_blocking_issues(
+        outputs, warehouse_selected=warehouse_selected, mode=mode
+    )
 
     # Build issue list
     issues = []
@@ -648,15 +655,12 @@ async def get_run_preflight(run_id: int):
     warning_count = 0
 
     for issue_data in raw_issues:
-        severity = "blocking" if issue_data.get("is_blocking", True) else "warning"
-        if severity == "blocking":
-            blocking_count += 1
-        else:
-            warning_count += 1
+        severity = "blocking"
+        blocking_count += 1
 
         issues.append(
             PreflightIssue(
-                field_key=issue_data.get("field_key", "unknown"),
+                field_key=issue_data.get("field", "unknown"),
                 issue=issue_data.get("issue", "Unknown issue"),
                 severity=severity,
                 cd_key=issue_data.get("cd_key"),

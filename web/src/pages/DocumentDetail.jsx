@@ -149,7 +149,7 @@ function DocumentDetail() {
         <div className="flex items-center gap-2 flex-wrap">
           {extraction && (
             <button
-              onClick={() => navigate(`/review/${extraction.id}`)}
+              onClick={() => navigate(`/listing/${extraction.id}`)}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
             >
               Edit Fields

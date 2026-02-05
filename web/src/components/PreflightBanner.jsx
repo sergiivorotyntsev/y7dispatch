@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api'
 
-function PreflightBanner({ runId, onIssueClick }) {
+function PreflightBanner({ runId, onIssueClick, mode = 'training' }) {
   const [preflight, setPreflight] = useState(null)
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
@@ -18,7 +18,7 @@ function PreflightBanner({ runId, onIssueClick }) {
     const fetchPreflight = async () => {
       setLoading(true)
       try {
-        const data = await api.getRunPreflight(runId)
+        const data = await api.getRunPreflight(runId, mode)
         setPreflight(data)
       } catch (err) {
         console.error('Failed to fetch preflight:', err)

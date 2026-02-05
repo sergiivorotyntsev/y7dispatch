@@ -188,7 +188,8 @@ export const api = {
   getRunEvidence: (runId) => request(`/review/${runId}/evidence`),
 
   // Review Preflight (M3.P2) - Get validation status before export
-  getRunPreflight: (runId) => request(`/review/${runId}/preflight`),
+  // mode: "training" skips export-only fields, "export" checks all
+  getRunPreflight: (runId, mode = 'training') => request(`/review/${runId}/preflight?mode=${mode}`),
 
   // Get latest extraction run for a document
   getDocumentExtractions: (documentId) => request(`/extractions/?document_id=${documentId}&limit=1`),
@@ -325,7 +326,7 @@ export const api = {
 
   // Field Registry (single source of truth for CD fields)
   getFieldRegistry: () => request('/exports/field-registry'),
-  getBlockingIssues: (runId) => request(`/exports/field-registry/blocking-issues/${runId}`),
+  getBlockingIssues: (runId, mode = 'export') => request(`/exports/field-registry/blocking-issues/${runId}?mode=${mode}`),
 
   // CD Listing Info (ETag tracking)
   getCDListingInfo: (runId) => request(`/exports/cd-listing/${runId}`),
