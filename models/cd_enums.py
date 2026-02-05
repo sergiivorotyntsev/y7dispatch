@@ -57,24 +57,26 @@ class SLAType(str, Enum):
 
 
 # Luxury makes that trigger ENCLOSED trailer type
-LUXURY_MAKES = frozenset({
-    "BMW",
-    "MERCEDES",
-    "MERCEDES-BENZ",
-    "PORSCHE",
-    "AUDI",
-    "LEXUS",
-    "TESLA",
-    "BENTLEY",
-    "ROLLS-ROYCE",
-    "FERRARI",
-    "LAMBORGHINI",
-    "MASERATI",
-    "ASTON MARTIN",
-    "MCLAREN",
-    "BUGATTI",
-    "LOTUS",
-})
+LUXURY_MAKES = frozenset(
+    {
+        "BMW",
+        "MERCEDES",
+        "MERCEDES-BENZ",
+        "PORSCHE",
+        "AUDI",
+        "LEXUS",
+        "TESLA",
+        "BENTLEY",
+        "ROLLS-ROYCE",
+        "FERRARI",
+        "LAMBORGHINI",
+        "MASERATI",
+        "ASTON MARTIN",
+        "MCLAREN",
+        "BUGATTI",
+        "LOTUS",
+    }
+)
 
 # Default marketplace configuration
 DEFAULT_MARKETPLACE_ID = 10000

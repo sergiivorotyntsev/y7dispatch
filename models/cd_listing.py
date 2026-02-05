@@ -181,9 +181,7 @@ class CDListingDraft(BaseModel):
 
         # 1..12 vehicles
         if not (1 <= len(self.vehicles) <= 12):
-            raise ValueError(
-                f"Listing must have 1-12 vehicles, got {len(self.vehicles)}"
-            )
+            raise ValueError(f"Listing must have 1-12 vehicles, got {len(self.vehicles)}")
 
         # No duplicate VINs
         vins = [v.vin for v in self.vehicles]
