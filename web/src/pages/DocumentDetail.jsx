@@ -3,11 +3,12 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../api'
 import CDPayloadPreview from '../components/CDPayloadPreview'
 import ListingFormSections from '../components/ListingFormSections'
+import PDFViewer from '../components/PDFViewer'
 
 /**
  * Document Detail / Export Preview Page
  *
- * Shows all extracted fields for a document with export validation.
+ * Split layout: PDF viewer (left) + extracted fields (right).
  * Allows reviewing data before exporting to Central Dispatch.
  */
 function DocumentDetail() {
@@ -21,6 +22,7 @@ function DocumentDetail() {
   const [exportResult, setExportResult] = useState(null)
   const [showPayloadPreview, setShowPayloadPreview] = useState(false)
   const [showListingForm, setShowListingForm] = useState(false)
+  const [highlightedField, setHighlightedField] = useState(null)
 
   useEffect(() => {
     async function loadExportPreview() {
@@ -44,7 +46,6 @@ function DocumentDetail() {
     setExporting(true)
     setExportResult(null)
     try {
-      // Get the extraction run ID
       const runId = data.extraction?.id
       if (!runId) throw new Error('No extraction run found')
 
@@ -66,8 +67,7 @@ function DocumentDetail() {
 
   async function handleReExtract() {
     try {
-      const result = await api.runExtraction(id, true)
-      // Reload the page data
+      await api.runExtraction(id, true)
       window.location.reload()
     } catch (err) {
       setError(err.message)
@@ -103,11 +103,12 @@ function DocumentDetail() {
   }
 
   const { document: doc, extraction, fields, can_export, blocking_issues, order_id } = data || {}
+  const pdfUrl = `/api/documents/${id}/file`
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6">
       {/* Header */}
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex justify-between items-start mb-4">
         <div>
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
             <Link to="/documents" className="hover:text-blue-600">&larr; Documents</Link>
@@ -145,31 +146,31 @@ function DocumentDetail() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {extraction && (
             <button
               onClick={() => navigate(`/review/${extraction.id}`)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
             >
               Edit Fields
             </button>
           )}
           <button
             onClick={handleReExtract}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
           >
             Re-extract
           </button>
           <button
             onClick={() => setShowPayloadPreview(true)}
-            className="px-4 py-2 border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50"
+            className="px-3 py-2 border border-blue-300 rounded-lg text-sm text-blue-700 hover:bg-blue-50"
           >
             Preview JSON
           </button>
           <button
             onClick={handleExport}
             disabled={!can_export || exporting}
-            className={`px-4 py-2 rounded-lg font-medium ${
+            className={`px-3 py-2 rounded-lg text-sm font-medium ${
               can_export
                 ? 'bg-green-600 text-white hover:bg-green-700'
                 : 'bg-gray-200 text-gray-500 cursor-not-allowed'
@@ -182,7 +183,7 @@ function DocumentDetail() {
 
       {/* Export Status */}
       {exportResult && (
-        <div className={`mb-6 p-4 rounded-lg ${
+        <div className={`mb-4 p-4 rounded-lg ${
           exportResult.success
             ? 'bg-green-50 border border-green-200'
             : 'bg-red-50 border border-red-200'
@@ -200,7 +201,7 @@ function DocumentDetail() {
 
       {/* Blocking Issues */}
       {blocking_issues && blocking_issues.length > 0 && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <h3 className="text-yellow-800 font-medium mb-2">Cannot Export</h3>
           <ul className="list-disc list-inside text-yellow-700 text-sm">
             {blocking_issues.map((issue, idx) => (
@@ -210,76 +211,96 @@ function DocumentDetail() {
         </div>
       )}
 
-      {/* Fields Grid */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h2 className="font-medium text-gray-900">Export Fields</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Review all fields before exporting to Central Dispatch
-          </p>
+      {/* Split Layout: PDF + Fields */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left: PDF Viewer */}
+        <div>
+          <PDFViewer
+            pdfUrl={pdfUrl}
+            runId={extraction?.id}
+            highlightedField={highlightedField}
+            showAllBlocks={false}
+          />
         </div>
 
-        <div className="divide-y divide-gray-100">
-          {fields && fields.length > 0 ? (
-            fields.filter(f => f.is_active).map((field, idx) => (
-              <div
-                key={idx}
-                className={`px-4 py-3 flex items-start gap-4 ${
-                  !field.value && field.is_required ? 'bg-red-50' : ''
-                }`}
-              >
-                <div className="w-48 flex-shrink-0">
-                  <div className="font-medium text-gray-900 text-sm">
-                    {field.display_name || field.cd_field}
-                  </div>
-                  <div className="text-xs text-gray-500">{field.cd_field}</div>
-                  {field.is_required && (
-                    <span className="text-xs text-red-600">Required</span>
-                  )}
-                </div>
+        {/* Right: Extracted Fields */}
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+            <h2 className="font-medium text-gray-900">Export Fields</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Click a field to highlight it in the PDF
+            </p>
+          </div>
 
-                <div className="flex-1">
-                  {field.value ? (
-                    <div className="text-gray-900">{field.value}</div>
-                  ) : field.default_value ? (
-                    <div className="text-gray-500 italic">
-                      Default: {field.default_value}
+          <div className="divide-y divide-gray-100 overflow-y-auto flex-1">
+            {fields && fields.length > 0 ? (
+              fields.filter(f => f.is_active).map((field, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => setHighlightedField(
+                    highlightedField === field.cd_field ? null : field.cd_field
+                  )}
+                  className={`px-4 py-3 flex items-start gap-3 cursor-pointer transition-colors ${
+                    highlightedField === field.cd_field
+                      ? 'bg-blue-50 border-l-4 border-blue-500'
+                      : !field.value && field.is_required
+                      ? 'bg-red-50 hover:bg-red-100'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="w-40 flex-shrink-0">
+                    <div className="font-medium text-gray-900 text-sm">
+                      {field.display_name || field.cd_field}
                     </div>
-                  ) : (
-                    <div className="text-gray-400 italic">Empty</div>
-                  )}
-                </div>
+                    <div className="text-xs text-gray-400 font-mono">{field.cd_field}</div>
+                    {field.is_required && (
+                      <span className="text-xs text-red-600">Required</span>
+                    )}
+                  </div>
 
-                <div className="flex-shrink-0 flex items-center gap-2">
-                  {field.confidence !== undefined && field.confidence !== null && (
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      field.confidence >= 0.8 ? 'bg-green-100 text-green-700' :
-                      field.confidence >= 0.5 ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
+                  <div className="flex-1 min-w-0">
+                    {field.value ? (
+                      <div className="text-gray-900 text-sm break-words">{field.value}</div>
+                    ) : field.default_value ? (
+                      <div className="text-gray-500 italic text-sm">
+                        Default: {field.default_value}
+                      </div>
+                    ) : (
+                      <div className="text-gray-400 italic text-sm">Empty</div>
+                    )}
+                  </div>
+
+                  <div className="flex-shrink-0 flex items-center gap-1">
+                    {field.confidence !== undefined && field.confidence !== null && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        field.confidence >= 0.8 ? 'bg-green-100 text-green-700' :
+                        field.confidence >= 0.5 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {Math.round(field.confidence * 100)}%
+                      </span>
+                    )}
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      field.source === 'constant' ? 'bg-purple-100 text-purple-700' :
+                      'bg-blue-100 text-blue-700'
                     }`}>
-                      {Math.round(field.confidence * 100)}%
+                      {field.source}
                     </span>
-                  )}
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    field.source === 'constant' ? 'bg-purple-100 text-purple-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>
-                    {field.source}
-                  </span>
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="p-8 text-center text-gray-500">
+                No fields extracted yet.
+                <button
+                  onClick={handleReExtract}
+                  className="block mt-2 mx-auto text-blue-600 hover:text-blue-800"
+                >
+                  Run Extraction
+                </button>
               </div>
-            ))
-          ) : (
-            <div className="p-8 text-center text-gray-500">
-              No fields configured for this auction type.
-              <Link
-                to="/test-lab"
-                className="block mt-2 text-blue-600 hover:text-blue-800"
-              >
-                Configure Field Mappings
-              </Link>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

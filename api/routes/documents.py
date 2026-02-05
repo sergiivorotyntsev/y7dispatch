@@ -620,35 +620,55 @@ async def get_document_export_preview(id: int):
             (doc.auction_type_id,),
         ).fetchall()
 
-        for m_row in mapping_rows:
-            m = dict(m_row)
-            # Use cd_key as the field key (maps to Central Dispatch API field)
-            field_key = m.get("cd_key") or m.get("source_key") or m.get("internal_key")
-            if not field_key:
-                continue
+        if mapping_rows:
+            for m_row in mapping_rows:
+                m = dict(m_row)
+                # Use cd_key as the field key (maps to Central Dispatch API field)
+                field_key = m.get("cd_key") or m.get("source_key") or m.get("internal_key")
+                if not field_key:
+                    continue
 
-            field_data = extracted_fields.get(field_key, {})
-            # Also try to find by source_key if not found by cd_key
-            if not field_data.get("value") and m.get("source_key"):
-                field_data = extracted_fields.get(m["source_key"], {})
+                field_data = extracted_fields.get(field_key, {})
+                # Also try to find by source_key if not found by cd_key
+                if not field_data.get("value") and m.get("source_key"):
+                    field_data = extracted_fields.get(m["source_key"], {})
 
-            # Check if required field is missing
-            if m.get("is_required") and not field_data.get("value") and not m.get("default_value"):
-                can_export = False
-                blocking_issues.append(f"Required field '{field_key}' is empty")
+                # Check if required field is missing
+                if (
+                    m.get("is_required")
+                    and not field_data.get("value")
+                    and not m.get("default_value")
+                ):
+                    can_export = False
+                    blocking_issues.append(f"Required field '{field_key}' is empty")
 
-            field_mappings.append(
-                {
-                    "cd_field": field_key,
-                    "display_name": m.get("description") or field_key.replace("_", " ").title(),
-                    "source": "constant" if m.get("default_value") else "extracted",
-                    "is_required": m.get("is_required", False),
-                    "is_active": m.get("is_active", True),
-                    "value": field_data.get("value") or m.get("default_value"),
-                    "confidence": field_data.get("confidence"),
-                    "default_value": m.get("default_value"),
-                }
-            )
+                field_mappings.append(
+                    {
+                        "cd_field": field_key,
+                        "display_name": m.get("description") or field_key.replace("_", " ").title(),
+                        "source": "constant" if m.get("default_value") else "extracted",
+                        "is_required": m.get("is_required", False),
+                        "is_active": m.get("is_active", True),
+                        "value": field_data.get("value") or m.get("default_value"),
+                        "confidence": field_data.get("confidence"),
+                        "default_value": m.get("default_value"),
+                    }
+                )
+        else:
+            # Fallback: build fields directly from extracted data
+            for field_key, field_info in extracted_fields.items():
+                field_mappings.append(
+                    {
+                        "cd_field": field_key,
+                        "display_name": field_key.replace("_", " ").title(),
+                        "source": field_info.get("source", "extracted"),
+                        "is_required": False,
+                        "is_active": True,
+                        "value": field_info.get("value"),
+                        "confidence": field_info.get("confidence"),
+                        "default_value": None,
+                    }
+                )
 
     return {
         "document": {

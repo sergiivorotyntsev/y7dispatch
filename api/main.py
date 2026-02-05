@@ -189,10 +189,10 @@ async def stop_email_worker():
 async def startup():
     # Initialize original schema
     init_db()
-    # Initialize new MVP schema
-    init_schema()
-    # Seed base auction types
+    # Seed base auction types FIRST — field_mappings seeder needs them
     seed_base_auction_types()
+    # Initialize new MVP schema (creates tables + seeds field_mappings)
+    init_schema()
     # Initialize warehouses schema
     from api.routes.warehouses import init_warehouses_schema
 
