@@ -316,7 +316,7 @@ const VEHICLE_TYPES = [
 const LOCATION_TYPES = [
   { value: 'BUSINESS', label: 'Business' },
   { value: 'AUCTION', label: 'Auction' },
-  { value: 'RESIDENTIAL', label: 'Residential' },
+  { value: 'RESIDENCE', label: 'Residence' },
   { value: 'PORT', label: 'Port' },
   { value: 'OTHER', label: 'Other' },
 ]
