@@ -677,6 +677,7 @@ class ExtractionRun:
     processing_time_ms: Optional[int] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 @dataclass
