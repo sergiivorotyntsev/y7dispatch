@@ -214,6 +214,17 @@ test.describe('Smoke Tests', () => {
       // Endpoint returns { items: [...] }
       expect(Array.isArray(data.items)).toBeTruthy();
     });
+
+    test('CD listings dry-run returns structured response', async ({ request }) => {
+      // Push with dry_run to a non-existent document should return 404
+      const response = await request.post('http://127.0.0.1:8000/api/central-dispatch/listings', {
+        data: { document_id: 999999, dry_run: true, sandbox: true },
+      });
+      // Expect 404 because document doesn't exist — verifies endpoint is wired up
+      expect(response.status()).toBe(404);
+      const data = await response.json();
+      expect(data.detail).toBeTruthy();
+    });
   });
 });
 
