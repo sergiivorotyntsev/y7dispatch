@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../api'
 import CDPayloadPreview from '../components/CDPayloadPreview'
+import ListingFormSections from '../components/ListingFormSections'
 
 /**
  * Document Detail / Export Preview Page
@@ -19,6 +20,7 @@ function DocumentDetail() {
   const [exporting, setExporting] = useState(false)
   const [exportResult, setExportResult] = useState(null)
   const [showPayloadPreview, setShowPayloadPreview] = useState(false)
+  const [showListingForm, setShowListingForm] = useState(false)
 
   useEffect(() => {
     async function loadExportPreview() {
@@ -279,6 +281,29 @@ function DocumentDetail() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* CD Listing Form (sectioned) */}
+      <div className="mt-6">
+        <button
+          onClick={() => setShowListingForm(prev => !prev)}
+          className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 mb-3"
+        >
+          <span className={`transform transition-transform ${showListingForm ? 'rotate-90' : ''}`}>&#9654;</span>
+          {showListingForm ? 'Hide' : 'Show'} CD Listing Form
+        </button>
+        {showListingForm && (
+          <ListingFormSections
+            documentId={parseInt(id, 10)}
+            onPushSuccess={(res) => {
+              setExportResult({
+                success: true,
+                message: `Listing created: ${res.listing_id || ''}`,
+                orderId: res.listing_id,
+              })
+            }}
+          />
+        )}
       </div>
 
       {/* Extraction Info */}
