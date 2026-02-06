@@ -328,6 +328,14 @@ export const api = {
   getFieldRegistry: () => request('/exports/field-registry'),
   getBlockingIssues: (runId, mode = 'export') => request(`/exports/field-registry/blocking-issues/${runId}?mode=${mode}`),
 
+  // Field Taxonomy Settings (Option C implementation)
+  getFieldSchema: () => request('/settings/fields/schema'),
+  getFieldTaxonomy: () => request('/settings/fields/taxonomy'),
+  getFieldsByCategory: (category) => request(`/settings/fields/by-category/${category}`),
+  getFieldsBySource: (sourceType) => request(`/settings/fields/by-source/${sourceType}`),
+  getFieldsForMode: (mode) => request(`/settings/fields/for-mode/${mode}`),
+  getExtractedFields: () => request('/settings/fields/extracted'),
+
   // CD Listing Info (ETag tracking)
   getCDListingInfo: (runId) => request(`/exports/cd-listing/${runId}`),
 
