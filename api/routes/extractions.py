@@ -1084,69 +1084,48 @@ def run_extraction(
         _create_empty_review_items(run_id, auction_type_id)
 
 
-def _create_review_items_for_all_fields(run_id: int, auction_type_id: int, outputs: dict):
+def _create_review_items_for_all_fields(
+    run_id: int, auction_type_id: int, outputs: dict, mode: str = "training"
+):
     """
     Create review items for ALL configured field mappings.
 
     This ensures consistent field display - all fields appear in Review page,
     using extracted values where available and empty for fields not extracted.
 
+    Uses the centralized ListingFieldRegistry for field definitions, ensuring
+    consistency with CD API requirements and field taxonomy.
+
     Args:
         run_id: Extraction run ID
         auction_type_id: Auction type ID for field mappings
         outputs: Dict of extracted field values (may be incomplete)
+        mode: Pipeline mode - "training", "review", or "export"
+
+    Pipeline Modes (Option C implementation):
+        - training: Show only extracted/user_input fields, skip export_only fields
+        - review: Show all fields including warehouse-sourced delivery fields
+        - export: Full CD API field set with strict validation
     """
     from api.database import get_connection
+    from api.listing_fields import FieldCategory, FieldSourceType, get_registry
 
-    # Get ALL field mappings for this auction type (ordered for consistent display)
+    # Get centralized field registry
+    registry = get_registry()
+
+    # Get custom field mappings for this auction type (if configured)
     with get_connection() as conn:
         mappings = conn.execute(
             "SELECT * FROM field_mappings WHERE auction_type_id = ? AND is_active = TRUE ORDER BY display_order",
             (auction_type_id,),
         ).fetchall()
 
-    # Default field set if no mappings configured
-    DEFAULT_FIELDS = [
-        # Key fields for Central Dispatch
-        ("auction_source", "auction_source", None, False),
-        ("order_id", "order_id", None, False),
-        ("reference_id", "reference_id", "externalId", False),
-        # Vehicle
-        ("vehicle_vin", "vehicle_vin", "vehicles[0].vin", True),
-        ("vehicle_year", "vehicle_year", "vehicles[0].year", True),
-        ("vehicle_make", "vehicle_make", "vehicles[0].make", True),
-        ("vehicle_model", "vehicle_model", "vehicles[0].model", True),
-        ("vehicle_color", "vehicle_color", "vehicles[0].color", False),
-        ("vehicle_lot", "vehicle_lot", "vehicles[0].lotNumber", False),
-        ("vehicle_mileage", "vehicle_mileage", None, False),
-        ("vehicle_is_inoperable", "vehicle_is_inoperable", "vehicles[0].isInoperable", False),
-        # Pickup location
-        ("pickup_name", "pickup_name", "stops[0].locationName", False),
-        ("pickup_address", "pickup_address", "stops[0].address", True),
-        ("pickup_city", "pickup_city", "stops[0].city", True),
-        ("pickup_state", "pickup_state", "stops[0].state", True),
-        ("pickup_zip", "pickup_zip", "stops[0].postalCode", True),
-        ("pickup_phone", "pickup_phone", "stops[0].phone", False),
-        # Delivery location (usually filled from warehouse)
-        ("delivery_name", "delivery_name", "stops[1].locationName", False),
-        ("delivery_address", "delivery_address", "stops[1].address", False),
-        ("delivery_city", "delivery_city", "stops[1].city", False),
-        ("delivery_state", "delivery_state", "stops[1].state", False),
-        ("delivery_zip", "delivery_zip", "stops[1].postalCode", False),
-        ("delivery_phone", "delivery_phone", "stops[1].phone", False),
-        # Buyer/Sale info
-        ("buyer_id", "buyer_id", None, False),
-        ("buyer_name", "buyer_name", None, False),
-        ("sale_date", "sale_date", None, False),
-        ("total_amount", "total_amount", None, False),
-    ]
-
     # Build list of all fields to create
     review_items = []
     used_keys = set()
 
     if mappings:
-        # Use configured mappings
+        # Use configured mappings (custom per auction type)
         for m in mappings:
             source_key = m["source_key"]
             used_keys.add(source_key)
@@ -1166,24 +1145,35 @@ def _create_review_items_for_all_fields(run_id: int, auction_type_id: int, outpu
                 }
             )
     else:
-        # Use default fields
-        for source_key, internal_key, cd_key, is_required in DEFAULT_FIELDS:
+        # Use centralized field registry (single source of truth)
+        # Filter fields based on mode
+        fields = registry.get_fields_for_mode(mode)
+
+        for field in fields:
+            source_key = field.key
             used_keys.add(source_key)
             value = outputs.get(source_key)
+
+            # Determine if this field should be exported to CD API
+            export_field = field.category != FieldCategory.INTERNAL
+            if value is not None:
+                export_field = True  # Always export if we have a value
 
             review_items.append(
                 {
                     "source_key": source_key,
-                    "internal_key": internal_key,
-                    "cd_key": cd_key,
+                    "internal_key": source_key,
+                    "cd_key": field.cd_api_key,
                     "predicted_value": str(value) if value is not None else None,
                     "is_match_ok": False,
-                    "export_field": is_required or value is not None,
+                    "export_field": export_field,
                     "confidence": 0.5 if value is not None else 0.0,
+                    # Note: Field metadata (category, source_type, required, export_only)
+                    # comes from ListingFieldRegistry at query time, not stored here.
                 }
             )
 
-    # Also include any extracted fields that weren't in mappings
+    # Also include any extracted fields that weren't in mappings/registry
     # (in case extraction found additional fields)
     for key, value in outputs.items():
         if key not in used_keys and value is not None:
@@ -1203,9 +1193,9 @@ def _create_review_items_for_all_fields(run_id: int, auction_type_id: int, outpu
         ReviewItemRepository.create_batch(run_id, review_items)
 
 
-def _create_empty_review_items(run_id: int, auction_type_id: int):
+def _create_empty_review_items(run_id: int, auction_type_id: int, mode: str = "training"):
     """Create empty review items for manual data entry (failed extractions)."""
-    _create_review_items_for_all_fields(run_id, auction_type_id, {})
+    _create_review_items_for_all_fields(run_id, auction_type_id, {}, mode=mode)
 
 
 # =============================================================================
