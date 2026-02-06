@@ -207,6 +207,11 @@ async def startup():
     from api.routes.training import init_training_schema
 
     init_training_schema()
+    # Initialize auction profiles schema
+    from api.auction_profiles import init_auction_profiles_schema, seed_default_auction_profiles
+
+    init_auction_profiles_schema()
+    seed_default_auction_profiles()
 
 
 # Serve frontend (simple HTML for now)

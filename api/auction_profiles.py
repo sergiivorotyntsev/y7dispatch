@@ -513,3 +513,99 @@ def get_profile_service() -> AuctionProfileService:
     if _profile_service is None:
         _profile_service = AuctionProfileService()
     return _profile_service
+
+
+def seed_default_auction_profiles():
+    """Create default auction profiles if they don't exist."""
+    from api.models import AuctionTypeRepository
+
+    # Get auction types
+    copart = AuctionTypeRepository.get_by_code("COPART")
+    iaa = AuctionTypeRepository.get_by_code("IAA")
+    manheim = AuctionTypeRepository.get_by_code("MANHEIM")
+
+    default_profiles = []
+
+    if copart:
+        existing = AuctionProfileRepository.get_by_code("COPART")
+        if not existing:
+            default_profiles.append(
+                AuctionProfile(
+                    auction_type_id=copart.id,
+                    auction_code="COPART",
+                    name="Copart Profile",
+                    description="Default profile for Copart auctions",
+                    field_defaults={
+                        "pickup_location_type": FieldDefault(
+                            field_key="pickup_location_type",
+                            value="AUCTION",
+                            apply_when="always",
+                        ),
+                        "pickup_hours": FieldDefault(
+                            field_key="pickup_hours",
+                            value="Mon-Fri 8AM-5PM",
+                            apply_when="if_empty",
+                        ),
+                    },
+                    classification_patterns=["COPART", "copart.com"],
+                )
+            )
+
+    if iaa:
+        existing = AuctionProfileRepository.get_by_code("IAA")
+        if not existing:
+            default_profiles.append(
+                AuctionProfile(
+                    auction_type_id=iaa.id,
+                    auction_code="IAA",
+                    name="IAA Profile",
+                    description="Default profile for IAA auctions",
+                    field_defaults={
+                        "pickup_location_type": FieldDefault(
+                            field_key="pickup_location_type",
+                            value="AUCTION",
+                            apply_when="always",
+                        ),
+                        "pickup_hours": FieldDefault(
+                            field_key="pickup_hours",
+                            value="Mon-Fri 8AM-4:30PM",
+                            apply_when="if_empty",
+                        ),
+                    },
+                    classification_patterns=["IAA", "INSURANCE AUTO AUCTIONS", "iaai.com"],
+                )
+            )
+
+    if manheim:
+        existing = AuctionProfileRepository.get_by_code("MANHEIM")
+        if not existing:
+            default_profiles.append(
+                AuctionProfile(
+                    auction_type_id=manheim.id,
+                    auction_code="MANHEIM",
+                    name="Manheim Profile",
+                    description="Default profile for Manheim auctions",
+                    field_defaults={
+                        "pickup_location_type": FieldDefault(
+                            field_key="pickup_location_type",
+                            value="AUCTION",
+                            apply_when="always",
+                        ),
+                        "pickup_hours": FieldDefault(
+                            field_key="pickup_hours",
+                            value="Mon-Fri 8AM-5PM",
+                            apply_when="if_empty",
+                        ),
+                    },
+                    classification_patterns=["MANHEIM", "manheim.com"],
+                )
+            )
+
+    # Create profiles
+    for profile in default_profiles:
+        try:
+            AuctionProfileRepository.create(profile)
+        except Exception as e:
+            # Log but don't fail if profile already exists
+            import logging
+            logging.getLogger(__name__).warning(f"Could not create profile {profile.auction_code}: {e}")
