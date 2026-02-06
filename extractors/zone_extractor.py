@@ -208,38 +208,45 @@ class ZoneExtractor:
         """
         Create template for Copart invoices.
 
-        Copart layout (typical):
-        ┌─────────────┬──────────────────────┬─────────────┐
-        │   MEMBER    │ PHYSICAL ADDRESS LOT │   SELLER    │
-        │  (buyer)    │   (pickup location)  │  (seller)   │
-        │  0-33%      │      33-66%          │   66-100%   │
-        └─────────────┴──────────────────────┴─────────────┘
+        Copart layout (analyzed from actual PDFs - 612x792 pts):
+        ┌────────────────┬─────────────────────┬────────────────┐
+        │    MEMBER      │ PHYSICAL ADDRESS    │    SELLER      │
+        │   (0-28.6%)    │   OF LOT (28.6-58.8%)│  (58.8-100%)  │
+        │                │   = PICKUP LOCATION │                │
+        └────────────────┴─────────────────────┴────────────────┘
+        Header section: Y = 7.6% - 16.4%
+
+        Column boundaries (from PDF coordinate analysis):
+        - MEMBER: starts at X=6% (36.75 pts)
+        - PHYSICAL ADDRESS: starts at X=29.4% (179.74 pts)
+        - SELLER: starts at X=59.7% (365.21 pts)
         """
         return DocumentTemplate(
             template_id="copart_invoice_v1",
             name="Copart Invoice",
             auction_type="COPART",
-            version=1,
+            version=2,  # Updated version with correct coordinates
             description="Standard Copart invoice with 3-column header layout",
             zones=[
-                # Zone 1: Member/Buyer Info (LEFT column)
+                # Zone 1: Member/Buyer Info (LEFT column) - 0% to 28.6%
                 DocumentZone(
                     name="member_info",
-                    x0=0, y0=10, x1=35, y1=40,
+                    x0=0, y0=7.5, x1=28.6, y1=20,
                     description="Buyer/Member information (left column)",
                     fields=[
                         ZoneField(key="buyer_id", field_type=FieldType.TEXT,
-                                  pattern=r"Member\s*#?\s*[:\s]*(\d+)", label="Member"),
+                                  pattern=r"(?:Member|MEMBER)[:\s#]*(\d+)", label="Member"),
                         ZoneField(key="buyer_name", field_type=FieldType.TEXT),
                         ZoneField(key="buyer_address", field_type=FieldType.ADDRESS),
                     ]
                 ),
 
                 # Zone 2: Physical Address of Lot (CENTER column) - PICKUP LOCATION
+                # CRITICAL: This is the correct zone for pickup address (28.6% to 58.8%)
                 DocumentZone(
                     name="lot_address",
-                    x0=30, y0=10, x1=70, y1=40,
-                    description="Physical address of lot - PICKUP LOCATION",
+                    x0=28.6, y0=7.5, x1=58.8, y1=20,
+                    description="Physical address of lot - PICKUP LOCATION (center column)",
                     fields=[
                         ZoneField(key="pickup_name", field_type=FieldType.TEXT,
                                   label="Copart"),
@@ -253,7 +260,7 @@ class ZoneExtractor:
                 # Zone 3: Seller Info (RIGHT column) - NOT pickup!
                 DocumentZone(
                     name="seller_info",
-                    x0=65, y0=10, x1=100, y1=40,
+                    x0=58.8, y0=7.5, x1=100, y1=20,
                     description="Seller information (right column) - NOT pickup location",
                     fields=[
                         ZoneField(key="seller_id", field_type=FieldType.TEXT,
@@ -265,8 +272,8 @@ class ZoneExtractor:
                 # Zone 4: Vehicle Information (full width, middle section)
                 DocumentZone(
                     name="vehicle_info",
-                    x0=0, y0=35, x1=100, y1=65,
-                    description="Vehicle details",
+                    x0=0, y0=18, x1=100, y1=50,
+                    description="Vehicle details (VIN, Year, Make, Model, Lot)",
                     fields=[
                         ZoneField(key="vehicle_vin", field_type=FieldType.VIN, required=True,
                                   pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b"),
@@ -282,13 +289,13 @@ class ZoneExtractor:
                 # Zone 5: Financial Information (bottom section)
                 DocumentZone(
                     name="financial_info",
-                    x0=0, y0=60, x1=100, y1=95,
+                    x0=0, y0=45, x1=100, y1=95,
                     description="Sale price, fees, totals",
                     fields=[
                         ZoneField(key="sale_price", field_type=FieldType.CURRENCY,
                                   pattern=r"Sale\s*Price[:\s]*\$?([\d,]+\.?\d*)"),
                         ZoneField(key="total_amount", field_type=FieldType.CURRENCY,
-                                  pattern=r"(?:Net\s*Due|Total)[:\s]*\$?([\d,]+\.?\d*)"),
+                                  pattern=r"(?:Net\s*Due|Total\s*Due|Total)[:\s]*\$?([\d,]+\.?\d*)"),
                         ZoneField(key="sale_date", field_type=FieldType.DATE,
                                   pattern=r"Sale\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})"),
                     ]
@@ -297,55 +304,87 @@ class ZoneExtractor:
         )
 
     def _create_iaa_template(self) -> DocumentTemplate:
-        """Create template for IAA Buyer Receipt"""
+        """
+        Create template for IAA Buyer Receipt.
+
+        IAA layout (analyzed from actual PDFs - 612x792 pts):
+        ┌──────────────────────────────────────────┐
+        │            HEADER (0-12.5%)              │
+        │     "Buyer Receipt" + Receipt Info       │
+        ├────────────────────┬─────────────────────┤
+        │   PICKUP LOCATION  │    BUYER INFO       │
+        │   (0-42% X)        │    (42-100% X)      │
+        │   (15-28% Y)       │    (17-30% Y)       │
+        ├────────────────────┴─────────────────────┤
+        │   VEHICLE DATA ROW (32-38% Y)            │
+        │   Stock | Year | Make | Model | VIN     │
+        ├────────────────────┬─────────────────────┤
+        │   INVOICE TO       │  FINANCIAL CHARGES  │
+        │   (0-35% X)        │  (35-100% X)        │
+        │   (36-55% Y)       │                     │
+        └────────────────────┴─────────────────────┘
+
+        Key markers:
+        - "Pick-Up Location:" at Y=16.1%
+        - "Buyer #" at Y=18.9%, X=61%
+        - Vehicle row headers at Y=32.8%
+        - "Bid Amount" at Y=39%, X=66%
+        """
         return DocumentTemplate(
             template_id="iaa_buyer_receipt_v1",
             name="IAA Buyer Receipt",
             auction_type="IAA",
-            version=1,
+            version=2,  # Updated with correct coordinates
             description="Standard IAA buyer receipt layout",
             zones=[
-                # IAA has different layout - pickup location is usually labeled
+                # Header
                 DocumentZone(
                     name="header_info",
-                    x0=0, y0=0, x1=100, y1=20,
-                    description="Header with IAA branding and basic info",
+                    x0=0, y0=0, x1=100, y1=12.5,
+                    description="Header with IAA branding and receipt info",
                     fields=[
                         ZoneField(key="reference_id", field_type=FieldType.TEXT,
                                   pattern=r"Stock\s*#?\s*[:\s]*(\d+)"),
                     ]
                 ),
 
+                # Pickup Location (LEFT side, 0-42% X, 15-28% Y)
                 DocumentZone(
                     name="pickup_location",
-                    x0=0, y0=15, x1=50, y1=45,
-                    description="Pick-Up Location section",
+                    x0=0, y0=15, x1=42, y1=32,
+                    description="Pick-Up Location section (left column)",
                     fields=[
                         ZoneField(key="pickup_name", field_type=FieldType.TEXT,
-                                  label="IAA"),
+                                  pattern=r"(?:IAA\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,"),
                         ZoneField(key="pickup_address", field_type=FieldType.ADDRESS, required=True),
                         ZoneField(key="pickup_city", field_type=FieldType.TEXT, required=True),
                         ZoneField(key="pickup_state", field_type=FieldType.TEXT, required=True),
                         ZoneField(key="pickup_zip", field_type=FieldType.TEXT, required=True),
-                        ZoneField(key="pickup_phone", field_type=FieldType.PHONE),
+                        ZoneField(key="pickup_phone", field_type=FieldType.PHONE,
+                                  pattern=r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})"),
                     ]
                 ),
 
+                # Buyer Info (RIGHT side, 42-100% X, 17-30% Y)
                 DocumentZone(
                     name="buyer_info",
-                    x0=50, y0=15, x1=100, y1=45,
-                    description="Buyer/Bidder information",
+                    x0=42, y0=15, x1=100, y1=32,
+                    description="Buyer/Bidder information (right column)",
                     fields=[
                         ZoneField(key="buyer_id", field_type=FieldType.TEXT,
-                                  pattern=r"Buyer\s*#?\s*[:\s]*(\d+)"),
-                        ZoneField(key="buyer_name", field_type=FieldType.TEXT),
+                                  pattern=r"Buyer\s*#[:\s]*(\d+)"),
+                        ZoneField(key="buyer_name", field_type=FieldType.TEXT,
+                                  pattern=r"Buyer\s*Name[:\s]*([^\n]+)"),
+                        ZoneField(key="sale_date", field_type=FieldType.DATE,
+                                  pattern=r"Sale\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})"),
                     ]
                 ),
 
+                # Vehicle Data Row (full width, 32-38% Y)
                 DocumentZone(
                     name="vehicle_info",
-                    x0=0, y0=40, x1=100, y1=70,
-                    description="Vehicle details",
+                    x0=0, y0=32, x1=100, y1=42,
+                    description="Vehicle data row (Stock, Year, Make, Model, VIN)",
                     fields=[
                         ZoneField(key="vehicle_vin", field_type=FieldType.VIN, required=True,
                                   pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b"),
@@ -354,74 +393,99 @@ class ZoneExtractor:
                         ZoneField(key="vehicle_make", field_type=FieldType.TEXT),
                         ZoneField(key="vehicle_model", field_type=FieldType.TEXT),
                         ZoneField(key="vehicle_lot", field_type=FieldType.TEXT,
-                                  pattern=r"Stock\s*(?:No|#)?\s*[:\s]*(\d+)"),
+                                  pattern=r"(\d{8})"),  # Stock numbers are typically 8 digits
                     ]
                 ),
 
+                # Financial Info (right side, 35-100% X, 36-55% Y)
                 DocumentZone(
                     name="financial_info",
-                    x0=0, y0=65, x1=100, y1=95,
-                    description="Sale price, fees, totals",
+                    x0=35, y0=36, x1=100, y1=60,
+                    description="Financial charges (Bid Amount, Fees, Total)",
                     fields=[
+                        ZoneField(key="bid_amount", field_type=FieldType.CURRENCY,
+                                  pattern=r"Bid\s*Amount[:\s]*\$?([\d,]+\.?\d*)"),
                         ZoneField(key="total_amount", field_type=FieldType.CURRENCY,
                                   pattern=r"(?:Total|Amount\s*Due)[:\s]*\$?([\d,]+\.?\d*)"),
-                        ZoneField(key="sale_date", field_type=FieldType.DATE),
                     ]
                 ),
             ]
         )
 
     def _create_manheim_template(self) -> DocumentTemplate:
-        """Create template for Manheim documents"""
+        """
+        Create template for Manheim documents.
+
+        IMPORTANT: Manheim documents typically have 4 pages:
+        - Page 1: Bill of Sale (Landscape 792x612) - has vehicle info and sale price
+        - Page 2: Invoice (Landscape 792x612) - has fees and total
+        - Page 3: Payment Receipt (Portrait 612x792)
+        - Page 4: Vehicle Release (Portrait 612x792) - BEST source for pickup location!
+
+        The pickup location on Page 1 is the AUCTION address (e.g., Atlanta, GA)
+        The pickup location on Page 4 is the ACTUAL pickup location (e.g., Manheim Portland, OR)
+
+        We use multi-page extraction to get the best data from each page.
+        """
         return DocumentTemplate(
             template_id="manheim_invoice_v1",
             name="Manheim Invoice",
             auction_type="MANHEIM",
-            version=1,
-            description="Standard Manheim invoice layout",
+            version=2,  # Updated with multi-page support
+            description="Multi-page Manheim document (Bill of Sale + Vehicle Release)",
             zones=[
+                # Page 1: Bill of Sale (Landscape orientation - 792x612)
+                # Header with "BILL OF SALE"
                 DocumentZone(
                     name="header",
-                    x0=0, y0=0, x1=100, y1=15,
-                    description="Header",
+                    x0=0, y0=0, x1=100, y1=12,
+                    description="Bill of Sale header (Page 1)",
                     fields=[
-                        ZoneField(key="reference_id", field_type=FieldType.TEXT),
+                        ZoneField(key="document_type", field_type=FieldType.TEXT,
+                                  pattern=r"(BILL\s+OF\s+SALE)"),
                     ]
                 ),
 
-                DocumentZone(
-                    name="auction_location",
-                    x0=0, y0=10, x1=50, y1=40,
-                    description="Auction/Pickup location",
-                    fields=[
-                        ZoneField(key="pickup_name", field_type=FieldType.TEXT),
-                        ZoneField(key="pickup_address", field_type=FieldType.ADDRESS, required=True),
-                        ZoneField(key="pickup_city", field_type=FieldType.TEXT, required=True),
-                        ZoneField(key="pickup_state", field_type=FieldType.TEXT, required=True),
-                        ZoneField(key="pickup_zip", field_type=FieldType.TEXT, required=True),
-                    ]
-                ),
-
+                # Page 1: Vehicle Info (middle section of Bill of Sale)
+                # "Vehicle Information" section contains VIN, Year, Make, Model
                 DocumentZone(
                     name="vehicle_info",
-                    x0=0, y0=35, x1=100, y1=65,
-                    description="Vehicle details",
+                    x0=0, y0=38, x1=50, y1=65,
+                    description="Vehicle Information section (Page 1)",
                     fields=[
                         ZoneField(key="vehicle_vin", field_type=FieldType.VIN, required=True,
                                   pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b"),
-                        ZoneField(key="vehicle_year", field_type=FieldType.NUMBER),
+                        ZoneField(key="vehicle_year", field_type=FieldType.NUMBER,
+                                  pattern=r"\b(19[89]\d|20[0-2]\d)\b"),
                         ZoneField(key="vehicle_make", field_type=FieldType.TEXT),
                         ZoneField(key="vehicle_model", field_type=FieldType.TEXT),
                     ]
                 ),
 
+                # Page 1: Sale Price (center-right area)
                 DocumentZone(
-                    name="financial_info",
-                    x0=0, y0=60, x1=100, y1=95,
-                    description="Financial details",
+                    name="sale_price_section",
+                    x0=35, y0=17, x1=75, y1=35,
+                    description="Sale price section (Page 1)",
                     fields=[
-                        ZoneField(key="total_amount", field_type=FieldType.CURRENCY),
-                        ZoneField(key="sale_date", field_type=FieldType.DATE),
+                        ZoneField(key="sale_date", field_type=FieldType.DATE,
+                                  pattern=r"Sale\s*Date[:\s]*(\d{1,2}-[A-Z]{3}-\d{4})"),
+                        ZoneField(key="sale_price", field_type=FieldType.CURRENCY,
+                                  pattern=r"(?:Final\s+)?Sale\s*Price[:\s]*\$?\s*([\d,]+\.?\d*)"),
+                        ZoneField(key="total_amount", field_type=FieldType.CURRENCY,
+                                  pattern=r"Final\s+Sale\s+Price[:\s]*\$?\s*([\d,]+\.?\d*)"),
+                    ]
+                ),
+
+                # Page 1: Auction location (left side) - NOT the real pickup!
+                # This is the auction house address (e.g., Atlanta, GA)
+                DocumentZone(
+                    name="auction_location",
+                    x0=0, y0=12, x1=35, y1=35,
+                    description="Auction location (NOT actual pickup - Page 1)",
+                    fields=[
+                        # We extract this for reference but DON'T use it as pickup
+                        ZoneField(key="auction_name", field_type=FieldType.TEXT),
                     ]
                 ),
             ]
@@ -488,7 +552,12 @@ class ZoneExtractor:
         if field_def.pattern:
             match = re.search(field_def.pattern, text, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                try:
+                    # Try to get group 1 (capturing group)
+                    return match.group(1).strip()
+                except IndexError:
+                    # Pattern has no capturing group, return full match
+                    return match.group(0).strip()
 
         # Strategy 2: Look for label
         if field_def.label:
@@ -549,17 +618,123 @@ class ZoneExtractor:
 
     def _parse_city_state_zip(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Parse city, state, ZIP from text"""
-        # Pattern: CITY STATE ZIP
-        pattern = rf"([A-Z][A-Za-z\s]{{2,25}})\s+({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
-        match = re.search(pattern, text.upper())
+        # Normalize whitespace - replace newlines with spaces
+        text_normalized = re.sub(r'[\n\r]+', ' ', text)
+        text_normalized = re.sub(r'\s+', ' ', text_normalized)
+        text_upper = text_normalized.upper()
+
+        # Pattern 1: CITY STATE ZIP (standard format)
+        # Match city name (1-3 words), state code, and ZIP
+        pattern1 = rf"([A-Z][A-Z]+(?:\s+[A-Z]+)*?)\s+({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
+        match = re.search(pattern1, text_upper)
 
         if match:
-            city = match.group(1).strip().title()
+            city = match.group(1).strip()
             state = match.group(2).upper()
             zip_code = match.group(3)
-            return city, state, zip_code
+
+            # Clean up city - remove leading/trailing directionals and numbers
+            city = re.sub(r'^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+', '', city)
+            city = re.sub(r'\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$', '', city)
+            city = re.sub(r'\s+\d+$', '', city)  # Remove trailing numbers
+            city = re.sub(r'^\d+\s+', '', city)  # Remove leading numbers
+            city = city.strip().title()
+
+            if len(city) >= 2:
+                return city, state, zip_code
+
+        # Pattern 2: Look for state-zip pattern and work backwards for city
+        pattern2 = rf"({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
+        match = re.search(pattern2, text_upper)
+
+        if match:
+            state = match.group(1).upper()
+            zip_code = match.group(2)
+
+            # Find text before state - look for city name
+            before_state = text_upper[:match.start()].strip()
+            # Get last word(s) that look like a city name (letters only)
+            city_match = re.search(r'([A-Z][A-Z]+(?:\s+[A-Z]+)*)$', before_state)
+            if city_match:
+                city = city_match.group(1).strip()
+                # Clean up - remove directionals
+                city = re.sub(r'^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+', '', city)
+                city = re.sub(r'\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$', '', city)
+                city = city.strip().title()
+                if len(city) >= 2:
+                    return city, state, zip_code
 
         return None, None, None
+
+    def _extract_manheim_page4_pickup(self, pdf_path: str) -> Dict[str, str]:
+        """
+        Extract pickup location from Manheim Page 4 (Vehicle Release).
+
+        Page 4 contains the ACTUAL pickup location (e.g., Manheim Portland)
+        while Page 1 contains the auction house address (e.g., Atlanta GA).
+
+        Page 4 Layout (Portrait 612x792):
+        - "Pickup Location" section at Y=40-60%
+        - Contains: Name, Address, City, State, ZIP, Phone
+
+        Returns dict with pickup_name, pickup_address, pickup_city, pickup_state, pickup_zip, pickup_phone
+        """
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                if len(pdf.pages) < 4:
+                    logger.info("Manheim PDF has fewer than 4 pages, skipping Page 4 extraction")
+                    return {}
+
+                page = pdf.pages[3]  # Page 4 (0-indexed)
+                page_width = page.width
+                page_height = page.height
+
+                logger.info(f"Extracting Manheim Page 4 pickup (page size: {page_width}x{page_height})")
+
+                # Pickup Location zone on Page 4
+                # Based on analysis: X=0-100%, Y=40-60%
+                pickup_bbox = (0, page_height * 0.40, page_width, page_height * 0.60)
+                cropped = page.crop(pickup_bbox)
+                text = cropped.extract_text(layout=True) or ""
+
+                logger.info(f"Page 4 pickup zone text: {text[:300]}...")
+
+                if not text:
+                    return {}
+
+                result = {}
+
+                # Extract Manheim location name (e.g., "Manheim Portland")
+                name_match = re.search(r"(Manheim\s+[A-Za-z\s]+?)(?:\s*\n|\s{2,})", text, re.IGNORECASE)
+                if name_match:
+                    result["pickup_name"] = name_match.group(1).strip()
+
+                # Extract street address
+                addr_match = re.search(r"(\d+\s+[A-Z0-9\.\s]+(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN))", text.upper())
+                if addr_match:
+                    result["pickup_address"] = addr_match.group(1).strip().title()
+
+                # Extract city, state, zip
+                csz_pattern = rf"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,?\s*({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
+                csz_match = re.search(csz_pattern, text.upper())
+                if csz_match:
+                    result["pickup_city"] = csz_match.group(1).strip().title()
+                    result["pickup_state"] = csz_match.group(2).upper()
+                    result["pickup_zip"] = csz_match.group(3)
+
+                # Extract phone
+                phone_match = re.search(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}", text)
+                if phone_match:
+                    result["pickup_phone"] = phone_match.group(0)
+
+                logger.info(f"Page 4 extracted pickup: {result}")
+                return result
+
+        except Exception as e:
+            logger.error(f"Error extracting Manheim Page 4: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {}
 
     def extract(self, pdf_path: str, auction_type: str, page_num: int = 0) -> ExtractionResult:
         """
@@ -636,6 +811,17 @@ class ZoneExtractor:
         # Add auction source
         fields["auction_source"] = auction_type
         fields["pickup_location_type"] = "AUCTION"
+
+        # MANHEIM-specific: Extract pickup from Page 4 (Vehicle Release)
+        if auction_type == "MANHEIM":
+            logger.info("Attempting Manheim Page 4 pickup extraction")
+            page4_pickup = self._extract_manheim_page4_pickup(pdf_path)
+            if page4_pickup:
+                # Page 4 pickup takes priority over Page 1 auction address
+                for key, value in page4_pickup.items():
+                    if value and key.startswith("pickup_"):
+                        fields[key] = value
+                        logger.info(f"Using Page 4 pickup: {key}={value}")
 
         logger.info(f"Zone extraction complete: {len(fields)} fields, confidence={confidence:.2f}")
 
