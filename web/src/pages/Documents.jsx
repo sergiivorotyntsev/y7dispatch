@@ -208,9 +208,12 @@ function Documents() {
     if (!extraction) return
 
     try {
-      // Update extraction with warehouse
-      await api.updateExtraction(extraction.id, { warehouse_id: warehouseId })
-      fetchDocExtractions()
+      // Update extraction with warehouse (convert to int)
+      const whId = warehouseId ? parseInt(warehouseId, 10) : null
+      if (whId) {
+        await api.updateExtraction(extraction.id, { warehouse_id: whId })
+        fetchDocExtractions()
+      }
     } catch (err) {
       console.error('Failed to update warehouse:', err)
     }
@@ -618,10 +621,12 @@ function Documents() {
             <tbody className="bg-white divide-y divide-gray-200">
               {documents.map((doc) => {
                 const extraction = docExtractions[doc.id]
-                const outputs = extraction?.outputs_json ? (
-                  typeof extraction.outputs_json === 'string'
-                    ? JSON.parse(extraction.outputs_json)
-                    : extraction.outputs_json
+                // API returns 'outputs', not 'outputs_json'
+                const rawOutputs = extraction?.outputs || extraction?.outputs_json
+                const outputs = rawOutputs ? (
+                  typeof rawOutputs === 'string'
+                    ? JSON.parse(rawOutputs)
+                    : rawOutputs
                 ) : {}
 
                 const orderId = outputs.vehicle_lot || outputs.lot_number || outputs.stock_number || outputs.order_id || '-'

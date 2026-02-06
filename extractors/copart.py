@@ -179,10 +179,59 @@ class CopartExtractor(BaseExtractor):
         """
         US_STATES = r"AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY"
 
+        def is_valid_street(s: str) -> bool:
+            """Check if string is a valid street address (not a numeric ID)."""
+            if not s:
+                return False
+            s = s.strip()
+            # Street starting with 6+ digits = likely a seller/member ID
+            if re.match(r'^\d{6,}', s):
+                return False
+            # Street that is only digits = not valid
+            if re.match(r'^\d+$', s.replace(' ', '')):
+                return False
+            # Valid street should have a number followed by letters
+            if re.match(r'^\d{1,5}\s+[A-Za-z]', s):
+                return True
+            # Also accept "US ROUTE" or "STATE HIGHWAY" patterns
+            if re.search(r'(?:US\s*)?(?:ROUTE|RT|HWY|HIGHWAY)', s, re.IGNORECASE):
+                return True
+            return False
+
         street, city, state, zip_code = None, None, None, None
 
-        # Strategy 0 (PRIORITY): Look specifically after "PHYSICAL ADDRESS OF LOT" label
-        # This is the most reliable method for Copart documents
+        # Strategy 0A (HIGHEST PRIORITY): Look for well-formed address with BLVD/AVE/ST etc.
+        # Pattern: <number> <street name with suffix> <city> <state> <zip>
+        # Example: "4810 N. LAMB BLVD LAS VEGAS NV 89115"
+        street_types = r'(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY)'
+        named_addr_pattern = rf'(\d{{1,5}}\s+[A-Z0-9\.\s]+?{street_types})[,\.\s]+([A-Z]{{2,}}(?:\s+[A-Z]{{2,}})?)\s+({US_STATES})\s+(\d{{5}})'
+        named_matches = re.findall(named_addr_pattern, text, re.IGNORECASE)
+
+        for match in named_matches:
+            potential_street = match[0].strip()
+            potential_city = match[1].strip().upper()
+            potential_state = match[2].strip().upper()
+            potential_zip = match[3].strip()
+
+            # Skip if this looks like buyer/member address
+            if any(ind in potential_city for ind in ['AYER', 'BROADWAY', 'MOTORING', 'FITCHBURG']):
+                continue
+            if any(ind in potential_street.upper() for ind in ['AYER', 'BROADWAY', 'MOTORING', 'FITCHBURG', 'MEMBER']):
+                continue
+
+            if is_valid_street(potential_street):
+                # Clean up street
+                potential_street = re.sub(r'\s{2,}', ' ', potential_street)
+                return Address(
+                    name="Copart",
+                    street=potential_street.title(),
+                    city=potential_city.title(),
+                    state=potential_state,
+                    postal_code=potential_zip,
+                )
+
+        # Strategy 0B: Look specifically after "PHYSICAL ADDRESS OF LOT" label
+        # This is reliable for Copart documents
         # Pattern: PHYSICAL ADDRESS OF LOT:\n<street>\n<city> <state> <zip>
         physical_section_pattern = r'PHYSICAL\s*ADDRESS\s*(?:OF\s*)?LOT[:\s]*\n?\s*([^\n]+)\n\s*([A-Z][A-Za-z\s]+)\s+(' + US_STATES + r')\s+(\d{5})'
         physical_match = re.search(physical_section_pattern, text, re.IGNORECASE)
@@ -193,9 +242,8 @@ class CopartExtractor(BaseExtractor):
             potential_state = physical_match.group(3).strip().upper()
             potential_zip = physical_match.group(4).strip()
 
-            # Validate street is not a numeric ID (8+ digits = likely seller/member ID)
-            # Valid addresses start with a house number (1-5 digits) followed by street name
-            if not re.match(r'^\d{6,}', potential_street) and re.match(r'^\d{1,5}\s+[A-Za-z]', potential_street):
+            # Validate street is not a numeric ID
+            if is_valid_street(potential_street):
                 # Clean the street address
                 potential_street = re.sub(r'\s{2,}', ' ', potential_street)
                 # Remove any trailing noise (SELLER info that leaked in)
@@ -230,12 +278,8 @@ class CopartExtractor(BaseExtractor):
             potential_state = match[2].strip().upper()
             potential_zip = match[3].strip()
 
-            # CRITICAL: Skip if street starts with 6+ digits (it's an ID, not address)
-            if re.match(r'^\d{6,}', potential_street):
-                continue
-
-            # Skip if street is JUST a number (no street name)
-            if re.match(r'^\d+$', potential_street.replace(' ', '')):
+            # Use centralized validation
+            if not is_valid_street(potential_street):
                 continue
 
             # Skip if this looks like buyer address (check context)

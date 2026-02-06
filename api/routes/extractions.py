@@ -1028,6 +1028,21 @@ def run_extraction(
             # Store warnings in errors_json for visibility but don't block
             errors_to_save = invariant_warnings if invariant_warnings else None
 
+        # =================================================================
+        # AUTO-SET pickup_location_type for auction sources
+        # COPART/IAA/MANHEIM → pickup_location_type = AUCTION
+        # =================================================================
+        auction_source = outputs.get("auction_source", "").upper() or auction_type.code
+        if auction_source in ("COPART", "IAA", "MANHEIM"):
+            if not outputs.get("pickup_location_type"):
+                outputs["pickup_location_type"] = "AUCTION"
+                field_sources["pickup_location_type"] = {
+                    "value": "AUCTION",
+                    "source": "AUCTION_CONST",
+                    "confidence": 1.0,
+                    "method": "auto_set_for_auction_source",
+                }
+
         # Update run with results including metrics and field sources
         update_kwargs = {
             "status": run_status,
@@ -1447,49 +1462,86 @@ async def list_runs_needing_review(
 @router.get("/{id}", response_model=ExtractionDetailResponse)
 async def get_extraction_run(id: int):
     """Get detailed extraction run with field-level outputs."""
-    run = ExtractionRunRepository.get_by_id(id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Extraction run not found")
+    import logging
+    logger = logging.getLogger(__name__)
 
-    doc = DocumentRepository.get_by_id(run.document_id)
-    at = AuctionTypeRepository.get_by_id(run.auction_type_id)
+    try:
+        run = ExtractionRunRepository.get_by_id(id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Extraction run not found")
 
-    # Get review items (extracted fields)
-    review_items = ReviewItemRepository.get_by_run(run.id)
-    fields = [
-        ExtractionFieldOutput(
-            source_key=item.source_key,
-            internal_key=item.internal_key,
-            cd_key=item.cd_key,
-            value=item.predicted_value,
-            confidence=item.confidence,
+        doc = DocumentRepository.get_by_id(run.document_id)
+        at = AuctionTypeRepository.get_by_id(run.auction_type_id)
+
+        # Get review items (extracted fields) with safe type conversion
+        review_items = ReviewItemRepository.get_by_run(run.id)
+        fields = []
+        for item in review_items:
+            try:
+                # Ensure predicted_value is a string
+                value = item.predicted_value
+                if value is not None and not isinstance(value, str):
+                    value = str(value)
+
+                # Ensure confidence is a float or None
+                confidence = item.confidence
+                if confidence is not None:
+                    try:
+                        confidence = float(confidence)
+                    except (TypeError, ValueError):
+                        confidence = None
+
+                fields.append(ExtractionFieldOutput(
+                    source_key=item.source_key or "",
+                    internal_key=item.internal_key,
+                    cd_key=item.cd_key,
+                    value=value,
+                    confidence=confidence,
+                ))
+            except Exception as field_err:
+                logger.warning(f"Skipping field {item.source_key}: {field_err}")
+                continue
+
+        # Ensure outputs_json is a dict
+        outputs = run.outputs_json
+        if outputs is None:
+            outputs = {}
+        elif isinstance(outputs, str):
+            import json
+            try:
+                outputs = json.loads(outputs)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse outputs_json for run {id}")
+                outputs = {}
+
+        run_response = ExtractionRunResponse(
+            id=run.id,
+            uuid=run.uuid,
+            document_id=run.document_id,
+            document_filename=doc.filename if doc else None,
+            auction_type_id=run.auction_type_id,
+            auction_type_code=at.code if at else None,
+            extractor_kind=run.extractor_kind,
+            model_version_id=run.model_version_id,
+            status=run.status,
+            extraction_score=run.extraction_score,
+            outputs=outputs,
+            errors=run.errors_json,
+            processing_time_ms=run.processing_time_ms,
+            created_at=run.created_at,
+            completed_at=run.completed_at,
         )
-        for item in review_items
-    ]
 
-    run_response = ExtractionRunResponse(
-        id=run.id,
-        uuid=run.uuid,
-        document_id=run.document_id,
-        document_filename=doc.filename if doc else None,
-        auction_type_id=run.auction_type_id,
-        auction_type_code=at.code if at else None,
-        extractor_kind=run.extractor_kind,
-        model_version_id=run.model_version_id,
-        status=run.status,
-        extraction_score=run.extraction_score,
-        outputs=run.outputs_json,
-        errors=run.errors_json,
-        processing_time_ms=run.processing_time_ms,
-        created_at=run.created_at,
-        completed_at=run.completed_at,
-    )
-
-    return ExtractionDetailResponse(
-        run=run_response,
-        fields=fields,
-        raw_text_preview=doc.raw_text[:1000] if doc and doc.raw_text else None,
-    )
+        return ExtractionDetailResponse(
+            run=run_response,
+            fields=fields,
+            raw_text_preview=doc.raw_text[:1000] if doc and doc.raw_text else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error fetching extraction {id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 class ExtractionUpdateRequest(BaseModel):
@@ -1506,8 +1558,10 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
     Update extraction run with corrected field values or status change.
 
     Used by the Review & Listing page to save field edits before export.
+    When warehouse_id is provided, automatically populates delivery fields.
     """
     import json
+    from api.routes.warehouses import WarehouseRepository
 
     run = ExtractionRunRepository.get_by_id(id)
     if not run:
@@ -1520,19 +1574,34 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
     # Build updates
     updates = {}
 
+    # Get existing outputs
+    existing_outputs = run.outputs_json or {}
+    if isinstance(existing_outputs, str):
+        existing_outputs = json.loads(existing_outputs)
+
+    # Start with existing, merge new outputs if provided
+    merged = {**existing_outputs}
     if data.outputs_json is not None:
-        # Merge with existing outputs
-        existing_outputs = run.outputs_json or {}
-        if isinstance(existing_outputs, str):
-            existing_outputs = json.loads(existing_outputs)
+        merged = {**merged, **data.outputs_json}
 
-        # Merge new outputs
-        merged = {**existing_outputs, **data.outputs_json}
+    # Handle warehouse_id - populate delivery fields from warehouse
+    if data.warehouse_id is not None:
+        merged["warehouse_id"] = data.warehouse_id
 
-        # Add warehouse_id if provided
-        if data.warehouse_id is not None:
-            merged["warehouse_id"] = data.warehouse_id
+        # Fetch warehouse and populate delivery fields
+        warehouse = WarehouseRepository.get_by_id(data.warehouse_id)
+        if warehouse:
+            merged["delivery_name"] = warehouse.name
+            merged["delivery_address"] = warehouse.address
+            merged["delivery_city"] = warehouse.city
+            merged["delivery_state"] = warehouse.state
+            merged["delivery_zip"] = warehouse.zip_code
+            merged["delivery_location_type"] = warehouse.location_type or "CROSS_DOCK"
+            if warehouse.buyer_reference:
+                merged["delivery_buyer_number"] = warehouse.buyer_reference
 
+    # Only update if something changed
+    if data.outputs_json is not None or data.warehouse_id is not None:
         updates["outputs_json"] = json.dumps(merged)
 
     if data.status is not None:
