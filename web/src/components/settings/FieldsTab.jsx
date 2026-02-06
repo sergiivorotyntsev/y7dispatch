@@ -80,49 +80,149 @@ const SOURCES = {
   },
 }
 
-function FieldCard({ field }) {
+function FieldCard({ field, onEdit, expanded, onToggle }) {
   const source = SOURCES[field.source_type] || SOURCES.extracted
   const category = CATEGORIES[field.category] || CATEGORIES.cd_optional
 
   return (
-    <div className={`p-3 rounded border ${source.bgClass} border-gray-200`}>
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">{source.icon}</span>
-            <span className="font-medium text-sm">{field.label}</span>
-            {field.required && (
-              <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded">Required</span>
-            )}
-            {field.export_only && (
-              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded">Export Only</span>
-            )}
+    <div className={`rounded border ${source.bgClass} border-gray-200`}>
+      <div
+        className="p-3 cursor-pointer hover:bg-opacity-80"
+        onClick={() => onToggle && onToggle(field.key)}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{source.icon}</span>
+              <span className="font-medium text-sm">{field.label}</span>
+              {field.required && (
+                <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded">Required</span>
+              )}
+              {field.export_only && (
+                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded">Export Only</span>
+              )}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              <code className="bg-gray-100 px-1 rounded">{field.key}</code>
+              {field.cd_api_key && (
+                <span className="ml-2 text-gray-400">→ {field.cd_api_key}</span>
+              )}
+            </div>
           </div>
-          <div className="mt-1 text-xs text-gray-500">
-            <code className="bg-gray-100 px-1 rounded">{field.key}</code>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs px-2 py-0.5 rounded ${category.badgeClass}`}>
+              {category.label}
+            </span>
+            <svg
+              className={`w-4 h-4 text-gray-400 transform transition-transform ${expanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
         </div>
-        <span className={`text-xs px-2 py-0.5 rounded ${category.badgeClass}`}>
-          {category.label}
-        </span>
       </div>
-      {field.extraction_hint && (
-        <div className="mt-2 text-xs text-gray-600 italic">
-          Hint: {field.extraction_hint}
+
+      {/* Expanded Configuration */}
+      {expanded && (
+        <div className="p-3 pt-0 border-t border-gray-200 bg-white bg-opacity-50">
+          <div className="grid grid-cols-2 gap-4 mt-3">
+            {/* Source Type */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Source Type
+              </label>
+              <select
+                value={field.source_type}
+                onChange={(e) => onEdit && onEdit(field.key, { source_type: e.target.value })}
+                className="form-select form-select-sm text-xs w-full"
+              >
+                {Object.entries(SOURCES).map(([key, config]) => (
+                  <option key={key} value={key}>{config.icon} {config.label}</option>
+                ))}
+                <option value="market_api">📊 Market API</option>
+              </select>
+            </div>
+
+            {/* Default Value */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Default Value
+              </label>
+              {field.options?.length > 0 ? (
+                <select
+                  value={field.default_value || ''}
+                  onChange={(e) => onEdit && onEdit(field.key, { default_value: e.target.value })}
+                  className="form-select form-select-sm text-xs w-full"
+                >
+                  <option value="">— None —</option>
+                  {field.options.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={field.field_type === 'number' ? 'number' : 'text'}
+                  value={field.default_value || ''}
+                  onChange={(e) => onEdit && onEdit(field.key, { default_value: e.target.value })}
+                  className="form-input form-input-sm text-xs w-full"
+                  placeholder="Enter default..."
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Toggles */}
+          <div className="flex items-center gap-6 mt-3">
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={field.editable_in_review !== false}
+                onChange={(e) => onEdit && onEdit(field.key, { editable_in_review: e.target.checked })}
+                className="form-checkbox h-3.5 w-3.5"
+              />
+              <span className="text-gray-700">Editable in Review</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={field.required || false}
+                onChange={(e) => onEdit && onEdit(field.key, { required: e.target.checked })}
+                className="form-checkbox h-3.5 w-3.5"
+              />
+              <span className="text-gray-700">Required for Export</span>
+            </label>
+          </div>
+
+          {/* Extraction Hint */}
+          {field.extraction_hint && (
+            <div className="mt-3 text-xs text-gray-600 italic bg-gray-100 p-2 rounded">
+              Extraction hint: {field.extraction_hint}
+            </div>
+          )}
+
+          {/* Help Text */}
+          {field.help_text && (
+            <div className="mt-2 text-xs text-gray-500">
+              {field.help_text}
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function CategorySection({ category, fields }) {
+function CategorySection({ category, fields, expandedField, onToggleField, onEditField }) {
   const config = CATEGORIES[category] || CATEGORIES.cd_optional
-  const [expanded, setExpanded] = useState(true)
+  const [sectionExpanded, setSectionExpanded] = useState(true)
 
   return (
     <div className={`rounded-lg border ${config.borderClass} ${config.bgClass} mb-4`}>
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setSectionExpanded(!sectionExpanded)}
         className="w-full px-4 py-3 flex items-center justify-between text-left"
       >
         <div>
@@ -135,7 +235,7 @@ function CategorySection({ category, fields }) {
           <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
         </div>
         <svg
-          className={`w-5 h-5 text-gray-400 transform transition-transform ${expanded ? 'rotate-180' : ''}`}
+          className={`w-5 h-5 text-gray-400 transform transition-transform ${sectionExpanded ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -143,10 +243,16 @@ function CategorySection({ category, fields }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      {expanded && (
+      {sectionExpanded && (
         <div className="px-4 pb-4 grid gap-2">
           {fields.map(field => (
-            <FieldCard key={field.key} field={field} />
+            <FieldCard
+              key={field.key}
+              field={field}
+              expanded={expandedField === field.key}
+              onToggle={onToggleField}
+              onEdit={onEditField}
+            />
           ))}
         </div>
       )}
@@ -242,10 +348,47 @@ function FieldsTab() {
   const [taxonomy, setTaxonomy] = useState(null)
   const [schema, setSchema] = useState(null)
   const [view, setView] = useState('category') // 'category' or 'source'
+  const [expandedField, setExpandedField] = useState(null)
+  const [pendingChanges, setPendingChanges] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState(null)
 
   useEffect(() => {
     loadData()
   }, [])
+
+  // Handle field expansion toggle
+  function handleToggleField(fieldKey) {
+    setExpandedField(prev => prev === fieldKey ? null : fieldKey)
+  }
+
+  // Handle field edit (stores changes locally until save)
+  function handleEditField(fieldKey, updates) {
+    setPendingChanges(prev => ({
+      ...prev,
+      [fieldKey]: { ...(prev[fieldKey] || {}), ...updates }
+    }))
+  }
+
+  // Save pending changes
+  async function handleSaveChanges() {
+    if (Object.keys(pendingChanges).length === 0) return
+
+    setSaving(true)
+    setSaveMessage(null)
+    try {
+      // In a full implementation, this would call an API to persist changes
+      // For now, we'll just show success and clear pending changes
+      // await api.updateFieldConfigs(pendingChanges)
+
+      setSaveMessage({ type: 'success', text: 'Field configuration saved (demo mode - API integration pending)' })
+      setPendingChanges({})
+    } catch (err) {
+      setSaveMessage({ type: 'error', text: `Failed to save: ${err.message}` })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function loadData() {
     setLoading(true)
@@ -332,31 +475,58 @@ function FieldsTab() {
       {/* Mode Summary */}
       <ModeSummary taxonomy={taxonomy} />
 
-      {/* View Toggle */}
-      <div className="flex items-center gap-4 mb-4">
-        <span className="text-sm font-medium text-gray-700">View by:</span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setView('category')}
-            className={`px-3 py-1.5 text-sm rounded ${
-              view === 'category'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Category
-          </button>
-          <button
-            onClick={() => setView('source')}
-            className={`px-3 py-1.5 text-sm rounded ${
-              view === 'source'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Source Type
-          </button>
+      {/* Save Message */}
+      {saveMessage && (
+        <div className={`mb-4 p-3 rounded-lg ${
+          saveMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+        }`}>
+          {saveMessage.text}
         </div>
+      )}
+
+      {/* View Toggle and Save */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-gray-700">View by:</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setView('category')}
+              className={`px-3 py-1.5 text-sm rounded ${
+                view === 'category'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Category
+            </button>
+            <button
+              onClick={() => setView('source')}
+              className={`px-3 py-1.5 text-sm rounded ${
+                view === 'source'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Source Type
+            </button>
+          </div>
+        </div>
+        {Object.keys(pendingChanges).length > 0 && (
+          <button
+            onClick={handleSaveChanges}
+            disabled={saving}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {saving ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Saving...
+              </>
+            ) : (
+              <>Save Changes ({Object.keys(pendingChanges).length})</>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Field Lists */}
@@ -367,6 +537,9 @@ function FieldsTab() {
               key={category}
               category={category}
               fields={fieldsByCategory[category] || []}
+              expandedField={expandedField}
+              onToggleField={handleToggleField}
+              onEditField={handleEditField}
             />
           ))}
         </div>

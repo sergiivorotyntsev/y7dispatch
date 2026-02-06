@@ -276,6 +276,31 @@ export const api = {
   deleteWarehouseFull: (id, hard = false) => request(`/warehouses/${id}?hard=${hard}`, {
     method: 'DELETE',
   }),
+  // State-first warehouse selection (Block 10)
+  getWarehouseStates: () => request('/warehouses/states/list'),
+  getBrokersByState: (state) => request(`/warehouses/brokers/by-state?state=${state}`),
+  filterWarehouses: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return request(`/warehouses/filter${query ? `?${query}` : ''}`)
+  },
+
+  // Brokers API
+  listBrokers: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return request(`/brokers/${query ? `?${query}` : ''}`)
+  },
+  getBroker: (id) => request(`/brokers/${id}`),
+  createBroker: (data) => request('/brokers/', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  updateBroker: (id, data) => request(`/brokers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  deleteBroker: (id, hard = false) => request(`/brokers/${id}?hard=${hard}`, {
+    method: 'DELETE',
+  }),
 
   // Templates / Field Mappings
   listTemplates: () => request('/templates/'),

@@ -80,6 +80,20 @@ class PickupRequirements(BaseModel):
     special_instructions: Optional[str] = None
 
 
+# CD API Location Types
+LOCATION_TYPES = [
+    "RESIDENCE",
+    "BUSINESS",
+    "DEALER",
+    "AUCTION",
+    "PORT",
+    "STORAGE_FACILITY",
+    "BODY_SHOP",
+    "CROSS_DOCK",
+    "OTHER",
+]
+
+
 class WarehouseCreate(BaseModel):
     """Request to create a warehouse."""
 
@@ -96,11 +110,22 @@ class WarehouseCreate(BaseModel):
     contact: Optional[ContactInfo] = None
     requirements: Optional[PickupRequirements] = None
     is_active: bool = True
+    # V2 fields
+    location_type: str = Field("CROSS_DOCK", description="CD API location type")
+    buyer_reference: Optional[str] = Field(None, max_length=50, description="Broker buyer code (e.g., DAYTONACARGO)")
+    broker_id: Optional[int] = Field(None, description="Associated broker ID")
 
     @field_validator("code")
     @classmethod
     def code_uppercase(cls, v: str) -> str:
         return v.upper()
+
+    @field_validator("location_type")
+    @classmethod
+    def validate_location_type(cls, v: str) -> str:
+        if v not in LOCATION_TYPES:
+            raise ValueError(f"Invalid location type. Must be one of: {LOCATION_TYPES}")
+        return v
 
 
 class WarehouseUpdate(BaseModel):
@@ -118,6 +143,17 @@ class WarehouseUpdate(BaseModel):
     contact: Optional[ContactInfo] = None
     requirements: Optional[PickupRequirements] = None
     is_active: Optional[bool] = None
+    # V2 fields
+    location_type: Optional[str] = None
+    buyer_reference: Optional[str] = None
+    broker_id: Optional[int] = None
+
+    @field_validator("location_type")
+    @classmethod
+    def validate_location_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in LOCATION_TYPES:
+            raise ValueError(f"Invalid location type. Must be one of: {LOCATION_TYPES}")
+        return v
 
 
 class WarehouseResponse(BaseModel):
@@ -137,6 +173,11 @@ class WarehouseResponse(BaseModel):
     contact: Optional[ContactInfo] = None
     requirements: Optional[PickupRequirements] = None
     is_active: bool = True
+    # V2 fields
+    location_type: str = "CROSS_DOCK"
+    buyer_reference: Optional[str] = None
+    broker_id: Optional[int] = None
+    broker_name: Optional[str] = None  # Joined from brokers table
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -172,12 +213,32 @@ def init_warehouses_schema():
                 contact_json TEXT,
                 requirements_json TEXT,
                 is_active BOOLEAN DEFAULT TRUE,
+                location_type TEXT DEFAULT 'CROSS_DOCK',
+                buyer_reference TEXT,
+                broker_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_active ON warehouses(is_active)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_state ON warehouses(state)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_broker ON warehouses(broker_id)")
+
+        # Migration: Add V2 columns if they don't exist
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN location_type TEXT DEFAULT 'CROSS_DOCK'")
+        except Exception:
+            pass  # Column exists
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN buyer_reference TEXT")
+        except Exception:
+            pass  # Column exists
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN broker_id INTEGER")
+        except Exception:
+            pass  # Column exists
+
         conn.commit()
 
 
@@ -207,8 +268,8 @@ async def create_warehouse(data: WarehouseCreate):
             INSERT INTO warehouses
             (code, name, address, city, state, zip_code, country, timezone,
              hours_json, appointment_rules_json, contact_json, requirements_json,
-             is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             is_active, location_type, buyer_reference, broker_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 data.code,
@@ -224,6 +285,9 @@ async def create_warehouse(data: WarehouseCreate):
                 data.contact.model_dump_json() if data.contact else None,
                 data.requirements.model_dump_json() if data.requirements else None,
                 data.is_active,
+                data.location_type,
+                data.buyer_reference,
+                data.broker_id,
                 now,
                 now,
             ),
@@ -325,6 +389,12 @@ async def update_warehouse(id: int, data: WarehouseUpdate):
         updates["requirements_json"] = data.requirements.model_dump_json()
     if data.is_active is not None:
         updates["is_active"] = data.is_active
+    if data.location_type is not None:
+        updates["location_type"] = data.location_type
+    if data.buyer_reference is not None:
+        updates["buyer_reference"] = data.buyer_reference
+    if data.broker_id is not None:
+        updates["broker_id"] = data.broker_id
 
     if not updates:
         return await get_warehouse(id)
@@ -365,6 +435,142 @@ async def delete_warehouse(
             raise HTTPException(status_code=404, detail="Warehouse not found")
 
     return {"status": "ok", "deleted": id}
+
+
+# =============================================================================
+# STATE-FIRST SELECTION ENDPOINTS (Block 10)
+# =============================================================================
+
+
+class BrokerWithCount(BaseModel):
+    """Broker with warehouse count."""
+
+    id: int
+    code: str
+    name: str
+    warehouse_count: int
+
+
+@router.get("/states/list", response_model=list[str])
+async def list_warehouse_states():
+    """
+    Get all unique states that have warehouses.
+    Used for state-first warehouse selection flow.
+    """
+    init_warehouses_schema()
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT state FROM warehouses
+            WHERE is_active = TRUE AND state IS NOT NULL AND state != ''
+            ORDER BY state ASC
+            """
+        ).fetchall()
+
+    return [row["state"] for row in rows]
+
+
+@router.get("/brokers/by-state", response_model=list[BrokerWithCount])
+async def list_brokers_by_state(state: str = Query(..., description="State code (e.g., TX)")):
+    """
+    Get brokers with warehouses in a specific state.
+    Used for state-first warehouse selection flow.
+    """
+    init_warehouses_schema()
+
+    with get_connection() as conn:
+        # First check if brokers table exists
+        brokers_exist = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='brokers'"
+        ).fetchone()
+
+        if brokers_exist:
+            rows = conn.execute(
+                """
+                SELECT b.id, b.code, b.name, COUNT(w.id) as warehouse_count
+                FROM brokers b
+                JOIN warehouses w ON w.broker_id = b.id
+                WHERE w.is_active = TRUE AND UPPER(w.state) = UPPER(?)
+                GROUP BY b.id, b.code, b.name
+                ORDER BY b.name ASC
+                """,
+                (state,),
+            ).fetchall()
+            return [
+                BrokerWithCount(
+                    id=row["id"],
+                    code=row["code"],
+                    name=row["name"],
+                    warehouse_count=row["warehouse_count"],
+                )
+                for row in rows
+            ]
+        else:
+            # Fallback: return warehouses grouped by buyer_reference if no brokers table
+            rows = conn.execute(
+                """
+                SELECT buyer_reference, COUNT(*) as warehouse_count
+                FROM warehouses
+                WHERE is_active = TRUE AND UPPER(state) = UPPER(?)
+                    AND buyer_reference IS NOT NULL AND buyer_reference != ''
+                GROUP BY buyer_reference
+                ORDER BY buyer_reference ASC
+                """,
+                (state,),
+            ).fetchall()
+            return [
+                BrokerWithCount(
+                    id=0,
+                    code=row["buyer_reference"] or "",
+                    name=row["buyer_reference"] or "",
+                    warehouse_count=row["warehouse_count"],
+                )
+                for row in rows
+            ]
+
+
+@router.get("/filter", response_model=WarehouseListResponse)
+async def filter_warehouses(
+    state: Optional[str] = Query(None, description="Filter by state"),
+    broker_id: Optional[int] = Query(None, description="Filter by broker ID"),
+    buyer_reference: Optional[str] = Query(None, description="Filter by buyer reference code"),
+    active_only: bool = Query(True, description="Only return active warehouses"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """
+    Filter warehouses by state and/or broker.
+    Used for state-first warehouse selection flow.
+    """
+    init_warehouses_schema()
+
+    sql = "SELECT * FROM warehouses WHERE 1=1"
+    params = []
+
+    if active_only:
+        sql += " AND is_active = TRUE"
+    if state:
+        sql += " AND UPPER(state) = UPPER(?)"
+        params.append(state)
+    if broker_id:
+        sql += " AND broker_id = ?"
+        params.append(broker_id)
+    if buyer_reference:
+        sql += " AND buyer_reference = ?"
+        params.append(buyer_reference)
+
+    count_sql = sql.replace("SELECT *", "SELECT COUNT(*)")
+
+    sql += " ORDER BY name ASC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        total = conn.execute(count_sql, params[:-2] if params else []).fetchone()[0]
+
+    items = [_row_to_response(dict(row)) for row in rows]
+    return WarehouseListResponse(items=items, total=total)
 
 
 # =============================================================================
@@ -417,6 +623,10 @@ def _row_to_response(row: dict) -> WarehouseResponse:
         contact=contact,
         requirements=requirements,
         is_active=row.get("is_active", True),
+        location_type=row.get("location_type", "CROSS_DOCK"),
+        buyer_reference=row.get("buyer_reference"),
+        broker_id=row.get("broker_id"),
+        broker_name=row.get("broker_name"),  # From joined query
         created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )

@@ -243,7 +243,7 @@ LISTING_FIELDS: list[ListingField] = [
     ),
     ListingField(
         key="vehicle_lot",
-        label="Lot Number",
+        label="Lot/Stock Number",
         section=FieldSection.VEHICLE,
         cd_api_key="vehicles[0].lotNumber",
         field_type=FieldType.TEXT,
@@ -252,12 +252,50 @@ LISTING_FIELDS: list[ListingField] = [
         category=FieldCategory.CD_OPTIONAL,
         source_type=FieldSourceType.EXTRACTED,
         max_length=50,
-        help_text="Auction lot number",
-        extraction_hint="Look for LOT, LOT #, LOT NUMBER",
+        help_text="Auction lot number (Copart: Lot #, IAA: Stock #)",
+        extraction_hint="LOT, LOT #, LOT NUMBER, STOCK, STOCK #, STOCK NUMBER",
+    ),
+    ListingField(
+        key="vehicle_additional_info",
+        label="Additional Vehicle Info",
+        section=FieldSection.VEHICLE,
+        cd_api_key="vehicles[0].additionalInfo",
+        field_type=FieldType.TEXTAREA,
+        required=False,
+        display_order=9,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.COMPUTED,
+        max_length=500,
+        help_text="Notes visible to assigned carrier (includes Gate Pass)",
     ),
     # -------------------------------------------------------------------------
     # PICKUP LOCATION (Stop 1) - Extracted from auction document
     # -------------------------------------------------------------------------
+    ListingField(
+        key="pickup_location_type",
+        label="Location Type",
+        section=FieldSection.PICKUP,
+        cd_api_key="stops[0].locationType",
+        field_type=FieldType.SELECT,
+        required=True,
+        export_only=True,
+        display_order=0,
+        category=FieldCategory.CD_REQUIRED,
+        source_type=FieldSourceType.CONSTANT,
+        options=[
+            "RESIDENCE",
+            "BUSINESS",
+            "DEALER",
+            "AUCTION",
+            "PORT",
+            "STORAGE_FACILITY",
+            "BODY_SHOP",
+            "CROSS_DOCK",
+            "OTHER",
+        ],
+        default_value="AUCTION",
+        help_text="Type of pickup location",
+    ),
     ListingField(
         key="pickup_name",
         label="Location Name",
@@ -369,21 +407,74 @@ LISTING_FIELDS: list[ListingField] = [
         help_text="Business hours for pickup",
     ),
     ListingField(
+        key="pickup_buyer_number",
+        label="Buyer Reference Number",
+        section=FieldSection.PICKUP,
+        cd_api_key="stops[0].buyerNumber",
+        field_type=FieldType.TEXT,
+        required=False,
+        display_order=9,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.EXTRACTED,
+        max_length=50,
+        help_text="Buyer ID / Member number for auction pickup",
+        extraction_hint="MEMBER, BUYER ID, MEMBER #, BUYER NUMBER",
+    ),
+    ListingField(
+        key="pickup_email",
+        label="Email",
+        section=FieldSection.PICKUP,
+        cd_api_key="stops[0].email",
+        field_type=FieldType.TEXT,
+        required=False,
+        display_order=10,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.CONSTANT,
+        max_length=100,
+        help_text="Email address for pickup contact",
+    ),
+    ListingField(
         key="pickup_notes",
         label="Pickup Notes",
         section=FieldSection.PICKUP,
         cd_api_key="stops[0].notes",
         field_type=FieldType.TEXTAREA,
         required=False,
-        display_order=9,
+        display_order=11,
         category=FieldCategory.CD_OPTIONAL,
         source_type=FieldSourceType.USER_INPUT,
         max_length=1000,
-        help_text="Special instructions for pickup",
+        help_text="Special instructions for pickup (includes operating hours)",
     ),
     # -------------------------------------------------------------------------
     # DELIVERY LOCATION (Stop 2) - From warehouse reference data
     # -------------------------------------------------------------------------
+    ListingField(
+        key="delivery_location_type",
+        label="Location Type",
+        section=FieldSection.DELIVERY,
+        cd_api_key="stops[1].locationType",
+        field_type=FieldType.SELECT,
+        required=True,
+        export_only=True,
+        display_order=0,
+        category=FieldCategory.CD_REQUIRED,
+        source_type=FieldSourceType.WAREHOUSE_REF,
+        options=[
+            "RESIDENCE",
+            "BUSINESS",
+            "DEALER",
+            "AUCTION",
+            "PORT",
+            "STORAGE_FACILITY",
+            "BODY_SHOP",
+            "CROSS_DOCK",
+            "OTHER",
+        ],
+        default_value="CROSS_DOCK",
+        help_text="Type of delivery location",
+        editable_in_review=False,
+    ),
     ListingField(
         key="delivery_name",
         label="Location Name",
@@ -499,13 +590,41 @@ LISTING_FIELDS: list[ListingField] = [
         editable_in_review=False,
     ),
     ListingField(
+        key="delivery_email",
+        label="Email",
+        section=FieldSection.DELIVERY,
+        cd_api_key="stops[1].email",
+        field_type=FieldType.TEXT,
+        required=False,
+        display_order=9,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.WAREHOUSE_REF,
+        max_length=100,
+        help_text="Email address for delivery contact",
+        editable_in_review=False,
+    ),
+    ListingField(
+        key="delivery_buyer_number",
+        label="Buyer Reference Number",
+        section=FieldSection.DELIVERY,
+        cd_api_key="stops[1].buyerNumber",
+        field_type=FieldType.TEXT,
+        required=False,
+        display_order=10,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.WAREHOUSE_REF,
+        max_length=50,
+        help_text="Broker buyer reference code (e.g., DAYTONACARGO)",
+        editable_in_review=False,
+    ),
+    ListingField(
         key="delivery_notes",
         label="Delivery Notes",
         section=FieldSection.DELIVERY,
         cd_api_key="stops[1].notes",
         field_type=FieldType.TEXTAREA,
         required=False,
-        display_order=9,
+        display_order=11,
         category=FieldCategory.CD_OPTIONAL,
         source_type=FieldSourceType.USER_INPUT,
         max_length=1000,
@@ -552,6 +671,65 @@ LISTING_FIELDS: list[ListingField] = [
         source_type=FieldSourceType.CONSTANT,
         options=["CASH", "CHECK", "CERTIFIED_CHECK", "MONEY_ORDER", "COMCHECK", "ACH"],
         default_value="CASH",
+    ),
+    ListingField(
+        key="balance_payment_method",
+        label="Balance Payment Method",
+        section=FieldSection.PRICING,
+        cd_api_key="price.balance.balancePaymentMethod",
+        field_type=FieldType.SELECT,
+        required=False,
+        display_order=4,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.CONSTANT,
+        options=[
+            "CASH",
+            "CHECK",
+            "CERTIFIED_FUNDS",
+            "COMCHECK",
+            "ACH",
+            "COMPANY_CHECK",
+        ],
+        default_value="CERTIFIED_FUNDS",
+        help_text="Payment method for balance (after COD)",
+    ),
+    ListingField(
+        key="balance_payment_time",
+        label="Balance Payment Time",
+        section=FieldSection.PRICING,
+        cd_api_key="price.balance.paymentTime",
+        field_type=FieldType.SELECT,
+        required=False,
+        display_order=5,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.CONSTANT,
+        options=[
+            "IMMEDIATELY",
+            "2_BUSINESS_DAYS_QUICK_PAY",
+            "5_BUSINESS_DAYS",
+            "15_BUSINESS_DAYS",
+            "30_BUSINESS_DAYS",
+        ],
+        default_value="2_BUSINESS_DAYS_QUICK_PAY",
+        help_text="When balance payment is due",
+    ),
+    ListingField(
+        key="balance_terms_begin_on",
+        label="Balance Terms Begin On",
+        section=FieldSection.PRICING,
+        cd_api_key="price.balance.balancePaymentTermsBeginOn",
+        field_type=FieldType.SELECT,
+        required=False,
+        display_order=6,
+        category=FieldCategory.CD_OPTIONAL,
+        source_type=FieldSourceType.CONSTANT,
+        options=[
+            "RECEIVING_SIGNED_BOL",
+            "VEHICLE_PICKUP",
+            "VEHICLE_DELIVERY",
+        ],
+        default_value="RECEIVING_SIGNED_BOL",
+        help_text="Event that starts the payment term countdown",
     ),
     # -------------------------------------------------------------------------
     # ADDITIONAL INFORMATION
@@ -606,8 +784,9 @@ LISTING_FIELDS: list[ListingField] = [
         display_order=4,
         category=FieldCategory.CD_REQUIRED,
         source_type=FieldSourceType.CONSTANT,
-        options=["OPEN", "ENCLOSED"],
+        options=["OPEN", "ENCLOSED", "DRIVEAWAY"],
         default_value="OPEN",
+        help_text="OPEN: Standard car hauler. ENCLOSED: Protected transport. DRIVEAWAY: Vehicle driven to destination",
     ),
     # -------------------------------------------------------------------------
     # INTERNAL FIELDS - Extracted from document, NOT sent to CD API
@@ -1284,6 +1463,13 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
         condition = str(condition).upper()
     vehicle["isOperable"] = condition != "INOPERABLE"
 
+    # Additional vehicle info - includes gate pass for carrier reference
+    additional_info = data.get("vehicle_additional_info")
+    if not additional_info and data.get("gate_pass"):
+        additional_info = f"Gate Pass: {data['gate_pass']}"
+    if additional_info:
+        vehicle["additionalInfo"] = additional_info
+
     # Helper to build address object, excluding empty fields
     def build_address(street, city, state, postal_code):
         addr = {}
@@ -1298,9 +1484,17 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
         return addr
 
     # Build pickup stop
+    pickup_location_type = data.get("pickup_location_type", "AUCTION")
+    valid_location_types = [
+        "RESIDENCE", "BUSINESS", "DEALER", "AUCTION", "PORT",
+        "STORAGE_FACILITY", "BODY_SHOP", "CROSS_DOCK", "OTHER",
+    ]
+    if pickup_location_type not in valid_location_types:
+        pickup_location_type = "AUCTION"
+
     pickup_stop = {
         "stopNumber": 1,
-        "locationType": "AUCTION",
+        "locationType": pickup_location_type,
         "address": build_address(
             data.get("pickup_address"),
             data.get("pickup_city"),
@@ -1318,13 +1512,27 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
             pickup_stop["contact"]["name"] = data["pickup_contact"]
     if data.get("pickup_hours"):
         pickup_stop["operatingHours"] = data["pickup_hours"]
-    if data.get("pickup_notes"):
-        pickup_stop["notes"] = data["pickup_notes"]
+    if data.get("pickup_email"):
+        pickup_stop["email"] = data["pickup_email"]
+    if data.get("pickup_buyer_number"):
+        pickup_stop["buyerNumber"] = data["pickup_buyer_number"]
+    # Notes include operating hours as special instructions per V2 spec
+    pickup_notes = data.get("pickup_notes", "")
+    if data.get("pickup_hours") and pickup_notes:
+        pickup_notes = f"Hours: {data['pickup_hours']}\n{pickup_notes}"
+    elif data.get("pickup_hours"):
+        pickup_notes = f"Hours: {data['pickup_hours']}"
+    if pickup_notes:
+        pickup_stop["notes"] = pickup_notes
 
     # Build delivery stop
+    delivery_location_type = data.get("delivery_location_type", "CROSS_DOCK")
+    if delivery_location_type not in valid_location_types:
+        delivery_location_type = "CROSS_DOCK"
+
     delivery_stop = {
         "stopNumber": 2,
-        "locationType": "BUSINESS",
+        "locationType": delivery_location_type,
         "address": build_address(
             data.get("delivery_address"),
             data.get("delivery_city"),
@@ -1342,8 +1550,18 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
             delivery_stop["contact"]["name"] = data["delivery_contact"]
     if data.get("delivery_hours"):
         delivery_stop["operatingHours"] = data["delivery_hours"]
-    if data.get("delivery_notes"):
-        delivery_stop["notes"] = data["delivery_notes"]
+    if data.get("delivery_email"):
+        delivery_stop["email"] = data["delivery_email"]
+    if data.get("delivery_buyer_number"):
+        delivery_stop["buyerNumber"] = data["delivery_buyer_number"]
+    # Notes include operating hours as special instructions
+    delivery_notes = data.get("delivery_notes", "")
+    if data.get("delivery_hours") and delivery_notes:
+        delivery_notes = f"Hours: {data['delivery_hours']}\n{delivery_notes}"
+    elif data.get("delivery_hours"):
+        delivery_notes = f"Hours: {data['delivery_hours']}"
+    if delivery_notes:
+        delivery_stop["notes"] = delivery_notes
 
     # Available date (default to today)
     available_date = data.get("available_date")
@@ -1381,11 +1599,22 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     # Optional: pricing
     if data.get("price_total"):
         payload["price"] = {"total": float(data["price_total"])}
+        # COD payment
         if data.get("price_cod_amount"):
             payload["price"]["cod"] = {
                 "amount": float(data["price_cod_amount"]),
                 "paymentMethod": data.get("price_cod_method", "CASH"),
             }
+        # Balance payment (for carrier payment terms)
+        balance = {}
+        if data.get("balance_payment_method"):
+            balance["balancePaymentMethod"] = data["balance_payment_method"]
+        if data.get("balance_payment_time"):
+            balance["paymentTime"] = data["balance_payment_time"]
+        if data.get("balance_terms_begin_on"):
+            balance["balancePaymentTermsBeginOn"] = data["balance_terms_begin_on"]
+        if balance:
+            payload["price"]["balance"] = balance
 
     # Optional: notes
     if data.get("notes"):

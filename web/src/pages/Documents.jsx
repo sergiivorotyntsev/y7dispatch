@@ -173,6 +173,10 @@ function Documents() {
   // Extraction state
   const [extractingDocId, setExtractingDocId] = useState(null)
 
+  // Inline editing state
+  const [editingPrice, setEditingPrice] = useState({ docId: null, value: '' })
+  const [exportingDocId, setExportingDocId] = useState(null)
+
   // Run extraction on document
   async function handleRunExtraction(docId, forceNew = false) {
     const existingExtraction = docExtractions[docId]
@@ -221,6 +225,46 @@ function Documents() {
       fetchDocuments()
     } catch (err) {
       setError(`Delete failed: ${err.message}`)
+    }
+  }
+
+  // Handle inline price editing
+  async function handlePriceUpdate(docId, e) {
+    e.stopPropagation()
+    const extraction = docExtractions[docId]
+    if (!extraction) return
+
+    const newPrice = parseFloat(editingPrice.value)
+    if (isNaN(newPrice) || newPrice < 0) {
+      setEditingPrice({ docId: null, value: '' })
+      return
+    }
+
+    try {
+      await api.updateExtraction(extraction.id, { price_total: newPrice })
+      fetchDocExtractions()
+    } catch (err) {
+      setError(`Price update failed: ${err.message}`)
+    } finally {
+      setEditingPrice({ docId: null, value: '' })
+    }
+  }
+
+  // Handle direct export to CD
+  async function handleExportToCD(docId, e) {
+    e.stopPropagation()
+    const extraction = docExtractions[docId]
+    if (!extraction) return
+
+    setExportingDocId(docId)
+    try {
+      // Use exportToCD with dry_run=false, sandbox=true (safe default)
+      await api.exportToCD([extraction.id], false, true)
+      fetchDocExtractions()
+    } catch (err) {
+      setError(`Export failed: ${err.message}`)
+    } finally {
+      setExportingDocId(null)
     }
   }
 
@@ -548,6 +592,9 @@ function Documents() {
                   Warehouse
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Price
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Status
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -573,14 +620,16 @@ function Documents() {
                     : extraction.outputs_json
                 ) : {}
 
-                const orderId = outputs.lot_number || outputs.stock_number || outputs.order_id || '-'
+                const orderId = outputs.vehicle_lot || outputs.lot_number || outputs.stock_number || outputs.order_id || '-'
                 const pickupState = outputs.pickup_state || '-'
                 const pickupZip = outputs.pickup_zip || ''
                 const pickupLocation = pickupState !== '-' ? `${pickupState} ${pickupZip}`.trim() : '-'
+                const priceTotal = outputs.price_total || null
 
                 const sourceDisplay = getSourceDisplay(doc)
                 const exportStatus = getExportStatus(extraction)
                 const isExported = extraction?.status === 'exported'
+                const isReady = extraction && ['reviewed', 'approved'].includes(extraction.status)
 
                 return (
                   <tr
@@ -631,6 +680,38 @@ function Documents() {
                         ))}
                       </select>
                     </td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      {editingPrice.docId === doc.id ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingPrice.value}
+                          onChange={(e) => setEditingPrice({ docId: doc.id, value: e.target.value })}
+                          onBlur={(e) => handlePriceUpdate(doc.id, e)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handlePriceUpdate(doc.id, e)
+                            if (e.key === 'Escape') setEditingPrice({ docId: null, value: '' })
+                          }}
+                          autoFocus
+                          className="form-input w-20 text-sm px-1 py-0.5"
+                        />
+                      ) : (
+                        <span
+                          className={`text-sm cursor-pointer hover:underline ${
+                            priceTotal ? 'text-gray-900 font-medium' : 'text-gray-400'
+                          } ${isExported ? 'cursor-default' : ''}`}
+                          onClick={(e) => {
+                            if (!isExported && extraction) {
+                              e.stopPropagation()
+                              setEditingPrice({ docId: doc.id, value: priceTotal || '' })
+                            }
+                          }}
+                        >
+                          {priceTotal ? `$${parseFloat(priceTotal).toFixed(2)}` : '-'}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {extraction ? (
                         <span className={`px-2 py-1 text-xs font-medium rounded ${
@@ -662,7 +743,16 @@ function Documents() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
-                      {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '-'}
+                      {doc.created_at ? (
+                        <span title={new Date(doc.created_at).toLocaleString()}>
+                          {new Date(doc.created_at).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      ) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end items-center space-x-2">
@@ -674,13 +764,22 @@ function Documents() {
                             >
                               {extraction.status === 'needs_review' ? 'Review' : 'View'}
                             </button>
+                            {isReady && !isExported && (
+                              <button
+                                onClick={(e) => handleExportToCD(doc.id, e)}
+                                disabled={exportingDocId === doc.id}
+                                className="text-sm text-green-600 hover:text-green-800 font-medium"
+                              >
+                                {exportingDocId === doc.id ? '...' : 'Export'}
+                              </button>
+                            )}
                             {!isExported && (
                               <button
                                 onClick={() => handleRunExtraction(doc.id, true)}
                                 disabled={extractingDocId === doc.id}
                                 className="text-sm text-orange-600 hover:text-orange-800"
                               >
-                                {extractingDocId === doc.id ? '...' : 'Re-extract'}
+                                {extractingDocId === doc.id ? '...' : 'Re-run'}
                               </button>
                             )}
                           </>
