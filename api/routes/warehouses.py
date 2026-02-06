@@ -220,12 +220,8 @@ def init_warehouses_schema():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_active ON warehouses(is_active)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_state ON warehouses(state)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_broker ON warehouses(broker_id)")
 
-        # Migration: Add V2 columns if they don't exist
+        # Migration: Add V2 columns if they don't exist (MUST run before creating indexes on new columns)
         try:
             conn.execute("ALTER TABLE warehouses ADD COLUMN location_type TEXT DEFAULT 'CROSS_DOCK'")
         except Exception:
@@ -238,6 +234,12 @@ def init_warehouses_schema():
             conn.execute("ALTER TABLE warehouses ADD COLUMN broker_id INTEGER")
         except Exception:
             pass  # Column exists
+
+        # Create indexes (after migrations ensure columns exist)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_active ON warehouses(is_active)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_state ON warehouses(state)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_broker ON warehouses(broker_id)")
 
         conn.commit()
 
