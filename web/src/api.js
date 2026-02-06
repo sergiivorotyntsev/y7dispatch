@@ -402,6 +402,35 @@ export const api = {
       apply_all_pending: applyAllPending,
     }),
   }),
+
+  // ==========================================================================
+  // Zone-Based Extraction Templates
+  // ==========================================================================
+  listZoneTemplates: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return request(`/templates${query ? `?${query}` : ''}`)
+  },
+  getZoneTemplate: (templateId) => request(`/templates/${templateId}`),
+  createZoneTemplate: (data) => request('/templates', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  updateZoneTemplate: (templateId, data) => request(`/templates/${templateId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  deleteZoneTemplate: (templateId) => request(`/templates/${templateId}`, {
+    method: 'DELETE',
+  }),
+  extractWithZones: (data) => request('/templates/extract', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  previewZones: (templateId, documentId) => request(`/templates/${templateId}/zones/preview?document_id=${documentId}`),
+  submitTemplateFeedback: (data) => request('/templates/feedback', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
 }
 
 export default api

@@ -7,6 +7,7 @@ import Documents from './pages/Documents'
 import DocumentDetail from './pages/DocumentDetail'
 import Review from './pages/Review'
 import ListingReview from './pages/ListingReview'
+import TemplateEditor from './pages/TemplateEditor'
 
 function App() {
   const navItems = [
@@ -60,6 +61,7 @@ function App() {
           <Route path="/runs" element={<Runs />} />
           <Route path="/review/:runId" element={<Review />} />
           <Route path="/test-lab" element={<TestLab />} />
+          <Route path="/templates/:templateId" element={<TemplateEditor />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </div>

@@ -711,8 +711,54 @@ def run_extraction(
         evidence_list = []
 
         # =================================================================
-        # M3.P0.1: BLOCK EXTRACTION (default path)
-        # Run layout-aware extraction first, then fall back to pattern
+        # ZONE-BASED EXTRACTION (PRIORITY - highest accuracy)
+        # Uses template zones to extract from correct regions
+        # =================================================================
+        zone_outputs = {}
+        use_zone_extraction = True  # Feature flag
+
+        if use_zone_extraction and doc.file_path:
+            try:
+                from extractors.zone_extractor import get_zone_extractor
+
+                zone_extractor = get_zone_extractor()
+                zone_template = zone_extractor.get_template(auction_type.code)
+
+                if zone_template:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"Using zone extraction for {auction_type.code}")
+
+                    zone_result = zone_extractor.extract(doc.file_path, auction_type.code)
+
+                    if zone_result.confidence > 0.3:
+                        zone_outputs = zone_result.fields
+                        metrics["zone_extraction"] = {
+                            "template_id": zone_result.template_id,
+                            "confidence": zone_result.confidence,
+                            "fields_count": len(zone_result.fields),
+                            "warnings": zone_result.warnings,
+                        }
+
+                        # Track zone-extracted fields
+                        for key, value in zone_outputs.items():
+                            if value is not None:
+                                field_sources[key] = {
+                                    "value": value,
+                                    "source": "ZONE_EXTRACTED",
+                                    "confidence": zone_result.confidence,
+                                    "method": f"zone_extractor:{zone_result.template_id}",
+                                }
+
+                        logger.info(f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Zone extraction error: {e}")
+                metrics["zone_extraction_error"] = str(e)
+
+        # =================================================================
+        # M3.P0.1: BLOCK EXTRACTION (fallback/supplement)
+        # Run layout-aware extraction, then fall back to pattern
         # =================================================================
         block_outputs = {}
         if doc.file_path:
@@ -902,6 +948,28 @@ def run_extraction(
                             auction_type_id = detected_type.id
                             # Update the run as well
                             ExtractionRunRepository.update(run_id, auction_type_id=detected_type.id)
+
+        # =================================================================
+        # ZONE EXTRACTION OVERRIDE (HIGHEST PRIORITY)
+        # Zone extraction is most accurate for pickup/delivery fields
+        # because it extracts from the correct column/region
+        # =================================================================
+        zone_priority_fields = [
+            "pickup_address", "pickup_city", "pickup_state", "pickup_zip",
+            "pickup_name", "pickup_phone", "pickup_location_type",
+            "seller_id", "seller_name",  # These come from correct zones
+        ]
+
+        if zone_outputs:
+            for field_key, zone_value in zone_outputs.items():
+                if zone_value is not None and str(zone_value).strip():
+                    # Zone extraction ALWAYS takes priority for location fields
+                    if field_key in zone_priority_fields:
+                        outputs[field_key] = zone_value
+                        # field_sources already set during zone extraction
+                    # For other fields, use zone value if not already set
+                    elif not outputs.get(field_key):
+                        outputs[field_key] = zone_value
 
         # Calculate field metrics
         metrics["fields_extracted_count"] = len(outputs)
