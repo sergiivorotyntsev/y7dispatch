@@ -241,7 +241,8 @@ function Documents() {
     }
 
     try {
-      await api.updateExtraction(extraction.id, { price_total: newPrice })
+      // Price must be inside outputs_json
+      await api.updateExtraction(extraction.id, { outputs_json: { price_total: newPrice } })
       fetchDocExtractions()
     } catch (err) {
       setError(`Price update failed: ${err.message}`)

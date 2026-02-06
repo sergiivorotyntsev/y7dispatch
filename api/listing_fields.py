@@ -1023,6 +1023,19 @@ class ListingFieldRegistry:
         if value is None or value == "":
             return None  # Optional empty values are valid
 
+        # Normalize ZIP codes before validation
+        if key in ('pickup_zip', 'delivery_zip'):
+            if isinstance(value, (int, float)):
+                value = str(int(value)).zfill(5)
+            elif isinstance(value, str):
+                value = value.strip()
+                # Extract just digits and hyphen
+                zip_match = re.match(r'^(\d{5})[-\s]?(\d{4})?', value)
+                if zip_match:
+                    value = zip_match.group(1)
+                    if zip_match.group(2):
+                        value += '-' + zip_match.group(2)
+
         # String validations
         if isinstance(value, str):
             if field_def.min_length and len(value) < field_def.min_length:
@@ -1071,9 +1084,35 @@ class ListingFieldRegistry:
 
         Special handling:
         - "today" default_value is resolved to current date string (YYYY-MM-DD)
+        - ZIP codes are normalized to string format (preserves leading zeros)
+        - pickup_location_type defaults to AUCTION for auction sources
         """
         result = dict(data)
         today_str = datetime.now().strftime("%Y-%m-%d")
+
+        # Normalize ZIP codes to ensure they're strings with proper format
+        for zip_field in ['pickup_zip', 'delivery_zip']:
+            if zip_field in result and result[zip_field] is not None:
+                zip_val = result[zip_field]
+                # Convert to string if numeric
+                if isinstance(zip_val, (int, float)):
+                    zip_val = str(int(zip_val)).zfill(5)  # Pad with leading zeros
+                elif isinstance(zip_val, str):
+                    # Clean up: remove spaces, keep only digits and hyphen
+                    zip_val = zip_val.strip()
+                    # Extract just the ZIP portion (handle formats like "89115-1234", "89115 1234")
+                    zip_match = re.match(r'^(\d{5})[-\s]?(\d{4})?', zip_val)
+                    if zip_match:
+                        zip_val = zip_match.group(1)
+                        if zip_match.group(2):
+                            zip_val += '-' + zip_match.group(2)
+                result[zip_field] = zip_val
+
+        # Auto-set pickup_location_type to AUCTION for auction sources
+        auction_source = result.get('auction_source', '').upper()
+        if auction_source in ('COPART', 'IAA', 'MANHEIM'):
+            if not result.get('pickup_location_type'):
+                result['pickup_location_type'] = 'AUCTION'
 
         for field_def in LISTING_FIELDS:
             value = result.get(field_def.key)
