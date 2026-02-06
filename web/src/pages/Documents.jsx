@@ -589,7 +589,7 @@ function Documents() {
                   Pickup
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Warehouse
+                  Delivery
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Price
@@ -605,6 +605,9 @@ function Documents() {
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Created
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                  PDF
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                   Actions
@@ -664,21 +667,34 @@ function Documents() {
                       <span className="text-sm text-gray-700">{pickupLocation}</span>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={outputs.warehouse_id || ''}
-                        onChange={(e) => handleWarehouseChange(doc.id, e.target.value, e)}
-                        disabled={isExported || !extraction}
-                        className={`form-select form-select-sm text-xs ${
-                          isExported ? 'bg-gray-100 cursor-not-allowed' : ''
-                        }`}
-                      >
-                        <option value="">Select...</option>
-                        {warehouses.map((wh) => (
-                          <option key={wh.id} value={wh.id}>
-                            {wh.name} - {wh.city}, {wh.state}
-                          </option>
-                        ))}
-                      </select>
+                      {outputs.delivery_state ? (
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gray-900">
+                            {outputs.delivery_state} {outputs.delivery_zip || ''}
+                          </span>
+                          {outputs.delivery_name && (
+                            <span className="text-xs text-gray-500 truncate max-w-[120px]" title={outputs.delivery_name}>
+                              {outputs.delivery_name}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <select
+                          value={outputs.warehouse_id || ''}
+                          onChange={(e) => handleWarehouseChange(doc.id, e.target.value, e)}
+                          disabled={isExported || !extraction}
+                          className={`form-select form-select-sm text-xs ${
+                            isExported ? 'bg-gray-100 cursor-not-allowed' : ''
+                          }`}
+                        >
+                          <option value="">Select...</option>
+                          {warehouses.map((wh) => (
+                            <option key={wh.id} value={wh.id}>
+                              {wh.name} - {wh.city}, {wh.state}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {editingPrice.docId === doc.id ? (
@@ -753,6 +769,18 @@ function Documents() {
                           })}
                         </span>
                       ) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          window.open(api.getDocumentFileUrl(doc.id), '_blank')
+                        }}
+                        className="text-sm text-gray-600 hover:text-gray-800"
+                        title="View PDF"
+                      >
+                        📄
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end items-center space-x-2">

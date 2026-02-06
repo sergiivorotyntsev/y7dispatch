@@ -31,6 +31,13 @@ function ListingReview() {
   const [warehouses, setWarehouses] = useState([])
   const [selectedWarehouse, setSelectedWarehouse] = useState(null)
 
+  // State-first warehouse selection
+  const [availableStates, setAvailableStates] = useState([])
+  const [selectedState, setSelectedState] = useState('')
+  const [brokersByState, setBrokersByState] = useState([])
+  const [selectedBroker, setSelectedBroker] = useState('')
+  const [filteredWarehouses, setFilteredWarehouses] = useState([])
+
   // Blocking issues
   const [blockingIssues, setBlockingIssues] = useState([])
   const [isReady, setIsReady] = useState(false)
@@ -126,14 +133,23 @@ function ListingReview() {
           }
         }
 
-        // Load warehouses
-        const whResult = await api.listWarehouses()
+        // Load warehouses and available states for state-first selection
+        const [whResult, statesResult] = await Promise.all([
+          api.listWarehouses(),
+          api.getWarehouseStates().catch(() => []),
+        ])
         setWarehouses(whResult.items || [])
+        setAvailableStates(statesResult || [])
 
         // Set selected warehouse if already set
         if (outputs.warehouse_id) {
           const wh = (whResult.items || []).find(w => w.id === parseInt(outputs.warehouse_id))
-          if (wh) setSelectedWarehouse(wh)
+          if (wh) {
+            setSelectedWarehouse(wh)
+            // Also set state and broker for display
+            if (wh.state) setSelectedState(wh.state)
+            if (wh.broker_id) setSelectedBroker(wh.broker_id.toString())
+          }
         }
 
         // Load blocking issues
@@ -180,9 +196,62 @@ function ListingReview() {
     }
   }
 
+  // Handle state selection - load brokers for that state
+  async function handleStateSelect(state) {
+    setSelectedState(state)
+    setSelectedBroker('')
+    setSelectedWarehouse(null)
+    setFilteredWarehouses([])
+
+    if (state) {
+      try {
+        // Load brokers that have warehouses in this state
+        const brokers = await api.getBrokersByState(state)
+        setBrokersByState(brokers || [])
+
+        // Also load all warehouses in this state
+        const result = await api.filterWarehouses({ state, active_only: true })
+        setFilteredWarehouses(result.items || [])
+      } catch (err) {
+        console.error('Failed to load brokers/warehouses for state:', err)
+        setBrokersByState([])
+        // Fallback: filter from loaded warehouses
+        setFilteredWarehouses(warehouses.filter(w => w.state?.toUpperCase() === state.toUpperCase()))
+      }
+    }
+  }
+
+  // Handle broker selection - filter warehouses by broker
+  async function handleBrokerSelect(brokerId) {
+    setSelectedBroker(brokerId)
+    setSelectedWarehouse(null)
+
+    if (brokerId && selectedState) {
+      try {
+        const result = await api.filterWarehouses({
+          state: selectedState,
+          broker_id: brokerId,
+          active_only: true,
+        })
+        setFilteredWarehouses(result.items || [])
+      } catch (err) {
+        console.error('Failed to filter warehouses by broker:', err)
+        // Fallback: filter from loaded warehouses
+        setFilteredWarehouses(warehouses.filter(
+          w => w.state?.toUpperCase() === selectedState.toUpperCase() &&
+               w.broker_id === parseInt(brokerId)
+        ))
+      }
+    } else if (selectedState) {
+      // If no broker selected, show all warehouses in state
+      setFilteredWarehouses(warehouses.filter(w => w.state?.toUpperCase() === selectedState.toUpperCase()))
+    }
+  }
+
   // Handle warehouse selection - auto-fill delivery fields
   function handleWarehouseSelect(warehouseId) {
-    const wh = warehouses.find(w => w.id === parseInt(warehouseId))
+    const wh = filteredWarehouses.find(w => w.id === parseInt(warehouseId)) ||
+               warehouses.find(w => w.id === parseInt(warehouseId))
     setSelectedWarehouse(wh)
 
     if (wh) {
@@ -637,29 +706,97 @@ function ListingReview() {
         </div>
       )}
 
-      {/* Warehouse Selection Banner */}
-      {!isExported && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+      {/* Document Preview Button */}
+      {document && (
+        <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-medium text-blue-800">Delivery Warehouse</h3>
-              <p className="text-sm text-blue-700">
-                Select warehouse to auto-fill delivery address and transport instructions
+              <h3 className="font-medium text-gray-800">Source Document</h3>
+              <p className="text-sm text-gray-600">
+                {document.filename} • {document.page_count || 1} page(s)
               </p>
             </div>
-            <select
-              value={selectedWarehouse?.id || ''}
-              onChange={(e) => handleWarehouseSelect(e.target.value)}
-              className="form-select"
+            <button
+              onClick={() => window.open(api.getDocumentFileUrl(document.id), '_blank')}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
             >
-              <option value="">Select Warehouse...</option>
-              {warehouses.map((wh) => (
-                <option key={wh.id} value={wh.id}>
-                  {wh.name} - {wh.city}, {wh.state}
-                </option>
-              ))}
-            </select>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              View PDF
+            </button>
           </div>
+        </div>
+      )}
+
+      {/* Warehouse Selection Banner - State-First Flow */}
+      {!isExported && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="mb-3">
+            <h3 className="font-medium text-blue-800">Delivery Warehouse</h3>
+            <p className="text-sm text-blue-700">
+              Select state → broker → warehouse to set delivery address
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Step 1: Select State */}
+            <div>
+              <label className="block text-xs font-medium text-blue-700 mb-1">1. Delivery State</label>
+              <select
+                value={selectedState}
+                onChange={(e) => handleStateSelect(e.target.value)}
+                className="form-select w-full"
+              >
+                <option value="">Select State...</option>
+                {availableStates.map((state) => (
+                  <option key={state} value={state}>{state}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Step 2: Select Broker (if state selected) */}
+            <div>
+              <label className="block text-xs font-medium text-blue-700 mb-1">2. Broker</label>
+              <select
+                value={selectedBroker}
+                onChange={(e) => handleBrokerSelect(e.target.value)}
+                disabled={!selectedState}
+                className={`form-select w-full ${!selectedState ? 'bg-gray-100' : ''}`}
+              >
+                <option value="">All Brokers</option>
+                {brokersByState.map((broker) => (
+                  <option key={broker.id} value={broker.id}>
+                    {broker.name} ({broker.warehouse_count} locations)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Step 3: Select Warehouse */}
+            <div>
+              <label className="block text-xs font-medium text-blue-700 mb-1">3. Warehouse</label>
+              <select
+                value={selectedWarehouse?.id || ''}
+                onChange={(e) => handleWarehouseSelect(e.target.value)}
+                disabled={!selectedState}
+                className={`form-select w-full ${!selectedState ? 'bg-gray-100' : ''}`}
+              >
+                <option value="">Select Warehouse...</option>
+                {(filteredWarehouses.length > 0 ? filteredWarehouses : warehouses.filter(w => !selectedState || w.state?.toUpperCase() === selectedState.toUpperCase())).map((wh) => (
+                  <option key={wh.id} value={wh.id}>
+                    {wh.name} - {wh.city}, {wh.state}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {selectedWarehouse && (
+            <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+              ✓ Delivery: <strong>{selectedWarehouse.name}</strong> — {selectedWarehouse.address}, {selectedWarehouse.city}, {selectedWarehouse.state} {selectedWarehouse.zip_code}
+            </div>
+          )}
         </div>
       )}
 

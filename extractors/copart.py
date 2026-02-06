@@ -173,23 +173,52 @@ class CopartExtractor(BaseExtractor):
         - Column 3: SELLER
 
         The text extraction mixes columns, so we use targeted patterns.
+
+        CRITICAL: We must filter out numeric IDs (8+ digits) that appear in SELLER column.
+        These can get mixed with address text due to PDF column extraction.
         """
         US_STATES = r"AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY"
 
         street, city, state, zip_code = None, None, None, None
 
-        # Strategy 0 (IMPROVED): Find complete address as a single pattern
-        # Look for: NUMBER STREET_NAME CITY STATE ZIP
-        # Example: "950 BLUE MOUND ROAD WEST HASLET TX 76052"
-        # This handles cases where PDF columns are merged
+        # Strategy 0 (PRIORITY): Look specifically after "PHYSICAL ADDRESS OF LOT" label
+        # This is the most reliable method for Copart documents
+        # Pattern: PHYSICAL ADDRESS OF LOT:\n<street>\n<city> <state> <zip>
+        physical_section_pattern = r'PHYSICAL\s*ADDRESS\s*(?:OF\s*)?LOT[:\s]*\n?\s*([^\n]+)\n\s*([A-Z][A-Za-z\s]+)\s+(' + US_STATES + r')\s+(\d{5})'
+        physical_match = re.search(physical_section_pattern, text, re.IGNORECASE)
 
-        full_address_pattern = rf'(\d+\s+[A-Z0-9\s]+(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY|ROUTE|RT|MOUND)[A-Z\s]*?)\s+([A-Z]{{2,20}})\s+({US_STATES})\s+(\d{{5}})'
+        if physical_match:
+            potential_street = physical_match.group(1).strip()
+            potential_city = physical_match.group(2).strip()
+            potential_state = physical_match.group(3).strip().upper()
+            potential_zip = physical_match.group(4).strip()
 
-        # Find all matches
+            # Validate street is not a numeric ID (8+ digits = likely seller/member ID)
+            # Valid addresses start with a house number (1-5 digits) followed by street name
+            if not re.match(r'^\d{6,}', potential_street) and re.match(r'^\d{1,5}\s+[A-Za-z]', potential_street):
+                # Clean the street address
+                potential_street = re.sub(r'\s{2,}', ' ', potential_street)
+                # Remove any trailing noise (SELLER info that leaked in)
+                potential_street = re.sub(r'\s+(SELLER|SOLD|PROGRESSIVE|GEICO|INSURANCE).*$', '', potential_street, flags=re.IGNORECASE)
+
+                return Address(
+                    name="Copart",
+                    street=potential_street.title(),
+                    city=potential_city.title(),
+                    state=potential_state,
+                    postal_code=potential_zip,
+                )
+
+        # Strategy 1: Find address pattern with street type suffix + city state zip on same or nearby line
+        # Example: "4810 N. LAMB BLVD LAS VEGAS NV 89115" or "4810 N LAMB BLVD\nLAS VEGAS NV 89115"
+        street_types = r'(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY|ROUTE|RT|MOUND|CIRCLE|CIR|PLACE|PL)'
+
+        # Pattern for address with multi-word city (like "LAS VEGAS")
+        full_address_pattern = rf'(\d{{1,5}}\s+[A-Z0-9\.\s]+{street_types})[,\s]+([A-Z][A-Z\s]{{2,20}})\s+({US_STATES})\s+(\d{{5}})'
+
         all_addresses = re.findall(full_address_pattern, text, re.IGNORECASE)
 
         # Filter: prefer address that appears near "PHYSICAL ADDRESS OF LOT"
-        # and exclude buyer addresses (look for ones NOT near MEMBER/buyer info)
         physical_addr_pos = text.upper().find('PHYSICAL ADDRESS')
 
         best_match = None
@@ -201,9 +230,16 @@ class CopartExtractor(BaseExtractor):
             potential_state = match[2].strip().upper()
             potential_zip = match[3].strip()
 
+            # CRITICAL: Skip if street starts with 6+ digits (it's an ID, not address)
+            if re.match(r'^\d{6,}', potential_street):
+                continue
+
+            # Skip if street is JUST a number (no street name)
+            if re.match(r'^\d+$', potential_street.replace(' ', '')):
+                continue
+
             # Skip if this looks like buyer address (check context)
-            # Buyer addresses often have MEMBER, AYER, BROADWAY nearby
-            buyer_indicators = ['AYER', 'BROADWAY', 'MOTORING', 'FITCHBURG']
+            buyer_indicators = ['AYER', 'BROADWAY', 'MOTORING', 'FITCHBURG', 'MEMBER']
             if any(ind.upper() in potential_street.upper() for ind in buyer_indicators):
                 continue
             if any(ind.upper() == potential_city for ind in buyer_indicators):
@@ -211,7 +247,7 @@ class CopartExtractor(BaseExtractor):
 
             # Calculate distance from "PHYSICAL ADDRESS" marker
             match_text = f"{potential_street} {potential_city} {potential_state} {potential_zip}"
-            match_pos = text.upper().find(match_text.upper())
+            match_pos = text.upper().find(match_text.upper()[:30])  # First 30 chars
 
             if physical_addr_pos >= 0 and match_pos >= 0:
                 distance = abs(match_pos - physical_addr_pos)
@@ -219,7 +255,6 @@ class CopartExtractor(BaseExtractor):
                     best_distance = distance
                     best_match = match
             elif best_match is None:
-                # If no PHYSICAL ADDRESS marker, take first non-buyer match
                 best_match = match
 
         if best_match:
@@ -228,7 +263,8 @@ class CopartExtractor(BaseExtractor):
             state = best_match[2].strip().upper()
             zip_code = best_match[3].strip()
 
-            # Clean up street - remove any trailing city/state that got captured
+            # Clean up street
+            street = re.sub(r'\s{2,}', ' ', street)
             street = re.sub(rf'\s+{re.escape(city)}.*$', '', street, flags=re.IGNORECASE).strip()
 
             return Address(

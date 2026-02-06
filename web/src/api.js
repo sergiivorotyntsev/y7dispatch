@@ -131,6 +131,7 @@ export const api = {
   getDocument: (id) => request(`/documents/${id}`),
   getDocumentText: (id) => request(`/documents/${id}/text`),
   getDocumentExportPreview: (id) => request(`/documents/${id}/export-preview`),
+  getDocumentFileUrl: (id) => `${API_BASE}/documents/${id}/file`,
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
   clearTestLabDocuments: () => request('/documents/test-lab/clear-all', { method: 'DELETE' }),
   uploadDocument: async (file, auctionTypeId, datasetSplit = 'train') => {
