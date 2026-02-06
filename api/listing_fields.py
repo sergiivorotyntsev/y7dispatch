@@ -1249,43 +1249,67 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
         warnings.append(f"partnerReferenceId truncated from {original_len} to 50 characters")
         logger.warning(f"partnerReferenceId truncated: {original_len} -> 50 chars")
 
-    # Build vehicle
-    vehicle = {
-        "vin": data.get("vehicle_vin", ""),
-        "year": int(data.get("vehicle_year", 0)) if data.get("vehicle_year") else None,
-        "make": data.get("vehicle_make", ""),
-        "model": data.get("vehicle_model", ""),
-    }
+    # Build vehicle - only include non-empty required fields
+    vehicle = {}
+
+    # Required vehicle fields
+    if data.get("vehicle_vin"):
+        vehicle["vin"] = data["vehicle_vin"]
+    if data.get("vehicle_year"):
+        try:
+            vehicle["year"] = int(data["vehicle_year"])
+        except (ValueError, TypeError):
+            pass
+    if data.get("vehicle_make"):
+        vehicle["make"] = data["vehicle_make"]
+    if data.get("vehicle_model"):
+        vehicle["model"] = data["vehicle_model"]
+
+    # Optional vehicle fields
     if data.get("vehicle_color"):
         vehicle["color"] = data["vehicle_color"]
     if data.get("vehicle_lot"):
-        vehicle["lotNumber"] = data["vehicle_lot"]
+        vehicle["lotNumber"] = str(data["vehicle_lot"])
 
-    # Vehicle type mapping
-    vtype = data.get("vehicle_type", "SEDAN").upper()
-    vehicle["vehicleType"] = (
-        vtype
-        if vtype
-        in ["SEDAN", "SUV", "TRUCK", "VAN", "MOTORCYCLE", "COUPE", "CONVERTIBLE", "WAGON", "OTHER"]
-        else "SEDAN"
-    )
+    # Vehicle type - required with valid enum value
+    vtype = data.get("vehicle_type", "SEDAN")
+    if vtype:
+        vtype = str(vtype).upper()
+    valid_types = ["SEDAN", "SUV", "TRUCK", "VAN", "MOTORCYCLE", "COUPE", "CONVERTIBLE", "WAGON", "OTHER"]
+    vehicle["vehicleType"] = vtype if vtype in valid_types else "SEDAN"
 
-    # Operability
-    condition = data.get("vehicle_condition", "OPERABLE").upper()
+    # Operability - boolean, defaults to operable
+    condition = data.get("vehicle_condition", "OPERABLE")
+    if condition:
+        condition = str(condition).upper()
     vehicle["isOperable"] = condition != "INOPERABLE"
+
+    # Helper to build address object, excluding empty fields
+    def build_address(street, city, state, postal_code):
+        addr = {}
+        if street:
+            addr["street"] = street
+        if city:
+            addr["city"] = city
+        if state:
+            addr["state"] = state
+        if postal_code:
+            addr["postalCode"] = postal_code
+        return addr
 
     # Build pickup stop
     pickup_stop = {
         "stopNumber": 1,
         "locationType": "AUCTION",
-        "locationName": data.get("pickup_name", ""),
-        "address": {
-            "street": data.get("pickup_address", ""),
-            "city": data.get("pickup_city", ""),
-            "state": data.get("pickup_state", ""),
-            "postalCode": data.get("pickup_zip", ""),
-        },
+        "address": build_address(
+            data.get("pickup_address"),
+            data.get("pickup_city"),
+            data.get("pickup_state"),
+            data.get("pickup_zip"),
+        ),
     }
+    if data.get("pickup_name"):
+        pickup_stop["locationName"] = data["pickup_name"]
     if data.get("pickup_phone") or data.get("pickup_contact"):
         pickup_stop["contact"] = {}
         if data.get("pickup_phone"):
@@ -1301,14 +1325,15 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     delivery_stop = {
         "stopNumber": 2,
         "locationType": "BUSINESS",
-        "locationName": data.get("delivery_name", ""),
-        "address": {
-            "street": data.get("delivery_address", ""),
-            "city": data.get("delivery_city", ""),
-            "state": data.get("delivery_state", ""),
-            "postalCode": data.get("delivery_zip", ""),
-        },
+        "address": build_address(
+            data.get("delivery_address"),
+            data.get("delivery_city"),
+            data.get("delivery_state"),
+            data.get("delivery_zip"),
+        ),
     }
+    if data.get("delivery_name"):
+        delivery_stop["locationName"] = data["delivery_name"]
     if data.get("delivery_phone") or data.get("delivery_contact"):
         delivery_stop["contact"] = {}
         if data.get("delivery_phone"):
