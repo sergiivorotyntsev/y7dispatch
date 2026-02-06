@@ -1,0 +1,2042 @@
+[
+  {
+    "filename": "12-17-2025_5515588_Vehicle_Sale_Documents.pdf",
+    "doc_type": "MANHEIM",
+    "text_length": 21305,
+    "text_preview": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "MANHEIM",
+      "score": 0.8620689655172413,
+      "fields": {
+        "auction_source": "MANHEIM",
+        "reference_id": "4N0F01G244B96",
+        "buyer_id": "5515588",
+        "buyer_name": "pickup location",
+        "sale_date": "2025-12-15 00:00:00",
+        "total_amount": 6500.0,
+        "pickup_name": "Manheim",
+        "pickup_address": "Manheim Portland",
+        "pickup_city": "Portland",
+        "pickup_state": "OR",
+        "pickup_zip": "97217-8257",
+        "vehicle_vin": "YV4A22PMXG1037898",
+        "vehicle_year": 2016,
+        "vehicle_make": "Volvo",
+        "vehicle_model": "XC90 T6 R-DESIG",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "manheim_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "document_type": "BILL OF SALE",
+        "vehicle_vin": "YV4A22PMXG1037898",
+        "vehicle_year": "2016",
+        "sale_price": "6,500.00",
+        "total_amount": "6,500.00",
+        "auction_source": "MANHEIM",
+        "pickup_location_type": "AUCTION",
+        "pickup_name": "Manheim Portland",
+        "pickup_address": "3000 N Hayden Island Dr",
+        "pickup_phone": "(503) 286-3000"
+      },
+      "zone_texts": {
+        "header": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                                                                             ",
+        "vehicle_info": "                                      Signature on file\n  Vehicle Information                                  \n  2016 Volvo XC90                                      \n  SUV T6 R-DESIG Silver All Wheel Drive Auction Lights \n  YV4A22PMXG1037898                                    \n  Mileage: 136234 Miles 0                              \n                                      RED    Vehicle sold as-is\n  License Plate No:                                    \n                                      Odometer Disclosure\n  Title Information                                    \n                                      Federal law (and state law, if applicabl\n  State: MT Number: 1                                  \n                                      may result in fines and/or imprisonmen\n  Vehicle Features                    Seller hereby states that the odometer\n  4-Cylinder Gasoline   no emissions  best of Seller's knowledge that this refl\n  Turbocharged/Supercharged                            \n                                      Announcements & Not\n  A/T                                                  \n  Gray                                 ASIS            ",
+        "sale_price_section": "                          Vehicle Purchase Price\nSale Price                     $ 6,500.00   \nAdjustments                    $  0.00      \nFinal Sale Price               $ 6,500.00   \n                                            \nSeller                                      \nCARVANA, LLC                                \n10615 ROCKET BLVD                           \nORLANDO, FL 32824 US                        ",
+        "auction_location": "  THIS IS NOT AN INVOICE              \n                                      \n                                      \n  638 myCentralAuction  Sale Date     \n  6305 PEACHTREE DUNWOODY RD 15-DEC-2025 16:16:59\n  BLDG B FL 6                         \n  Atlanta, GA 30328 US                \n                        Yr Wk Ln Rn   \n                        2025-51-94-275\n  Please refer to the vehicle release for the Sale Type\n  pickup location                     \n                        OVE           "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Manheim Portland",
+        "zone": "3000 N Hayden Island Dr"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Portland",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "OR",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "97217-8257",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2016,
+        "zone": "2016"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Volvo",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "XC90 T6 R-DESIG",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "12-19-2025_5515588_Vehicle_Sale_Documents.pdf",
+    "doc_type": "MANHEIM",
+    "text_length": 21921,
+    "text_preview": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "MANHEIM",
+      "score": 0.8620689655172413,
+      "fields": {
+        "auction_source": "MANHEIM",
+        "reference_id": "4T0HKUNR44B96",
+        "buyer_id": "5515588",
+        "buyer_name": "pickup location",
+        "sale_date": "2025-12-17 00:00:00",
+        "total_amount": 19600.0,
+        "pickup_name": "Manheim",
+        "pickup_address": "Manheim Riverside",
+        "pickup_city": "Riverside",
+        "pickup_state": "CA",
+        "pickup_zip": "92504-1437",
+        "vehicle_vin": "WA15AAFY3N2026748",
+        "vehicle_year": 2022,
+        "vehicle_make": "Audi",
+        "vehicle_model": "Q5 SLIN",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "manheim_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "document_type": "BILL OF SALE",
+        "vehicle_vin": "WA15AAFY3N2026748",
+        "vehicle_year": "2022",
+        "sale_price": "19,600.00",
+        "total_amount": "19,600.00",
+        "auction_source": "MANHEIM",
+        "pickup_location_type": "AUCTION",
+        "pickup_name": "Manheim Riverside",
+        "pickup_address": "6446 Fremont St",
+        "pickup_phone": "(951) 689-6000"
+      },
+      "zone_texts": {
+        "header": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                                                                             ",
+        "vehicle_info": "                                      Signature on file\n  Vehicle Information                 Thesellerhasassigneditsrights,\n  2022 Audi Q5                                         \n  4DHB SLINE PRM+ Gray All Wheel Drive                 \n  WA15AAFY3N2026748                   Auction Lights   \n  Mileage: 74918 Miles 0                               \n                                      GREEN  Buyer protection to\n  License Plate No: 8ZGH194                            \n  Title Information                                    \n                                      Odometer Disclosure\n  State: CA Number: 1                                  \n                                      Federal law (and state law, if applicabl\n                                      may result in fines and/or imprisonmen\n  Vehicle Features                                     \n                        Power Windows                  \n  Hard Top                            Seller hereby states that the odometer\n  4-Cylinder Gasoline Turbocharged Power Door Locks best of Seller's knowledge that this refl\n                        Cruise Control                 \n  A/T                                                  \n                        Rear Defrost  Announcements & Not\n  Power Steering                                       ",
+        "sale_price_section": "                          Vehicle Purchase Price\nSale Price                    $ 19,600.00   \nAdjustments                    $  0.00      \nFinal Sale Price              $ 19,600.00   \n                                            \nSeller                                      \nVW CREDIT                                   \n3800 HAMLIN RD                              \nAUBURN HILLS, MI 48326 US                   ",
+        "auction_location": "  THIS IS NOT AN INVOICE              \n                                      \n                                      \n  467 MANHEIM RIVERSIDE Sale Date     \n  6446 FREMONT ST       17-DEC-2025 12:10:04\n  RIVERSIDE, CA 92504 US              \n                        Yr Wk Ln Rn   \n                        2025-51-94-158\n  Please refer to the vehicle release for the Sale Type\n  pickup location                     \n                        OVE           "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Manheim Riverside",
+        "zone": "6446 Fremont St"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Riverside",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "CA",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "92504-1437",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2022,
+        "zone": "2022"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Audi",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Q5 SLIN",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "12-22-2025_5515588_Vehicle_Sale_Documents.pdf",
+    "doc_type": "MANHEIM",
+    "text_length": 21314,
+    "text_preview": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "MANHEIM",
+      "score": 0.8620689655172413,
+      "fields": {
+        "auction_source": "MANHEIM",
+        "reference_id": "510BBX2644B96",
+        "buyer_id": "5515588",
+        "buyer_name": "pickup location",
+        "sale_date": "2025-12-02 00:00:00",
+        "total_amount": 7300.0,
+        "pickup_name": "Manheim",
+        "pickup_address": "Manheim NY Metro Skyline",
+        "pickup_city": "Fairfield",
+        "pickup_state": "NJ",
+        "pickup_zip": "07004-3217",
+        "vehicle_vin": "2C4RC1GG7KR574756",
+        "vehicle_year": 2019,
+        "vehicle_make": "Chrysler",
+        "vehicle_model": "Pacifica LIMITED",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "manheim_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "document_type": "BILL OF SALE",
+        "vehicle_vin": "2C4RC1GG7KR574756",
+        "vehicle_year": "2019",
+        "sale_price": "7,300.00",
+        "total_amount": "7,300.00",
+        "auction_source": "MANHEIM",
+        "pickup_location_type": "AUCTION",
+        "pickup_name": "Manheim NY Metro Skyline",
+        "pickup_address": "100 Us Highway",
+        "pickup_phone": "(973) 227-0100"
+      },
+      "zone_texts": {
+        "header": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                                                                             ",
+        "vehicle_info": "                                      Signature on file\n  Vehicle Information                                  \n  2019 Chrysler Pacifica                               \n  VAN LIMITED Black                   Auction Lights   \n  2C4RC1GG7KR574756                                    \n                                      GREEN  Buyer protection to\n  Mileage: 128728 Miles 0                              \n                                      YELLOW Certain conditions an\n  License Plate No:                                    \n                                      Odometer Disclosure\n  Title Information                                    \n                                      Federal law (and state law, if applicabl\n  State: MT Number: 1                                  \n                                      may result in fines and/or imprisonmen\n  Vehicle Features                    Seller hereby states that the odometer\n  6-Cylinder Gasoline Natural no emissions best of Seller's knowledge that this refl\n  A/T                                                  \n                                      Announcements & Not\n  Black                                                \n  Leather Seats                                        ",
+        "sale_price_section": "                          Vehicle Purchase Price\nSale Price                     $ 7,300.00   \nAdjustments                    $  0.00      \nFinal Sale Price               $ 7,300.00   \n                                            \nSeller                                      \nCARVANA, LLC                                \n10615 ROCKET BLVD                           \nORLANDO, FL 32824 US                        ",
+        "auction_location": "  THIS IS NOT AN INVOICE              \n                                      \n                                      \n  638 myCentralAuction  Sale Date     \n  6305 PEACHTREE DUNWOODY RD 02-DEC-2025 16:14:22\n  BLDG B FL 6                         \n  Atlanta, GA 30328 US                \n                        Yr Wk Ln Rn   \n                        2025-49-94-1151\n  Please refer to the vehicle release for the Sale Type\n  pickup location                     \n                        OVE           "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Manheim NY Metro Skyline",
+        "zone": "100 Us Highway"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Fairfield",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "NJ",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "07004-3217",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2019,
+        "zone": "2019"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Chrysler",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Pacifica LIMITED",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "12-30-2025_5515588_Vehicle_Sale_Documents.pdf",
+    "doc_type": "MANHEIM",
+    "text_length": 21850,
+    "text_preview": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "MANHEIM",
+      "score": 0.8620689655172413,
+      "fields": {
+        "auction_source": "MANHEIM",
+        "reference_id": "430F2KHV44B96",
+        "buyer_id": "5515588",
+        "buyer_name": "pickup location",
+        "sale_date": "2025-12-22 00:00:00",
+        "total_amount": 7300.0,
+        "pickup_name": "Manheim",
+        "pickup_address": "Manheim Fort Lauderdale",
+        "pickup_city": "DAVIE",
+        "pickup_state": "FL",
+        "pickup_zip": "33314-6403",
+        "vehicle_vin": "2FMPK3K96KBC02618",
+        "vehicle_year": 2019,
+        "vehicle_make": "Ford",
+        "vehicle_model": "EDGE TTN TITANIUM",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "manheim_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "document_type": "BILL OF SALE",
+        "vehicle_vin": "2FMPK3K96KBC02618",
+        "vehicle_year": "2019",
+        "sale_price": "7,300.00",
+        "total_amount": "7,300.00",
+        "auction_source": "MANHEIM",
+        "pickup_location_type": "AUCTION",
+        "pickup_name": "Manheim Fort Lauderdale",
+        "pickup_address": "5353 S State Road",
+        "pickup_phone": "(954) 791-3520"
+      },
+      "zone_texts": {
+        "header": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                                                                             ",
+        "vehicle_info": "                                      Signature on file\n  Vehicle Information                                  \n  2019 Ford Edge                                       \n  SUV TITANIUM Gray Two-Wheel Drive   Auction Lights   \n  2FMPK3K96KBC02618                                    \n  Mileage: 101733 Miles 0                              \n                                      RED    Vehicle sold as-is\n  License Plate No:                                    \n                                      Odometer Disclosure\n  Title Information                                    \n                                      Federal law (and state law, if applicabl\n  State: GA Number: 1                                  \n                                      may result in fines and/or imprisonmen\n  Vehicle Features                    Seller hereby states that the odometer\n  Panoramic Roof        Power Windows best of Seller's knowledge that this refl\n                        Power Door Locks               \n  4-Cylinder Gasoline Turbocharged                     \n                        Cruise Control Announcements & Not\n  A/T                                                  \n                        Rear Defrost                   \n  Power Steering                       AS IS           ",
+        "sale_price_section": "                          Vehicle Purchase Price\nSale Price                     $ 7,300.00   \nAdjustments                    $  0.00      \nFinal Sale Price               $ 7,300.00   \n                                            \nSeller                                      \nMERIDIAN REMARKETING                        \n6325 PEACHTREE DUNWOODY RD STE 800          \nAtlanta, GA 30328 US                        ",
+        "auction_location": "  THIS IS NOT AN INVOICE              \n                                      \n                                      \n  719 MANHEIM FORT      Sale Date     \n  LAUDERDALE            22-DEC-2025 10:24:17\n  5353 S STATE ROAD 7                 \n  DAVIE, FL 33314 US                  \n                        Yr Wk Ln Rn   \n                        2025-52-94-2  \n  Please refer to the vehicle release for the Sale Type\n  pickup location                     \n                        OVE           "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Manheim Fort Lauderdale",
+        "zone": "5353 S State Road"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "DAVIE",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "FL",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "33314-6403",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2019,
+        "zone": "2019"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Ford",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "EDGE TTN TITANIUM",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "12-31-2025_5515588_Vehicle_Sale_Documents.pdf",
+    "doc_type": "MANHEIM",
+    "text_length": 21144,
+    "text_preview": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "MANHEIM",
+      "score": 0.8620689655172413,
+      "fields": {
+        "auction_source": "MANHEIM",
+        "reference_id": "510BET1W44B96",
+        "buyer_id": "5515588",
+        "buyer_name": "pickup location",
+        "sale_date": "2025-12-29 00:00:00",
+        "total_amount": 12300.0,
+        "pickup_name": "Manheim",
+        "pickup_address": "12 Barbara Dr",
+        "pickup_city": "Syosset",
+        "pickup_state": "NY",
+        "pickup_zip": "11791",
+        "vehicle_vin": "WA1VAAF74HD045051",
+        "vehicle_year": 2017,
+        "vehicle_make": "Audi",
+        "vehicle_model": "Q7",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "manheim_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "document_type": "BILL OF SALE",
+        "vehicle_vin": "WA1VAAF74HD045051",
+        "vehicle_year": "2017",
+        "sale_price": "12,300.00",
+        "total_amount": "12,300.00",
+        "auction_source": "MANHEIM",
+        "pickup_location_type": "AUCTION",
+        "pickup_address": "27 Pm                    \n                                                                                    \n    Pickup Location          Address                                                \n                                   12 Barbara Dr",
+        "pickup_phone": "(917) 683-4691"
+      },
+      "zone_texts": {
+        "header": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                                                                             ",
+        "vehicle_info": "                                      Signature on file\n  Vehicle Information                                  \n  2017 Audi Q7                                         \n  SUV 3.0T PREST Black                Auction Lights   \n  WA1VAAF74HD045051                                    \n                                      GREEN  Buyer protection to\n  Mileage: 93918 Miles 0                               \n                                      YELLOW Certain conditions an\n  License Plate No:                                    \n                                      Odometer Disclosure\n  Title Information                                    \n                                      Federal law (and state law, if applicabl\n  State: NY Number: 1                                  \n                                      may result in fines and/or imprisonmen\n  Vehicle Features                    Seller hereby states that the odometer\n  6-Cylinder Gasoline Supercharged no emissions best of Seller's knowledge that this refl\n  8-Speed Automatic                                    \n                                      Announcements & Not\n  Brown                                                ",
+        "sale_price_section": "                          Vehicle Purchase Price\nSale Price                    $ 12,300.00   \nAdjustments                    $  0.00      \nFinal Sale Price              $ 12,300.00   \n                                            \nSeller                                      \nNY AUTOTRADER INC                           \n12 BARBARA DR                               \nSYOSSET, NY 11791 US                        ",
+        "auction_location": "  THIS IS NOT AN INVOICE              \n                                      \n                                      \n  728 MANHEIM NY METRO  Sale Date     \n  SKYLINE               29-DEC-2025 15:27:01\n  100 ROUTE 46                        \n  FAIRFIELD, NJ 07004 US              \n                        Yr Wk Ln Rn   \n                        2025-53-92-36 \n  Please refer to the vehicle release for the Sale Type\n  pickup location                     \n                        OVE           "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "12 Barbara Dr",
+        "zone": "27 Pm                    \n                                                                                    \n    Pickup Location          Address                                                \n                                   12 Barbara Dr"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Syosset",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "NY",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "11791",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2017,
+        "zone": "2017"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Audi",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Q7",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "12-31-2025_5515588_Vehicle_Sale_Documents1.pdf",
+    "doc_type": "MANHEIM",
+    "text_length": 21460,
+    "text_preview": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "MANHEIM",
+      "score": 0.8620689655172413,
+      "fields": {
+        "auction_source": "MANHEIM",
+        "reference_id": "4V4E7F0Y44B96",
+        "buyer_id": "5515588",
+        "buyer_name": "pickup location",
+        "sale_date": "2025-12-23 00:00:00",
+        "total_amount": 8200.0,
+        "pickup_name": "Manheim",
+        "pickup_address": "63 Western Ave",
+        "pickup_city": "Framingham",
+        "pickup_state": "MA",
+        "pickup_zip": "01702",
+        "vehicle_vin": "YV4A22PN5G1003540",
+        "vehicle_year": 2016,
+        "vehicle_make": "Volvo",
+        "vehicle_model": "XC90 T6 FIRST E",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "manheim_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "document_type": "BILL OF SALE",
+        "vehicle_vin": "YV4A22PN5G1003540",
+        "vehicle_year": "2016",
+        "sale_price": "8,200.00",
+        "total_amount": "8,200.00",
+        "auction_source": "MANHEIM",
+        "pickup_location_type": "AUCTION",
+        "pickup_address": "21 Pm                    \n                                                                                    \n    Pickup Location          Address                                                \n                                   63 Western Ave",
+        "pickup_phone": "(833) 289-3533"
+      },
+      "zone_texts": {
+        "header": "                                                                                                             \n                                                                                                             \n                                                 BILL OF SALE                                                \n                                                                                                             \n                                                                                                             ",
+        "vehicle_info": "                                      Signature on file\n  Vehicle Information                                  \n  2016 Volvo XC90                                      \n  SUV T6 FIRST E Black All Wheel Drive Auction Lights  \n  YV4A22PN5G1003540                                    \n                                      GREEN  Buyer protection to\n  Mileage: 121515 Miles 0                              \n                                      YELLOW Certain conditions an\n  License Plate No:                                    \n                                      Odometer Disclosure\n  Title Information                                    \n                                      Federal law (and state law, if applicabl\n  State: MT Number: 1                                  \n                                      may result in fines and/or imprisonmen\n  Vehicle Features                    Seller hereby states that the odometer\n  4-Cylinder Gasoline   no emissions  best of Seller's knowledge that this refl\n  Turbocharged/Supercharged                            \n                                      Announcements & Not\n  A/T                                                  \n  Brown                                                ",
+        "sale_price_section": "                          Vehicle Purchase Price\nSale Price                     $ 8,200.00   \nAdjustments                    $  0.00      \nFinal Sale Price               $ 8,200.00   \n                                            \nSeller                                      \nCARVANA, LLC                                \n10615 ROCKET BLVD                           \nORLANDO, FL 32824 US                        ",
+        "auction_location": "  THIS IS NOT AN INVOICE              \n                                      \n                                      \n  638 myCentralAuction  Sale Date     \n  6305 PEACHTREE DUNWOODY RD 23-DEC-2025 16:21:16\n  BLDG B FL 6                         \n  Atlanta, GA 30328 US                \n                        Yr Wk Ln Rn   \n                        2025-52-94-1164\n  Please refer to the vehicle release for the Sale Type\n  pickup location                     \n                        OVE           "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "63 Western Ave",
+        "zone": "21 Pm                    \n                                                                                    \n    Pickup Location          Address                                                \n                                   63 Western Ave"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Framingham",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "MA",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "01702",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2016,
+        "zone": "2016"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Volvo",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "XC90 T6 FIRST E",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport (1)1.pdf",
+    "doc_type": "IAA",
+    "text_length": 5184,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25737145                        \n                                     Receipt Date   12/15/2025             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-11 00:00:00",
+        "total_amount": 16932.0,
+        "pickup_name": "IAA 130 - Los Angeles South",
+        "pickup_address": "Sale Date 12/11/2025",
+        "pickup_city": "Wilmington",
+        "pickup_state": "CA",
+        "pickup_zip": "90744",
+        "vehicle_vin": "YV4M12RC3S1068682",
+        "vehicle_year": 2025,
+        "vehicle_make": "VOLVO",
+        "vehicle_model": "XC60",
+        "vehicle_lot": "000-43699659"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 1.0,
+      "fields": {
+        "pickup_address": "1903 N Blinn Ave",
+        "pickup_city": "Blinn Ave Wilmington Californ",
+        "pickup_state": "IA",
+        "pickup_zip": "90744",
+        "pickup_phone": "(562) 378-0330",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/11/2025",
+        "vehicle_vin": "YV4M12RC3S1068682",
+        "vehicle_year": "2025",
+        "vehicle_lot": "43699659",
+        "bid_amount": "15,700.00",
+        "total_amount": "15700.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25737145                        \n                                     Receipt Date   12/15/2025                      \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      Los Angeles South            \n      1903 N Blinn Ave             \n      Wilmington California 90744  \n      (562) 378-0330               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/11/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202510                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43699659  2025  VOLVO   XC60    Blue   16,662 YV4M12RC3S1068682 9RQV781  \n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount               $15,700.00                   \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                  $942.00                    \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                $15,700.00                   \nBuyer Fee                  $942.00                     \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee               $160.00                     \nEnvironmental Fee           $15.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/11/2025",
+        "zone": "1903 N Blinn Ave"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Wilmington",
+        "zone": "Blinn Ave Wilmington Californ"
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "CA",
+        "zone": "IA"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2025,
+        "zone": "2025"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "VOLVO",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "XC60",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport (2).pdf",
+    "doc_type": "IAA",
+    "text_length": 5184,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25827164                        \n                                     Receipt Date   1/2/2026               ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-31 00:00:00",
+        "total_amount": 1090.0,
+        "pickup_name": "IAA 640 - Taunton",
+        "pickup_address": "Sale Date 12/31/2025",
+        "pickup_city": "East Taunton",
+        "pickup_state": "MA",
+        "pickup_zip": "02718",
+        "vehicle_vin": "YV1902AH4D1171979",
+        "vehicle_year": 2013,
+        "vehicle_make": "VOLVO",
+        "vehicle_model": "S80",
+        "vehicle_lot": "000-43896533"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 0.4,
+      "fields": {
+        "pickup_address": "580 Myricks Street",
+        "pickup_phone": "(508) 823-7440",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/31/2025",
+        "vehicle_vin": "YV1902AH4D1171979",
+        "vehicle_year": "2013",
+        "vehicle_lot": "43896533",
+        "bid_amount": "700.00",
+        "total_amount": "700.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25827164                        \n                                     Receipt Date   1/2/2026                        \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      Taunton                      \n      580 Myricks Street           \n      East Taunton Massachusetts 02718\n      (508) 823-7440               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/31/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202610                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43896533  2013  VOLVO    S80    Gray  176,258 YV1902AH4D1171979 8MA449   \n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount                 $700.00                    \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                  $195.00                    \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                 $700.00                     \nBuyer Fee                  $195.00                     \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee                $65.00                     \nEnvironmental Fee           $15.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/31/2025",
+        "zone": "580 Myricks Street"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "East Taunton",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "MA",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "02718",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2013,
+        "zone": "2013"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "VOLVO",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "S80",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport (4).pdf",
+    "doc_type": "IAA",
+    "text_length": 5263,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25804258                        \n                                     Receipt Date   12/29/2025             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-25 00:00:00",
+        "total_amount": 10210.0,
+        "pickup_name": "IAA 609 - Boston - Shirley",
+        "pickup_address": "Sale Date 12/25/2025",
+        "pickup_city": "Shirley",
+        "pickup_state": "MA",
+        "pickup_zip": "01464",
+        "vehicle_vin": "WBA73AK06L7F98003",
+        "vehicle_year": 2020,
+        "vehicle_make": "BMW",
+        "vehicle_model": "228I GRAN",
+        "vehicle_lot": "000-43597865"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 0.4,
+      "fields": {
+        "pickup_address": "2 Going Rd",
+        "pickup_phone": "(978) 425-0990",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/25/2025",
+        "vehicle_vin": "WBA73AK06L7F98003",
+        "vehicle_year": "2020",
+        "vehicle_lot": "43597865",
+        "bid_amount": "9,100.00",
+        "total_amount": "9100.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25804258                        \n                                     Receipt Date   12/29/2025                      \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      Boston - Shirley             \n      2 Going Rd                   \n      Shirley Massachusetts 01464  \n      (978) 425-0990               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/25/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202610                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43597865  2020  BMW    228I GRAN Gray  40,560 WBA73AK06L7F98003 5TGC81   \n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount                $9,100.00                   \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                  $820.00                    \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                $9,100.00                    \nBuyer Fee                  $820.00                     \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee               $160.00                     \nEnvironmental Fee           $15.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/25/2025",
+        "zone": "2 Going Rd"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Shirley",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "MA",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "01464",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2020,
+        "zone": "2020"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "BMW",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "228I GRAN",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport.pdf",
+    "doc_type": "IAA",
+    "text_length": 5184,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25802747                        \n                                     Receipt Date   12/29/2025             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-24 00:00:00",
+        "total_amount": 8955.0,
+        "pickup_name": "IAA 332 - East Bay",
+        "pickup_address": "Sale Date 12/24/2025",
+        "pickup_city": "Bay Point",
+        "pickup_state": "CA",
+        "pickup_zip": "94565",
+        "vehicle_vin": "WA1CCAFP4GA133227",
+        "vehicle_year": 2016,
+        "vehicle_make": "AUDI",
+        "vehicle_model": "SQ5",
+        "vehicle_lot": "000-43666048"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 1.0,
+      "fields": {
+        "pickup_address": "2780 Willow Pass Road",
+        "pickup_city": "Willow Pass Road Bay Point Californ",
+        "pickup_state": "IA",
+        "pickup_zip": "94565",
+        "pickup_phone": "(925) 458-7610",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/24/2025",
+        "vehicle_vin": "WA1CCAFP4GA133227",
+        "vehicle_year": "2016",
+        "vehicle_lot": "43666048",
+        "bid_amount": "7,925.00",
+        "total_amount": "7925.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25802747                        \n                                     Receipt Date   12/29/2025                      \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      East Bay                     \n      2780 Willow Pass Road        \n      Bay Point California 94565   \n      (925) 458-7610               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/24/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202610                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43666048 A-0009 2016 AUDI SQ5   Black  62,203 WA1CCAFP4GA133227 E423X0   \n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount                $7,925.00                   \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                  $775.00                    \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                $7,925.00                    \nBuyer Fee                  $775.00                     \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee               $125.00                     \nEnvironmental Fee           $15.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/24/2025",
+        "zone": "2780 Willow Pass Road"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Bay Point",
+        "zone": "Willow Pass Road Bay Point Californ"
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "CA",
+        "zone": "IA"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2016,
+        "zone": "2016"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "AUDI",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "SQ5",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport1.pdf",
+    "doc_type": "IAA",
+    "text_length": 5220,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25818920                        \n                                     Receipt Date   12/31/2025             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-29 00:00:00",
+        "total_amount": 15060.0,
+        "pickup_name": "IAA 760 - Lafayette",
+        "pickup_address": "Sale Date 12/29/2025",
+        "pickup_city": "Scott",
+        "pickup_state": "LA",
+        "pickup_zip": "70583",
+        "vehicle_vin": "2T3W1RFV4SW396639",
+        "vehicle_year": 2025,
+        "vehicle_make": "TOYOTA",
+        "vehicle_model": "RAV4",
+        "vehicle_lot": "000-43602559"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 0.4,
+      "fields": {
+        "pickup_address": "425 Highway",
+        "pickup_phone": "(337) 896-3829",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/29/2025",
+        "vehicle_vin": "2T3W1RFV4SW396639",
+        "vehicle_year": "2025",
+        "vehicle_lot": "43602559",
+        "bid_amount": "13,875.00",
+        "total_amount": "13875.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25818920                        \n                                     Receipt Date   12/31/2025                      \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      Lafayette                    \n      425 Highway 93 N             \n      Scott Louisiana 70583        \n      (337) 896-3829               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/29/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202610                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43602559  2025 TOYOTA   RAV4     Red   11,326 2T3W1RFV4SW396639          \n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount               $13,875.00                   \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                  $890.00                    \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                $13,875.00                   \nBuyer Fee                  $890.00                     \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee               $160.00                     \nEnvironmental Fee           $15.00                     \nTransaction Tax              $5.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/29/2025",
+        "zone": "425 Highway"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Scott",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "LA",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "70583",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2025,
+        "zone": "2025"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "TOYOTA",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "RAV4",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport3.pdf",
+    "doc_type": "IAA",
+    "text_length": 5184,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25802553                        \n                                     Receipt Date   12/29/2025             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-24 00:00:00",
+        "total_amount": 5005.0,
+        "pickup_name": "IAA 664 - York Springs",
+        "pickup_address": "Sale Date 12/24/2025",
+        "pickup_city": "Latimore Township",
+        "pickup_state": "PA",
+        "pickup_zip": "17372",
+        "vehicle_vin": "WMWWJ5C02L3L40041",
+        "vehicle_year": 2020,
+        "vehicle_make": "MINI",
+        "vehicle_model": "CONVERTIBL O",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 1.0,
+      "fields": {
+        "pickup_address": "10 Auct",
+        "pickup_city": "Auction Drive Latimore Township Pennsylvan",
+        "pickup_state": "IA",
+        "pickup_zip": "17372",
+        "pickup_phone": "(717) 528-4336",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/24/2025",
+        "vehicle_vin": "WMWWJ5C02L3L40041",
+        "vehicle_year": "2020",
+        "vehicle_lot": "43894355",
+        "bid_amount": "4,150.00",
+        "total_amount": "4150.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25802553                        \n                                     Receipt Date   12/29/2025                      \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      York Springs                 \n      10 Auction Drive             \n      Latimore Township Pennsylvania 17372\n      (717) 528-4336               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/24/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202610                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43894355 A-0007 2020 MINI CONVERTIBL Orange 37,814 WMWWJ5C02L3L40041     \n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount                $4,150.00                   \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                  $600.00                    \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                $4,150.00                    \nBuyer Fee                  $600.00                     \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee               $125.00                     \nEnvironmental Fee           $15.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/24/2025",
+        "zone": "10 Auct"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Latimore Township",
+        "zone": "Auction Drive Latimore Township Pennsylvan"
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "PA",
+        "zone": "IA"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2020,
+        "zone": "2020"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "MINI",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "CONVERTIBL O",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport41.pdf",
+    "doc_type": "IAA",
+    "text_length": 5184,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25802447                        \n                                     Receipt Date   12/29/2025             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-24 00:00:00",
+        "total_amount": 9765.0,
+        "pickup_name": "IAA 327 - Seattle",
+        "pickup_address": "Sale Date 12/24/2025",
+        "pickup_city": "Puyallup",
+        "pickup_state": "WA",
+        "pickup_zip": "98374",
+        "vehicle_vin": "1C4SDJCT7MC520550",
+        "vehicle_year": 2021,
+        "vehicle_make": "DODGE",
+        "vehicle_model": "DURANGO",
+        "vehicle_lot": "000-43871598"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 0.4,
+      "fields": {
+        "pickup_address": "15801 110Th Ave",
+        "pickup_phone": "(253) 604-2300",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/24/2025",
+        "vehicle_vin": "1C4SDJCT7MC520550",
+        "vehicle_year": "2021",
+        "vehicle_lot": "43871598",
+        "bid_amount": "8,675.00",
+        "total_amount": "8675.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25802447                        \n                                     Receipt Date   12/29/2025                      \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      IAA Puyallup                 \n      15801 110th Ave E            \n      Puyallup Washington 98374    \n      (253) 604-2300               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/24/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202610                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43871598 A-0112 2021 DODGE DURANGO White 90,508 1C4SDJCT7MC520550 CLN9998\n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount                $8,675.00                   \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                  $820.00                    \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                $8,675.00                    \nBuyer Fee                  $820.00                     \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee               $140.00                     \nEnvironmental Fee           $15.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/24/2025",
+        "zone": "15801 110Th Ave"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Puyallup",
+        "zone": null
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "WA",
+        "zone": null
+      },
+      {
+        "field": "pickup_zip",
+        "pattern": "98374",
+        "zone": null
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2021,
+        "zone": "2021"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "DODGE",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "DURANGO",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "ShowReport6.pdf",
+    "doc_type": "IAA",
+    "text_length": 5184,
+    "text_preview": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25779483                        \n                                     Receipt Date   12/23/2025             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "IAA",
+      "score": 1.0,
+      "fields": {
+        "auction_source": "IAA",
+        "reference_id": "",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "2025-12-22 00:00:00",
+        "total_amount": 31772.0,
+        "pickup_name": "IAA 817 - Dream Rides",
+        "pickup_address": "Sale Date 12/22/2025",
+        "pickup_city": "Brandywine",
+        "pickup_state": "MD",
+        "pickup_zip": "20613",
+        "vehicle_vin": "5UX53GP06S9Y20172",
+        "vehicle_year": 2025,
+        "vehicle_make": "BMW",
+        "vehicle_model": "X3 C",
+        "vehicle_lot": null
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "iaa_buyer_receipt_v1",
+      "confidence": 1.0,
+      "fields": {
+        "pickup_address": "14149 Brandywine Road",
+        "pickup_city": "Brandywine Road Brandywine Maryla",
+        "pickup_state": "ND",
+        "pickup_zip": "20613",
+        "pickup_phone": "(301) 372-8876",
+        "buyer_id": "593509",
+        "buyer_name": "Broadway Motoring Inc",
+        "sale_date": "12/22/2025",
+        "vehicle_vin": "5UX53GP06S9Y20172",
+        "vehicle_year": "2025",
+        "vehicle_lot": "43724097",
+        "bid_amount": "29,700.00",
+        "total_amount": "29700.00",
+        "auction_source": "IAA",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "header_info": "                                                                                    \n                                    Buyer Receipt                                   \n                                                                                    \n                                                                                    \n                                     Receipt #      25779483                        \n                                     Receipt Date   12/23/2025                      \n                                                                                    \n                                     Received By    AC/ASAP S                       \n      Insurance Auto Auctions Corp                                                  ",
+        "pickup_location": "                                   \n      Pick-Up Location:            \n      Metro DC..                   \n      14149 Brandywine Road        \n      Brandywine Maryland 20613    \n      (301) 372-8876               \n                                   \n                                   \n                                   \n                                   \n                Sale               ",
+        "buyer_info": "  Sale Date     12/22/2025                       \n                                                 \n  Buyer #       593509                           \n                                                 \n  Buyer Name    Broadway Motoring Inc            \n  Dealer        202610                           \n                                                 \n  Resale Certificate # 44939394688               \n  Registration Expires 9/24/2026                 \n                                                 \n                                     License     ",
+        "vehicle_info": "                Sale                                                    License     \n        StockNo Item # Year Make   Model   Color Mileage      VIN       Plate #     \n       000-43724097 A-0002 2025 BMW X3   Champagne 9,799 5UX53GP06S9Y20172          \n              Invoice To:             Description      Charges Payments Balance     \n                              Bid Amount               $29,700.00                   \n       Broadway Motoring Inc                                                        \n                              Buyer Fee                 $1,782.00                   \n                              Service Fee                 $95.00                    ",
+        "financial_info": "                                                       \n        Description       Charges Payments Balance     \nBid Amount                $29,700.00                   \nBuyer Fee                 $1,782.00                    \nService Fee                 $95.00                     \nTitle Handling Fee          $20.00                     \nInternet Fee               $160.00                     \nEnvironmental Fee           $15.00                     \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       \n                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "Sale Date 12/22/2025",
+        "zone": "14149 Brandywine Road"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "Brandywine",
+        "zone": "Brandywine Road Brandywine Maryla"
+      },
+      {
+        "field": "pickup_state",
+        "pattern": "MD",
+        "zone": "ND"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2025,
+        "zone": "2025"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "BMW",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "X3 C",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice (1).pdf",
+    "doc_type": "COPART",
+    "text_length": 5768,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale        Date: 12/31/25 01:45 PM\n                                                                                    \n                                                                                    \n     MEMBER:535527        PHYSICAL ADDRESS OF LOT:   SELLER:           ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.7714285714285715,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "90758145",
+        "buyer_id": "535527",
+        "buyer_name": "STATE FARM",
+        "sale_date": "2025-12-29 00:00:00",
+        "total_amount": 6500.0,
+        "pickup_name": "Copart",
+        "pickup_address": "8300 BLAKELAND DRIVE",
+        "pickup_city": "LITTLETON",
+        "pickup_state": "CO",
+        "pickup_zip": "80125",
+        "vehicle_vin": "2FMPK4K9XNBA29051",
+        "vehicle_year": 2022,
+        "vehicle_make": "Ford",
+        "vehicle_model": "Edge Titan",
+        "vehicle_lot": "90758145"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 Broad",
+        "pickup_address": "8300 Blakeland Drive",
+        "pickup_city": "Blakeland Drive Littleton",
+        "pickup_state": "CO",
+        "pickup_zip": "80125",
+        "seller_id": "942867490",
+        "vehicle_vin": "2FMPK4K9XNBA29051",
+        "vehicle_year": "2025",
+        "vehicle_lot": "90758145",
+        "sale_price": "0.00",
+        "total_amount": "0.00",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "     MEMBER:535527      \n                        \n     BROADWAY MOTORING INC\n     77 FITCHBURG ROAD  \n     AYER, MA 01432     \n                        \n     LOT#: 90758145     \n     VEHICLE: 2022 FORD EDGE TI",
+        "lot_address": "  PHYSICAL ADDRESS OF LOT:\n                         \n  8300 BLAKELAND DRIVE   \n  LITTLETON CO 80125     \n                         \n                         \n                         S\nITAN GRAY                P",
+        "seller_info": "   SELLER:                         \n   STATE FARM                      \n   SOLD THROUGH COPART 942867490   \n   8300 BLAKELAND DRIVE            \n   LITTLETON, CO 80125             \n                                   \nSale Yard: 193 Item#: 2025/D       \nPhy Yard: 193 Keys: YES            ",
+        "vehicle_info": "     LOT#: 90758145                              Sale Yard: 193 Item#: 2025/D       \n     VEHICLE: 2022 FORD EDGE TITAN GRAY          Phy Yard: 193  Keys: YES           \n     VIN: 2FMPK4K9XNBA29051                      Row: J010      Sale: 12/29/2025    \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/29/2025 Sale Price          $6,500.00                                       \n                                                                                    \n     12/29/2025 Environmental Fee   $15.00                                          \n     12/29/2025 Internet Bid Fee    $125.00                                         \n                                                                                    \n     12/29/2025 Gate Fee            $95.00                                          \n     12/29/2025 Title Pickup Fee    $20.00                                          \n                                                                                    \n     12/31/2025 Buyer Fee           $720.00                                         \n     12/31/2025 Payment             -$7,475.00           Wire Payment, REF# 251231058180\n                                                                                    \n                Net Due (USD)       $0.00                                           \n                                                                                    \n     Seller: ________________________________________________________________________________________________________",
+        "financial_info": "                Net Due (USD)       $0.00                                           \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                         Released to (Print Name): _______________________________________________________________\n                                                                                    \n                         Released to (Signature): ________________________________________________________________\n                         Transporter Plate #: ______________________________________ State: _______________________\n                                                                                    \n                                                                                    \n                                                                                    \n                                                                                    \n     PAID THROUGH: 12/31/2025                                                       \n                                                                                    \n                                                                                    \n                                                                                    \n                                                                                    "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "8300 BLAKELAND DRIVE",
+        "zone": "8300 Blakeland Drive"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "LITTLETON",
+        "zone": "Blakeland Drive Littleton"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2022,
+        "zone": "2025"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Ford",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Edge Titan",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice (12).pdf",
+    "doc_type": "COPART",
+    "text_length": 5769,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale        Date: 01/02/26 12:48 PM\n                                                                                    \n                                                                                    \n                        PHYSICAL ADDRESS OF                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.6571428571428571,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "92835005",
+        "buyer_id": "535527",
+        "buyer_name": "STATE FARM-FLORIDA WINTER",
+        "sale_date": "2025-12-29 00:00:00",
+        "total_amount": 9200.0,
+        "pickup_name": "Copart",
+        "pickup_address": "",
+        "pickup_city": "APOPKA",
+        "pickup_state": "FL",
+        "pickup_zip": "32712",
+        "vehicle_vin": "WVWLF7AU9FW245472",
+        "vehicle_year": 2015,
+        "vehicle_make": "Volkswagen",
+        "vehicle_model": "Golf R",
+        "vehicle_lot": "92835005"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 0.8,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 L Broad",
+        "pickup_city": "Orange Blossom Trail So Apopka",
+        "pickup_state": "FL",
+        "pickup_zip": "32712",
+        "seller_id": "061423251",
+        "vehicle_vin": "WVWLF7AU9FW245472",
+        "vehicle_year": "2015",
+        "vehicle_lot": "92835005",
+        "sale_price": "01",
+        "total_amount": "01",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "                        P\n     MEMBER:535527      \n                        L\n     BROADWAY MOTORING  \n     INC                3\n     77 FITCHBURG ROAD  A\n     AYER, MA 01432     ",
+        "lot_address": "PHYSICAL ADDRESS OF      \n                        SE\nLOT:                     \n                        ST\n                        HV\n3352 W ORANGE BLOSSOM TRAIL\n                        SO\nAPOPKA FL 32712          \n                        335\n                        AP",
+        "seller_info": "                                   \nELLER:                             \n                                   \nTATE FARM-FLORIDA WINTER           \nVN                                 \nOLD THROUGH COPART                 \n52 W ORANGE BLOSSOM TRAIL 061423251\nPOPKA, FL 32712                    ",
+        "vehicle_info": "                                                APOPKA, FL 32712                    \n     LOT#: 92835005                                Sale Yard: 153 Item#: 33/D       \n     VEHICLE: 2015 VOLKSWAGEN GOLF R GRAY          Phy Yard: 153 Keys: YES          \n     VIN: WVWLF7AU9FW245472                        Row: J130     Sale: 12/29/2025   \n                                                                                    \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/29/2025 Sale Price          $9,200.00                                       \n                                                                                    \n     12/29/2025 Environmental Fee   $15.00                                          \n     12/29/2025 Virtual Bid Fee     $160.00                                         \n                                                                                    \n     12/29/2025 Gate Fee            $95.00                                          \n     12/29/2025 Title Pickup Fee    $20.00                                          \n                                                                                    \n     01/01/2026 Storage             $5.00                FROM 01/01/26 - 01/01/26   \n     01/02/2026 Storage             $10.00               FROM 01/02/26 - 01/02/26   \n     01/02/2026 Late Payment        $50.00                                          \n                                                                                    \n     01/02/2026 Buyer Fee           $820.00                                         ",
+        "financial_info": "     01/02/2026 Storage             $10.00               FROM 01/02/26 - 01/02/26   \n     01/02/2026 Late Payment        $50.00                                          \n     01/02/2026 Buyer Fee           $820.00                                         \n                                                                                    \n     01/02/2026 Payment             -$10,375.00          Wire Payment, REF# 260102048756\n                Net Due (USD)       $0.00                                           \n                                                                                    \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                         Released to (Print Name): _______________________________________________________________\n                                                                                    \n                         Released to (Signature): ________________________________________________________________\n                                                                                    \n                         Transporter Plate #: ______________________________________ State: _______________________\n                                                                                    \n                                                                                    \n                                                                                    \n     PAID THROUGH: 01/02/2026                                                       "
+      },
+      "warnings": [
+        "Required field not found: pickup_address in zone lot_address"
+      ]
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "",
+        "zone": null
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "APOPKA",
+        "zone": "Orange Blossom Trail So Apopka"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2015,
+        "zone": "2015"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Volkswagen",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Golf R",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice (13).pdf",
+    "doc_type": "COPART",
+    "text_length": 5768,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale        Date: 01/02/26 12:50 PM\n                                                                                    \n                                                                                    \n                        PHYSICAL ADDRESS OF                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.6571428571428571,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "90793555",
+        "buyer_id": "535527",
+        "buyer_name": "LIBERTY MUTUAL COMM",
+        "sale_date": "2025-12-26 00:00:00",
+        "total_amount": 14100.0,
+        "pickup_name": "Copart",
+        "pickup_address": "",
+        "pickup_city": "HASLET",
+        "pickup_state": "TX",
+        "pickup_zip": "76052",
+        "vehicle_vin": "1C6SRFJT6MN789197",
+        "vehicle_year": 2021,
+        "vehicle_make": "Ram",
+        "vehicle_model": "1500 Laram",
+        "vehicle_lot": "90793555"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 L Broad",
+        "pickup_address": "950 Blue Mound Road",
+        "pickup_city": "Blue Mound Road West So Haslet",
+        "pickup_state": "TX",
+        "pickup_zip": "76052",
+        "seller_id": "760476096",
+        "vehicle_vin": "1C6SRFJT6MN789197",
+        "vehicle_year": "2021",
+        "vehicle_lot": "90793555",
+        "sale_price": "01",
+        "total_amount": "01",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "                        P\n     MEMBER:535527      \n                        L\n     BROADWAY MOTORING  \n     INC                9\n     77 FITCHBURG ROAD  H\n     AYER, MA 01432     ",
+        "lot_address": "PHYSICAL ADDRESS OF      \n                        SE\nLOT:                     \n                        LI\n                        BU\n950 BLUE MOUND ROAD WEST \n                        SO\nHASLET TX 76052          \n                        95\n                        HA",
+        "seller_info": "                                   \nELLER:                             \n                                   \nIBERTY MUTUAL COMM                 \nUSINESS                            \nOLD THROUGH COPART                 \n50 BLUE MOUND ROAD WEST 760476096  \nASLET, TX 76052                    ",
+        "vehicle_info": "                                                HASLET, TX 76052                    \n     LOT#: 90793555                              Sale Yard: 98 Item#: 44/D          \n     VEHICLE: 2021 RAM 1500 LARAM GRAY           Phy Yard: 98  Keys: YES            \n     VIN: 1C6SRFJT6MN789197                      Row: C010     Sale: 12/26/2025     \n                                                                                    \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/29/2025 Sale Price          $14,100.00                                      \n                                                                                    \n     12/29/2025 Environmental Fee   $15.00                                          \n     12/29/2025 Virtual Bid Fee     $160.00                                         \n                                                                                    \n     12/29/2025 Gate Fee            $95.00                                          \n     12/29/2025 Title Pickup Fee    $20.00                                          \n                                                                                    \n     01/01/2026 Storage             $5.00                FROM 01/01/26 - 01/01/26   \n     01/02/2026 Storage             $10.00               FROM 01/02/26 - 01/02/26   \n     01/02/2026 Late Payment        $50.00                                          \n                                                                                    \n     01/02/2026 Buyer Fee           $890.00                                         ",
+        "financial_info": "     01/02/2026 Storage             $10.00               FROM 01/02/26 - 01/02/26   \n     01/02/2026 Late Payment        $50.00                                          \n     01/02/2026 Buyer Fee           $890.00                                         \n                                                                                    \n     01/02/2026 Payment             -$15,345.00          Wire Payment, REF# 260102049121\n                Net Due (USD)       $0.00                                           \n                                                                                    \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                         Released to (Print Name): _______________________________________________________________\n                                                                                    \n                         Released to (Signature): ________________________________________________________________\n                                                                                    \n                         Transporter Plate #: ______________________________________ State: _______________________\n                                                                                    \n                                                                                    \n                                                                                    \n     PAID THROUGH: 01/02/2026                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "",
+        "zone": "950 Blue Mound Road"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "HASLET",
+        "zone": "Blue Mound Road West So Haslet"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2021,
+        "zone": "2021"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Ram",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "1500 Laram",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice.pdf",
+    "doc_type": "COPART",
+    "text_length": 5768,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale        Date: 12/31/25 04:41 PM\n                                                                                    \n                                                                                    \n     MEMBER:535527       PHYSICAL ADDRESS OF LOT: SELLER:              ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.7714285714285715,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "95541835",
+        "buyer_id": "535527",
+        "buyer_name": "GEICO - HOME OFFICE",
+        "sale_date": "2025-12-30 00:00:00",
+        "total_amount": 6300.0,
+        "pickup_name": "Copart",
+        "pickup_address": "12020 US HIGHWAY 301",
+        "pickup_city": "RIVERVIEW",
+        "pickup_state": "FL",
+        "pickup_zip": "33578",
+        "vehicle_vin": "JTDKAMFU6N3164401",
+        "vehicle_year": 2022,
+        "vehicle_make": "Toyota",
+        "vehicle_model": "Prius Nigh",
+        "vehicle_lot": "95541835"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 Broad",
+        "pickup_address": "12020 Us Highway",
+        "pickup_city": "Riverview",
+        "pickup_state": "FL",
+        "pickup_zip": "33578",
+        "seller_id": "061423251",
+        "vehicle_vin": "JTDKAMFU6N3164401",
+        "vehicle_year": "2022",
+        "vehicle_lot": "95541835",
+        "sale_price": "0.00",
+        "total_amount": "0.00",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "     MEMBER:535527      \n                        \n     BROADWAY MOTORING INC\n     77 FITCHBURG ROAD  \n     AYER, MA 01432     \n                        \n     LOT#: 95541835     \n     VEHICLE: 2022 TOYOTA PRIUS",
+        "lot_address": " PHYSICAL ADDRESS OF LOT:\n                         \n 12020 US HIGHWAY 301 SOUTH\n RIVERVIEW FL 33578      \n                         \n                         \n                         \nS NIGH RED               ",
+        "seller_info": " SELLER:                           \n GEICO - HOME OFFICE               \n SOLD THROUGH COPART   061423251   \n 12020 US HIGHWAY 301 SOUTH        \n RIVERVIEW, FL 33578               \n                                   \nSale Yard: 34 Item#: 161/D         \nPhy Yard: 34  Keys: YES            ",
+        "vehicle_info": "     LOT#: 95541835                               Sale Yard: 34 Item#: 161/D        \n     VEHICLE: 2022 TOYOTA PRIUS NIGH RED          Phy Yard: 34  Keys: YES           \n     VIN: JTDKAMFU6N3164401                       Row: SE002    Sale: 12/30/2025    \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/30/2025 Sale Price          $6,300.00                                       \n                                                                                    \n     12/30/2025 Environmental Fee   $15.00                                          \n     12/30/2025 Virtual Bid Fee     $145.00                                         \n                                                                                    \n     12/30/2025 Gate Fee            $95.00                                          \n     12/30/2025 Title Pickup Fee    $20.00                                          \n                                                                                    \n     12/31/2025 Buyer Fee           $700.00                                         \n     12/31/2025 Payment             -$7,275.00           Wire Payment, REF# 251231128653\n                                                                                    \n                Net Due (USD)       $0.00                                           \n                                                                                    \n     Seller: ________________________________________________________________________________________________________",
+        "financial_info": "                Net Due (USD)       $0.00                                           \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                         Released to (Print Name): _______________________________________________________________\n                                                                                    \n                         Released to (Signature): ________________________________________________________________\n                         Transporter Plate #: ______________________________________ State: _______________________\n                                                                                    \n                                                                                    \n                                                                                    \n                                                                                    \n     PAID THROUGH: 12/31/2025                                                       \n                                                                                    \n                                                                                    \n                                                                                    \n                                                                                    "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "12020 US HIGHWAY 301",
+        "zone": "12020 Us Highway"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "RIVERVIEW",
+        "zone": "Riverview"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2022,
+        "zone": "2022"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Toyota",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Prius Nigh",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice2.pdf",
+    "doc_type": "COPART",
+    "text_length": 5767,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale       Date: 12/31/25 11:42 AM\n                                                                                    \n                                                                                    \n                        PHYSICAL ADDRESS OF                             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.6571428571428571,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "81774455",
+        "buyer_id": "535527",
+        "buyer_name": "ALLSTATE-RAPID SETTLEMENT",
+        "sale_date": "2025-12-29 00:00:00",
+        "total_amount": 3150.0,
+        "pickup_name": "Copart",
+        "pickup_address": "",
+        "pickup_city": "PORTLAND",
+        "pickup_state": "OR",
+        "pickup_zip": "97218",
+        "vehicle_vin": "1FA6P8AM8F5342934",
+        "vehicle_year": 2015,
+        "vehicle_make": "Ford",
+        "vehicle_model": "Mustang",
+        "vehicle_lot": "81774455"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 L Broad",
+        "pickup_address": "6900 Nort",
+        "pickup_city": "Portland",
+        "pickup_state": "OR",
+        "pickup_zip": "97218",
+        "seller_id": "911591234",
+        "vehicle_vin": "1FA6P8AM8F5342934",
+        "vehicle_year": "2015",
+        "vehicle_lot": "81774455",
+        "sale_price": "12",
+        "total_amount": "12",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "                        P\n     MEMBER:535527      \n                        L\n     BROADWAY MOTORING  \n     INC                6\n     77 FITCHBURG ROAD  P\n     AYER, MA 01432     ",
+        "lot_address": "PHYSICAL ADDRESS OF      \n                        SE\nLOT:                     \n                        AL\n                        SO\n6900 NORTHEAST CORNFOOT ROAD\n                        69\nPORTLAND OR 97218        \n                        RO\n                        PO",
+        "seller_info": "                                   \nELLER:                             \n                                   \nLLSTATE-RAPID SETTLEMENT           \nOLD THROUGH COPART                 \n900 NORTHEAST CORNFOOT             \nOAD                  911591234     \nORTLAND, OR 97218                  ",
+        "vehicle_info": "                                                 PORTLAND, OR 97218                 \n     LOT#: 81774455                              Sale Yard: 9 Item#: 136/D          \n     VEHICLE: 2015 FORD MUSTANG RED              Phy Yard: 9  Keys: YES             \n     VIN: 1FA6P8AM8F5342934                      Row: C040    Sale: 12/29/2025      \n                                                                                    \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/29/2025 Sale Price          $3,150.00                                       \n                                                                                    \n     12/29/2025 Environmental Fee   $15.00                                          \n     12/29/2025 Virtual Bid Fee     $110.00                                         \n                                                                                    \n     12/29/2025 Gate Fee            $95.00                                          \n     12/29/2025 Title Pickup Fee    $20.00                                          \n                                                                                    \n     12/31/2025 Buyer Fee           $505.00                                         \n     12/31/2025 Payment             -$3,895.00           Wire Payment, REF# 251231020271\n                                                                                    \n                Net Due (USD)       $0.00                                           ",
+        "financial_info": "     12/31/2025 Payment             -$3,895.00           Wire Payment, REF# 251231020271\n                Net Due (USD)       $0.00                                           \n                                                                                    \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                         Released to (Print Name): _______________________________________________________________\n                                                                                    \n                         Released to (Signature): ________________________________________________________________\n                         Transporter Plate #: ______________________________________ State: _______________________\n                                                                                    \n                                                                                    \n                                                                                    \n                                                                                    \n     PAID THROUGH: 12/31/2025                                                       \n                                                                                    \n                                                                                    "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "",
+        "zone": "6900 Nort"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "PORTLAND",
+        "zone": "Portland"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2015,
+        "zone": "2015"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Ford",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Mustang",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice21.pdf",
+    "doc_type": "COPART",
+    "text_length": 5768,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale        Date: 12/15/25 02:48 PM\n                                                                                    \n                                                                                    \n                        PHYSICAL ADDRESS OF                            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.6571428571428571,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "92495695",
+        "buyer_id": "535527",
+        "buyer_name": "PROGRESSIVE - WV -",
+        "sale_date": "2025-12-12 00:00:00",
+        "total_amount": 3100.0,
+        "pickup_name": "Copart",
+        "pickup_address": "1746 US ROUTE 60",
+        "pickup_city": "HURRICANE",
+        "pickup_state": "WV",
+        "pickup_zip": "25526",
+        "vehicle_vin": "1C4RDJEGXFC177587",
+        "vehicle_year": 2015,
+        "vehicle_make": "Dodge",
+        "vehicle_model": "Durango Ci",
+        "vehicle_lot": "92495695"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 L Broad",
+        "pickup_address": "1746 Us Route",
+        "pickup_city": "So Hurricane",
+        "pickup_state": "WV",
+        "pickup_zip": "25526",
+        "seller_id": "061423251",
+        "vehicle_vin": "1C4RDJEGXFC177587",
+        "vehicle_year": "2015",
+        "vehicle_lot": "92495695",
+        "sale_price": "12",
+        "total_amount": "12",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "                        P\n     MEMBER:535527      \n                        L\n     BROADWAY MOTORING  \n     INC                1\n     77 FITCHBURG ROAD  H\n     AYER, MA 01432     ",
+        "lot_address": "PHYSICAL ADDRESS OF      \n                         SE\nLOT:                     \n                         PR\n                         C\n1746 US ROUTE 60         \n                         SO\nHURRICANE WV 25526       \n                         17\n                         H",
+        "seller_info": "                                   \nELLER:                             \n                                   \nROGRESSIVE - WV -                  \nCHARLESTON                         \nOLD THROUGH COPART                 \n746 US ROUTE 60      061423251     \nHURRICANE, WV 25526                ",
+        "vehicle_info": "                                                 HURRICANE, WV 25526                \n     LOT#: 92495695                                Sale Yard: 89 Item#: 1/D         \n     VEHICLE: 2015 DODGE DURANGO CI BLACK          Phy Yard: 89 Keys: YES           \n     VIN: 1C4RDJEGXFC177587                        Row: O020    Sale: 12/12/2025    \n                                                                                    \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/12/2025 Sale Price          $3,100.00                                       \n                                                                                    \n     12/12/2025 Environmental Fee   $15.00                                          \n     12/12/2025 Internet Bid Fee    $100.00                                         \n                                                                                    \n     12/12/2025 Gate Fee            $95.00                                          \n     12/12/2025 Title Pickup Fee    $20.00                                          \n                                                                                    \n     12/15/2025 Buyer Fee           $505.00                                         \n     12/15/2025 Payment             -$3,835.00           Wire Payment, REF# 251215090152\n                                                                                    \n                Net Due (USD)       $0.00                                           ",
+        "financial_info": "     12/15/2025 Payment             -$3,835.00           Wire Payment, REF# 251215090152\n                Net Due (USD)       $0.00                                           \n                                                                                    \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                         Released to (Print Name): _______________________________________________________________\n                                                                                    \n                         Released to (Signature): ________________________________________________________________\n                         Transporter Plate #: ______________________________________ State: _______________________\n                                                                                    \n                                                                                    \n                                                                                    \n                                                                                    \n     PAID THROUGH: 12/15/2025                                                       \n                                                                                    \n                                                                                    "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "1746 US ROUTE 60",
+        "zone": "1746 Us Route"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "HURRICANE",
+        "zone": "So Hurricane"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2015,
+        "zone": "2015"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Dodge",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Durango Ci",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice3.pdf",
+    "doc_type": "COPART",
+    "text_length": 5767,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale       Date: 12/31/25 11:39 AM\n                                                                                    \n                                                                                    \n     MEMBER:535527        PHYSICAL ADDRESS OF LOT:   SELLER:            ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.7714285714285715,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "94118105",
+        "buyer_id": "535527",
+        "buyer_name": "STATE FARM",
+        "sale_date": "2025-12-24 00:00:00",
+        "total_amount": 4100.0,
+        "pickup_name": "Copart",
+        "pickup_address": "8300 BLAKELAND DRIVE",
+        "pickup_city": "LITTLETON",
+        "pickup_state": "CO",
+        "pickup_zip": "80125",
+        "vehicle_vin": "55SWF4KB4FU033087",
+        "vehicle_year": 2015,
+        "vehicle_make": "Mercedes-Benz",
+        "vehicle_model": "C 300 4Mat",
+        "vehicle_lot": "94118105"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 Broad",
+        "pickup_address": "8300 Blakeland Drive",
+        "pickup_city": "Blakeland Drive Littleton",
+        "pickup_state": "CO",
+        "pickup_zip": "80125",
+        "seller_id": "942867490",
+        "vehicle_vin": "55SWF4KB4FU033087",
+        "vehicle_year": "2015",
+        "vehicle_lot": "94118105",
+        "sale_price": "12",
+        "total_amount": "12",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "     MEMBER:535527      \n                        \n     BROADWAY MOTORING INC\n     77 FITCHBURG ROAD  \n     AYER, MA 01432     \n                        \n     LOT#: 94118105     \n     VEHICLE: 2015 MERCEDES-BE",
+        "lot_address": "  PHYSICAL ADDRESS OF LOT:\n                         \n  8300 BLAKELAND DRIVE   \n  LITTLETON CO 80125     \n                         \n                         \n                         \nENZ C 300 4MAT BLACK     ",
+        "seller_info": "   SELLER:                         \n   STATE FARM                      \n   SOLD THROUGH COPART 942867490   \n   8300 BLAKELAND DRIVE            \n   LITTLETON, CO 80125             \n                                   \n    Sale Yard: 193 Item#: 143/D    \n    Phy Yard: 193 Keys: YES        ",
+        "vehicle_info": "     LOT#: 94118105                                  Sale Yard: 193 Item#: 143/D    \n     VEHICLE: 2015 MERCEDES-BENZ C 300 4MAT BLACK    Phy Yard: 193 Keys: YES        \n     VIN: 55SWF4KB4FU033087                          Row: H080    Sale: 12/24/2025  \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/24/2025 Sale Price          $4,100.00                                       \n                                                                                    \n     12/24/2025 Environmental Fee   $15.00                                          \n     12/24/2025 Internet Bid Fee    $110.00                                         \n                                                                                    \n     12/24/2025 Gate Fee            $95.00                                          \n     12/24/2025 Title Pickup Fee    $20.00                                          \n                                                                                    \n     12/30/2025 Storage             $5.00                FROM 12/30/25 - 12/30/25   \n     12/30/2025 Late Payment        $50.00                                          \n                                                                                    \n     12/31/2025 Storage             $10.00               FROM 12/31/25 - 12/31/25   \n     12/31/2025 Buyer Fee           $600.00                                         \n     12/31/2025 Payment             -$5,005.00           Wire Payment, REF# 251231025296",
+        "financial_info": "                                                                                    \n     12/31/2025 Buyer Fee           $600.00                                         \n     12/31/2025 Payment             -$5,005.00           Wire Payment, REF# 251231025296\n                                                                                    \n                Net Due (USD)       $0.00                                           \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                                                                                    \n                         Released to (Print Name): _______________________________________________________________\n                         Released to (Signature): ________________________________________________________________\n                                                                                    \n                         Transporter Plate #: ______________________________________ State: _______________________\n                                                                                    \n                                                                                    \n                                                                                    \n     PAID THROUGH: 12/31/2025                                                       "
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "8300 BLAKELAND DRIVE",
+        "zone": "8300 Blakeland Drive"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "LITTLETON",
+        "zone": "Blakeland Drive Littleton"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2015,
+        "zone": "2015"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Mercedes-Benz",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "C 300 4Mat",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice4.pdf",
+    "doc_type": "COPART",
+    "text_length": 10961,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale       Date: 12/31/25 11:31 AM\n                                                                                    \n                                                                                    \n     MEMBER:535527       PHYSICAL ADDRESS OF LOT: SELLER:               ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.7714285714285715,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "94181345",
+        "buyer_id": "535527",
+        "buyer_name": "COUNTRY - TOTAL LOSS UNIT",
+        "sale_date": "2025-12-23 00:00:00",
+        "total_amount": 4600.0,
+        "pickup_name": "Copart",
+        "pickup_address": "",
+        "pickup_city": "ELGIN",
+        "pickup_state": "IL",
+        "pickup_zip": "60120",
+        "vehicle_vin": "55SWF4KB8FU087590",
+        "vehicle_year": 2015,
+        "vehicle_make": "Mercedes-Benz",
+        "vehicle_model": "C 300 4Mat",
+        "vehicle_lot": "94181345"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "35527 Broad",
+        "pickup_address": "1475 Bluff City Blvd",
+        "pickup_city": "Bluff City Blvd Elgin",
+        "pickup_state": "IL",
+        "pickup_zip": "60120",
+        "seller_id": "061423251",
+        "vehicle_vin": "55SWF4KB8FU087590",
+        "vehicle_year": "2015",
+        "vehicle_lot": "94181345",
+        "sale_price": "12",
+        "total_amount": "12",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "     MEMBER:535527      \n                        \n     BROADWAY MOTORING INC\n     77 FITCHBURG ROAD  \n     AYER, MA 01432     \n                        \n     LOT#: 94181345     \n     VEHICLE: 2015 MERCEDES-BE",
+        "lot_address": "PHYSICAL ADDRESS  OF LOT:\n                         \n1475 BLUFF CITY BLVD     \nELGIN IL 60120           \n                         \n                         \n                         \nENZ C 300 4MAT BLACK     ",
+        "seller_info": "SELLER:                            \nCOUNTRY - TOTAL LOSS UNIT 1        \nSOLD THROUGH COPART     061423251  \n1475 BLUFF CITY BLVD               \nELGIN, IL 60120                    \n                                   \n    Sale Yard: 36 Item#: 4099      \n    Phy Yard: 36 Keys: YES         ",
+        "vehicle_info": "     LOT#: 94181345                                   Sale Yard: 36 Item#: 4099     \n     VEHICLE: 2015 MERCEDES-BENZ C 300 4MAT BLACK     Phy Yard: 36 Keys: YES        \n     VIN: 55SWF4KB8FU087590                           Row: G200   Sale: 12/23/2025  \n                                  Charges and Payments                              \n     Date       Charges             Amount               Description                \n     12/23/2025 Sale Price          $4,600.00                                       \n                                                                                    \n     12/23/2025 Govt Imposed Transaction Fee $2.00                                  \n     12/23/2025 Environmental Fee   $15.00                                          \n                                                                                    \n     12/23/2025 Internet Bid Fee    $110.00                                         \n     12/23/2025 Gate Fee            $95.00                                          \n                                                                                    \n     12/23/2025 Title Pickup Fee    $20.00                                          \n     12/27/2025 Storage             $5.00                FROM 12/27/25 - 12/27/25   \n                                                                                    \n     12/28/2025 Storage             $10.00               FROM 12/28/25 - 12/28/25   \n     12/29/2025 Storage             $15.00               FROM 12/29/25 - 12/29/25   \n     12/29/2025 Late Payment        $50.00                                          ",
+        "financial_info": "                                                                                    \n     12/29/2025 Storage             $15.00               FROM 12/29/25 - 12/29/25   \n     12/29/2025 Late Payment        $50.00                                          \n     12/30/2025 Storage             $20.00               FROM 12/30/25 - 12/30/25   \n                                                                                    \n     12/31/2025 Storage             $25.00               FROM 12/31/25 - 12/31/25   \n     12/31/2025 Buyer Fee           $625.00                                         \n                                                                                    \n     12/31/2025 Payment             -$5,567.00           Wire Payment, REF# 251231016622\n     12/31/2025 Payment             -$6.34               Wire Payment, REF# 251230031310\n                                                                                    \n     12/31/2025 Payment             -$18.66              Wire Payment, REF# 251231017527\n                Net Due (USD)       $0.00                                           \n                                                                                    \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                         Released to (Print Name): _______________________________________________________________"
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "",
+        "zone": "1475 Bluff City Blvd"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "ELGIN",
+        "zone": "Bluff City Blvd Elgin"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2015,
+        "zone": "2015"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Mercedes-Benz",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "C 300 4Mat",
+        "zone": null
+      }
+    ]
+  },
+  {
+    "filename": "invoice5.pdf",
+    "doc_type": "COPART",
+    "text_length": 10959,
+    "text_preview": "                                                                                    \n                                                                                    \n                               Sales Receipt/Bill of Sale       Date: 12/31/25 11:30 AM\n                                                                                    \n                                                                                    \n                        PHYSICAL ADDRESS OF                             ",
+    "pattern_result": {
+      "success": true,
+      "extractor": "COPART",
+      "score": 0.6571428571428571,
+      "fields": {
+        "auction_source": "COPART",
+        "reference_id": "82515875",
+        "buyer_id": "535527",
+        "buyer_name": "AFMIC-AM FAM MUTUAL INS CO,",
+        "sale_date": "2025-12-23 00:00:00",
+        "total_amount": 17400.0,
+        "pickup_name": "Copart",
+        "pickup_address": "",
+        "pickup_city": "FRIDLEY",
+        "pickup_state": "MN",
+        "pickup_zip": "55421",
+        "vehicle_vin": "WA1EAAFY2N2134844",
+        "vehicle_year": 2022,
+        "vehicle_make": "Audi",
+        "vehicle_model": "Q5 Premium",
+        "vehicle_lot": "82515875"
+      }
+    },
+    "zone_result": {
+      "success": true,
+      "template_id": "copart_invoice_v1",
+      "confidence": 1.0,
+      "fields": {
+        "buyer_id": "535527",
+        "buyer_address": "77 Fitchburg Road",
+        "pickup_address": "3737 East",
+        "pickup_city": "River Road Af Fridley",
+        "pickup_state": "MN",
+        "pickup_zip": "55421",
+        "seller_id": "061423251",
+        "vehicle_vin": "WA1EAAFY2N2134844",
+        "vehicle_year": "2022",
+        "vehicle_lot": "82515875",
+        "sale_price": "12",
+        "total_amount": "12",
+        "auction_source": "COPART",
+        "pickup_location_type": "AUCTION"
+      },
+      "zone_texts": {
+        "member_info": "                        P\n     MEMBER:535527      \n                        L\n                        *\n     BROADWAY MOTORING  F\n     INC                \n     77 FITCHBURG ROAD  *\n     AYER, MA 01432     b",
+        "lot_address": "PHYSICAL ADDRESS OF      \n                        SE\nLOT:                     \n** 3737 EAST RIVER ROAD  \n                        AF\nFRIDLEY MN 55421         \n                        SI\n                        SO\n**This is a sub lot - payments must\n                        10\nbe taken at the main yard location*\n                        BL",
+        "seller_info": "                                   \nELLER:                             \n                                   \nFMIC-AM FAM MUTUAL INS CO,         \nI                                  \nOLD THROUGH COPART                 \n0588 CENTRAL AVE NE  061423251     \nLAINE, MN 55434                    ",
+        "vehicle_info": "     AYER, MA 01432     be taken at the main yard location* BLAINE, MN 55434        \n                                                                                    \n     LOT#: 82515875                               Sale Yard: 37 Item#: 2046/D       \n     VEHICLE: 2022 AUDI Q5 PREMIUM GRAY           Phy Yard: 37 Keys: YES            \n     VIN: WA1EAAFY2N2134844                       Row: 5G060   Sale: 12/23/2025     \n                                  Charges and Payments                              \n                                                                                    \n     Date       Charges             Amount               Description                \n     12/23/2025 Sale Price          $17,400.00                                      \n                                                                                    \n     12/23/2025 Environmental Fee   $15.00                                          \n     12/23/2025 Internet Bid Fee    $140.00                                         \n                                                                                    \n     12/23/2025 Gate Fee            $95.00                                          \n     12/23/2025 Title Pickup Fee    $20.00                                          \n     12/27/2025 Storage             $5.00                FROM 12/27/25 - 12/27/25   \n                                                                                    \n     12/28/2025 Storage             $10.00               FROM 12/28/25 - 12/28/25   \n     12/29/2025 Storage             $15.00               FROM 12/29/25 - 12/29/25   ",
+        "financial_info": "     12/28/2025 Storage             $10.00               FROM 12/28/25 - 12/28/25   \n                                                                                    \n     12/29/2025 Storage             $15.00               FROM 12/29/25 - 12/29/25   \n     12/29/2025 Late Payment        $50.00                                          \n                                                                                    \n     12/30/2025 Storage             $20.00               FROM 12/30/25 - 12/30/25   \n     12/31/2025 Storage             $25.00               FROM 12/31/25 - 12/31/25   \n                                                                                    \n     12/31/2025 Buyer Fee           $1,044.00                                       \n     12/31/2025 Payment             -$18,839.00          Wire Payment, REF# 251231017527\n                                                                                    \n                Net Due (USD)       $0.00                                           \n                                                                                    \n     Seller: ________________________________________________________________________________________________________\n                                                                                    \n                                                                                    \n      Document evidences transfer of title from seller to Member. Member agrees vehicle is sold \"AS IS WHERE IS\" with no warranties.\n      Sale is final. Member and transporter, as agent of Member, assume responsibility for ensuring vehicle is loaded, secured for transport,\n      and transported in compliance with law, and shall defend and indemnify Copart from any claim, damage, or loss related to loading and\n      securing of vehicle or transportation from Copart's premises. If it is exported, this vehicle is authorized for export only to the country\n      of ultimate destination for use by the ultimate consignee herein identified. It may not be resold, transferred, or otherwise disposed of to\n      any other country or person except as authorized by US law. Member agrees to assume all responsibility for complying with US\n      export regulations including accurate filing of AES EEIs and obtaining required licenses. Copart may only be listed as USPPI if\n      Member is outside US and purchases vehicle for export from US; such export will be a Routed Export and Member should refer to\n      requirements available https://bit.ly/49qs7AJ.                                \n                                                                                    \n                         Released By: _____________________________________________ Date: ______________________\n                                                                                    \n                         Released to (Print Name): _______________________________________________________________\n                         Released to (Signature): ________________________________________________________________"
+      },
+      "warnings": []
+    },
+    "differences": [
+      {
+        "field": "pickup_address",
+        "pattern": "",
+        "zone": "3737 East"
+      },
+      {
+        "field": "pickup_city",
+        "pattern": "FRIDLEY",
+        "zone": "River Road Af Fridley"
+      },
+      {
+        "field": "vehicle_year",
+        "pattern": 2022,
+        "zone": "2022"
+      },
+      {
+        "field": "vehicle_make",
+        "pattern": "Audi",
+        "zone": null
+      },
+      {
+        "field": "vehicle_model",
+        "pattern": "Q5 Premium",
+        "zone": null
+      }
+    ]
+  }
+]
