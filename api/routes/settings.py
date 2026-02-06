@@ -7,6 +7,12 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from api.listing_fields import (
+    FieldCategory,
+    FieldSourceType,
+    get_registry,
+)
+
 router = APIRouter()
 
 
@@ -446,3 +452,179 @@ async def test_sheets_connection():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to connect to Sheets: {str(e)}")
+
+
+# =============================================================================
+# FIELD TAXONOMY ENDPOINTS
+# =============================================================================
+
+
+@router.get("/fields/schema")
+async def get_field_schema():
+    """
+    Get the complete field schema including taxonomy.
+
+    Returns all fields with their:
+    - category (cd_required, cd_optional, internal)
+    - source_type (extracted, constant, warehouse_ref, user_input, computed)
+    - validation rules
+    - display settings
+    """
+    registry = get_registry()
+    return registry.to_json_schema()
+
+
+@router.get("/fields/taxonomy")
+async def get_field_taxonomy():
+    """
+    Get a summary of field taxonomy for Settings UI.
+
+    Returns:
+    - Count and list of CD_REQUIRED fields
+    - Count and list of CD_OPTIONAL fields
+    - Count and list of INTERNAL fields
+    - Fields grouped by source type
+    """
+    registry = get_registry()
+    return registry.get_taxonomy_summary()
+
+
+@router.get("/fields/by-category/{category}")
+async def get_fields_by_category(category: str):
+    """
+    Get all fields for a specific category.
+
+    Categories:
+    - cd_required: Required for Central Dispatch API
+    - cd_optional: Optional in CD API
+    - internal: Not sent to CD API
+    """
+    try:
+        cat = FieldCategory(category)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category. Must be one of: {[c.value for c in FieldCategory]}",
+        )
+
+    registry = get_registry()
+    fields = registry.get_fields_by_category(cat)
+
+    return {
+        "category": category,
+        "count": len(fields),
+        "fields": [
+            {
+                "key": f.key,
+                "label": f.label,
+                "section": f.section.value,
+                "source_type": f.source_type.value,
+                "required": f.required,
+                "export_only": f.export_only,
+            }
+            for f in fields
+        ],
+    }
+
+
+@router.get("/fields/by-source/{source_type}")
+async def get_fields_by_source(source_type: str):
+    """
+    Get all fields for a specific source type.
+
+    Source types:
+    - extracted: Value extracted from document
+    - constant: Static default value
+    - warehouse_ref: Value from warehouse reference data
+    - user_input: Value entered manually by user
+    - computed: Value computed from other fields
+    """
+    try:
+        st = FieldSourceType(source_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source type. Must be one of: {[s.value for s in FieldSourceType]}",
+        )
+
+    registry = get_registry()
+    fields = registry.get_fields_by_source_type(st)
+
+    return {
+        "source_type": source_type,
+        "count": len(fields),
+        "fields": [
+            {
+                "key": f.key,
+                "label": f.label,
+                "section": f.section.value,
+                "category": f.category.value,
+                "extraction_hint": f.extraction_hint,
+            }
+            for f in fields
+        ],
+    }
+
+
+@router.get("/fields/for-mode/{mode}")
+async def get_fields_for_mode(mode: str):
+    """
+    Get fields relevant for a specific mode.
+
+    Modes:
+    - training: Fields for extraction review (no export_only fields)
+    - review: All visible fields
+    - export: All CD API fields (required + optional)
+    """
+    if mode not in ["training", "review", "export"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid mode. Must be one of: training, review, export",
+        )
+
+    registry = get_registry()
+    fields = registry.get_fields_for_mode(mode)
+
+    return {
+        "mode": mode,
+        "count": len(fields),
+        "fields": [
+            {
+                "key": f.key,
+                "label": f.label,
+                "section": f.section.value,
+                "category": f.category.value,
+                "source_type": f.source_type.value,
+                "required": f.required,
+                "editable_in_review": f.editable_in_review,
+            }
+            for f in fields
+        ],
+    }
+
+
+@router.get("/fields/extracted")
+async def get_extracted_fields():
+    """
+    Get all fields that should be extracted from documents.
+
+    These are fields with source_type = EXTRACTED.
+    Useful for configuring extraction rules and validation.
+    """
+    registry = get_registry()
+    fields = registry.get_extracted_fields()
+
+    return {
+        "count": len(fields),
+        "fields": [
+            {
+                "key": f.key,
+                "label": f.label,
+                "section": f.section.value,
+                "category": f.category.value,
+                "extraction_hint": f.extraction_hint,
+                "validation_regex": f.validation_regex,
+            }
+            for f in fields
+        ],
+    }
