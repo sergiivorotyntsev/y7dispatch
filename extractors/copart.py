@@ -100,10 +100,17 @@ class CopartExtractor(BaseExtractor):
 
         invoice = AuctionInvoice(source=self.source, buyer_id="", buyer_name="")
 
-        # Extract buyer ID (MEMBER number)
-        member_match = re.search(r"MEMBER[:\s]+(\d+)", text)
-        if member_match:
-            invoice.buyer_id = member_match.group(1)
+        # Extract buyer ID (MEMBER number) - try multiple patterns
+        member_patterns = [
+            r"MEMBER[:\s]+(\d+)",
+            r"MEMBER\s*:\s*(\d+)",
+            r"MEMBER\s*#?\s*(\d+)",
+        ]
+        for pattern in member_patterns:
+            member_match = re.search(pattern, text, re.IGNORECASE)
+            if member_match:
+                invoice.buyer_id = member_match.group(1)
+                break
 
         # Extract buyer name using learned rules or defaults
         invoice.buyer_name = self._extract_buyer_name(text)
@@ -167,12 +174,61 @@ class CopartExtractor(BaseExtractor):
 
         The text extraction mixes columns, so we use targeted patterns.
         """
-        # Strategy 1: Look for explicit city/state/zip pattern with US ROUTE/HIGHWAY format
-        # Copart lots often use US ROUTE, STATE ROUTE, or HIGHWAY addresses
-        # State list for validation
         US_STATES = r"WV|FL|TX|CA|GA|NC|AZ|NV|OH|PA|NJ|NY|MA|IL|MI|VA|TN|IN|MO|WI|MD|MN|SC|AL|CO|KY|LA|OR|OK|CT|IA|MS|AR|KS|UT|NM|NE|WA|ID|HI|NH|ME|RI|MT|DE|SD|ND|AK|VT|DC|WY"
 
         street, city, state, zip_code = None, None, None, None
+
+        # Strategy 0 (NEW): Look for street address pattern near "PHYSICAL ADDRESS"
+        # Format: number + street name (e.g., "950 BLUE MOUND ROAD WEST")
+        # Then city state zip on next line (e.g., "HASLET TX 76052")
+        lines = text.split('\n')
+        found_physical_address = False
+
+        for i, line in enumerate(lines):
+            line_upper = line.upper().strip()
+
+            # Look for "PHYSICAL ADDRESS" marker
+            if 'PHYSICAL ADDRESS' in line_upper or 'ADDRESS OF LOT' in line_upper or 'LOT:' in line_upper:
+                found_physical_address = True
+                continue
+
+            if found_physical_address:
+                # Skip empty lines
+                if not line_upper:
+                    continue
+
+                # Look for street address: starts with number, contains road/street words
+                street_match = re.match(
+                    r'^(\d+\s+[A-Z0-9\s]+(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY|ROUTE|RT|MOUND)[A-Z\s]*)',
+                    line_upper
+                )
+                if street_match and not street:
+                    street = street_match.group(1).strip()
+                    # Clean up - remove trailing noise
+                    street = re.sub(r'\s+(SOLD|SELLER|COPART|MEMBER).*$', '', street, flags=re.IGNORECASE)
+                    continue
+
+                # Look for city state zip: CITY ST 12345
+                csz_match = re.match(rf'^([A-Z]{{2,}})\s+({US_STATES})\s+(\d{{5}})', line_upper)
+                if csz_match and not city:
+                    city = csz_match.group(1).strip()
+                    state = csz_match.group(2).strip()
+                    zip_code = csz_match.group(3).strip()
+                    break
+
+                # Safety: don't search too far after PHYSICAL ADDRESS
+                if street and i > 10:
+                    break
+
+        # If we found street and city from Strategy 0, return early
+        if street and city:
+            return Address(
+                name="Copart",
+                street=street.title(),
+                city=city.title(),
+                state=state,
+                postal_code=zip_code or "",
+            )
 
         # In Copart's mixed 3-column layout, the lot address often appears as:
         # "CITY STATE ZIP STREET_NUMBER US ROUTE XX" or similar patterns
