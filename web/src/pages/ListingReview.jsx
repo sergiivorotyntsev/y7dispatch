@@ -86,12 +86,13 @@ function ListingReview() {
         const extResult = await api.getExtraction(id)
         setExtraction(extResult)
 
-        // Parse outputs_json and initialize ALL fields from registry
+        // Parse outputs from run object (API returns { run: { outputs: ... }, fields: [...] })
         let outputs = {}
-        if (extResult.outputs_json) {
-          outputs = typeof extResult.outputs_json === 'string'
-            ? JSON.parse(extResult.outputs_json)
-            : extResult.outputs_json
+        const runData = extResult.run || extResult
+        if (runData.outputs) {
+          outputs = typeof runData.outputs === 'string'
+            ? JSON.parse(runData.outputs)
+            : runData.outputs
         }
 
         // Initialize fields from registry (ensures ALL fields are present)
@@ -115,9 +116,10 @@ function ListingReview() {
         setOriginalFields({ ...initialFields })
 
         // Load document
-        if (extResult.document_id) {
+        const documentId = runData.document_id || extResult.document_id
+        if (documentId) {
           try {
-            const docResult = await api.getDocument(extResult.document_id)
+            const docResult = await api.getDocument(documentId)
             setDocument(docResult)
           } catch (err) {
             console.error('Failed to load document:', err)
