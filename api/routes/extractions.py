@@ -1718,3 +1718,254 @@ async def get_extraction_debug(id: int):
     response.recommendations = recommendations
 
     return response
+
+
+class PipelineDiagnosticResponse(BaseModel):
+    """Comprehensive pipeline diagnostic response."""
+
+    # Basic info
+    extraction_id: int
+    document_id: Optional[int] = None
+    document_filename: Optional[str] = None
+    auction_type: Optional[str] = None
+
+    # Step-by-step status
+    steps: list[dict] = []
+
+    # Data counts
+    outputs_json_fields: int = 0
+    review_items_count: int = 0
+    field_mappings_count: int = 0
+    field_evidence_count: int = 0
+
+    # Raw data samples
+    outputs_sample: Optional[dict] = None
+    review_items_sample: list[dict] = []
+
+    # Recommendations
+    issues_found: list[str] = []
+    fix_actions: list[str] = []
+
+
+@router.get("/{id}/diagnose")
+async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
+    """
+    Full pipeline diagnostic for troubleshooting.
+
+    Checks every step from document to displayed fields:
+    1. Document exists and has file
+    2. Text extraction worked
+    3. Extractor classification
+    4. Extraction run status
+    5. outputs_json populated
+    6. review_items created
+    7. field_mappings exist
+
+    Returns step-by-step diagnosis with recommended fixes.
+    """
+    import json
+    import os
+
+    from api.database import get_connection
+
+    response = PipelineDiagnosticResponse(extraction_id=id)
+    issues = []
+    fixes = []
+
+    # Step 1: Get extraction run
+    run = ExtractionRunRepository.get_by_id(id)
+    if not run:
+        response.steps.append({
+            "step": "1. Get extraction run",
+            "status": "FAILED",
+            "detail": f"Extraction run {id} not found in database",
+        })
+        issues.append("Extraction run does not exist")
+        fixes.append(f"Check if document was uploaded. Run extraction via POST /api/extractions/run with document_id")
+        response.issues_found = issues
+        response.fix_actions = fixes
+        return response
+
+    response.steps.append({
+        "step": "1. Get extraction run",
+        "status": "OK",
+        "detail": f"Run ID={run.id}, status={run.status}, created={run.created_at}",
+    })
+    response.document_id = run.document_id
+
+    # Step 2: Get document
+    doc = DocumentRepository.get_by_id(run.document_id) if run.document_id else None
+    if not doc:
+        response.steps.append({
+            "step": "2. Get document",
+            "status": "FAILED",
+            "detail": f"Document ID={run.document_id} not found",
+        })
+        issues.append("Document record missing from database")
+        fixes.append("Re-upload the document")
+    else:
+        response.document_filename = doc.filename
+        file_exists = os.path.exists(doc.file_path) if doc.file_path else False
+        response.steps.append({
+            "step": "2. Get document",
+            "status": "OK" if file_exists else "WARNING",
+            "detail": f"filename={doc.filename}, file_exists={file_exists}, path={doc.file_path}",
+        })
+        if not file_exists:
+            issues.append("PDF file not found on disk")
+            fixes.append(f"Re-upload the document. Expected path: {doc.file_path}")
+
+    # Step 3: Get auction type
+    at = AuctionTypeRepository.get_by_id(run.auction_type_id) if run.auction_type_id else None
+    if not at:
+        response.steps.append({
+            "step": "3. Get auction type",
+            "status": "FAILED",
+            "detail": f"Auction type ID={run.auction_type_id} not found",
+        })
+        issues.append("Auction type not found")
+        fixes.append("Check auction_types table is seeded. Restart server to re-seed.")
+    else:
+        response.auction_type = at.code
+        response.steps.append({
+            "step": "3. Get auction type",
+            "status": "OK",
+            "detail": f"code={at.code}, name={at.name}",
+        })
+
+    # Step 4: Check extraction status
+    status_ok = run.status in ("needs_review", "reviewed", "exported")
+    response.steps.append({
+        "step": "4. Extraction status",
+        "status": "OK" if status_ok else "FAILED",
+        "detail": f"status={run.status}, score={run.extraction_score}, time_ms={run.processing_time_ms}",
+    })
+    if run.status == "failed":
+        issues.append(f"Extraction failed: {run.errors_json}")
+        fixes.append("Check extraction errors. May need OCR or different extractor.")
+    elif run.status == "pending":
+        issues.append("Extraction never ran")
+        fixes.append("Run extraction via POST /api/extractions/run")
+
+    # Step 5: Check outputs_json
+    outputs = run.outputs_json or {}
+    if isinstance(outputs, str):
+        try:
+            outputs = json.loads(outputs)
+        except Exception:
+            outputs = {}
+
+    response.outputs_json_fields = len(outputs)
+    response.outputs_sample = {k: v for k, v in list(outputs.items())[:10]} if outputs else None
+
+    if not outputs:
+        response.steps.append({
+            "step": "5. Check outputs_json",
+            "status": "FAILED",
+            "detail": "outputs_json is empty - no fields extracted",
+        })
+        issues.append("No fields were extracted from document")
+        fixes.append("Check debug endpoint for text quality. Document may need OCR.")
+    else:
+        response.steps.append({
+            "step": "5. Check outputs_json",
+            "status": "OK",
+            "detail": f"{len(outputs)} fields extracted: {list(outputs.keys())[:5]}...",
+        })
+
+    # Step 6: Check review_items
+    review_items = ReviewItemRepository.get_by_run(id)
+    response.review_items_count = len(review_items)
+    response.review_items_sample = [
+        {"key": r.source_key, "value": r.predicted_value, "confidence": r.confidence}
+        for r in review_items[:5]
+    ]
+
+    if not review_items:
+        response.steps.append({
+            "step": "6. Check review_items",
+            "status": "FAILED",
+            "detail": "No review_items created for this extraction",
+        })
+        issues.append("review_items table is empty for this run")
+        fixes.append("review_items are created by _create_review_items_for_all_fields(). Check if extraction completed.")
+    else:
+        filled = sum(1 for r in review_items if r.predicted_value)
+        response.steps.append({
+            "step": "6. Check review_items",
+            "status": "OK",
+            "detail": f"{len(review_items)} items, {filled} with values",
+        })
+
+    # Step 7: Check field_mappings
+    with get_connection() as conn:
+        mappings = conn.execute(
+            "SELECT COUNT(*) as cnt FROM field_mappings WHERE auction_type_id = ?",
+            (run.auction_type_id,),
+        ).fetchone()
+        mapping_count = mappings["cnt"] if mappings else 0
+
+    response.field_mappings_count = mapping_count
+
+    if mapping_count == 0:
+        response.steps.append({
+            "step": "7. Check field_mappings",
+            "status": "WARNING",
+            "detail": f"No field_mappings for auction_type_id={run.auction_type_id}. Using defaults.",
+        })
+        issues.append("field_mappings not seeded for this auction type")
+        fixes.append("Restart server to re-seed field_mappings. Or use default fields.")
+    else:
+        response.steps.append({
+            "step": "7. Check field_mappings",
+            "status": "OK",
+            "detail": f"{mapping_count} field mappings configured",
+        })
+
+    # Step 8: Check field_evidence
+    evidence = FieldEvidenceRepository.get_by_run(id)
+    response.field_evidence_count = len(evidence)
+    response.steps.append({
+        "step": "8. Check field_evidence",
+        "status": "OK" if evidence else "INFO",
+        "detail": f"{len(evidence)} evidence records (for PDF highlighting)",
+    })
+
+    # Step 9: Check metrics for OCR/text issues
+    metrics = run.metrics_json or {}
+    if isinstance(metrics, str):
+        try:
+            metrics = json.loads(metrics)
+        except Exception:
+            metrics = {}
+
+    text_length = metrics.get("raw_text_length", 0)
+    ocr_applied = metrics.get("ocr_applied", False)
+    needs_ocr = metrics.get("needs_ocr", False)
+
+    if text_length < 100 and not ocr_applied:
+        response.steps.append({
+            "step": "9. Text quality",
+            "status": "FAILED",
+            "detail": f"Only {text_length} chars extracted, OCR not applied",
+        })
+        issues.append("Document has very little text and OCR was not applied")
+        fixes.append("Install ocrmypdf for OCR support, or manually enter data")
+    elif needs_ocr and not ocr_applied:
+        response.steps.append({
+            "step": "9. Text quality",
+            "status": "WARNING",
+            "detail": f"OCR recommended but not applied. text_length={text_length}",
+        })
+    else:
+        response.steps.append({
+            "step": "9. Text quality",
+            "status": "OK",
+            "detail": f"text_length={text_length}, ocr_applied={ocr_applied}",
+        })
+
+    # Summary
+    response.issues_found = issues
+    response.fix_actions = fixes
+
+    return response
