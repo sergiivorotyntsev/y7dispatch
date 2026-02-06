@@ -452,17 +452,21 @@ class ZoneExtractor:
                 page = pdf.pages[page_num]
                 bbox = zone.to_bbox(page.width, page.height)
 
+                logger.info(f"Extracting zone '{zone.name}' from bbox {bbox} (page size: {page.width}x{page.height})")
+
                 # Crop the page to the zone
                 cropped = page.crop(bbox)
 
                 # Extract text with layout preservation
                 text = cropped.extract_text(layout=True) or ""
 
-                logger.debug(f"Zone '{zone.name}' text ({len(text)} chars): {text[:100]}...")
+                logger.info(f"Zone '{zone.name}' extracted {len(text)} chars: {text[:200]}...")
                 return text
 
         except Exception as e:
             logger.error(f"Error extracting zone '{zone.name}': {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return ""
 
     def parse_field_from_text(self, text: str, field_def: ZoneField) -> Optional[str]:
@@ -569,8 +573,11 @@ class ZoneExtractor:
         Returns:
             ExtractionResult with extracted fields and metadata
         """
+        logger.info(f"Starting zone extraction for {auction_type} from {pdf_path}")
+
         template = self.templates.get(auction_type)
         if not template:
+            logger.warning(f"No template found for auction type: {auction_type}")
             return ExtractionResult(
                 fields={},
                 zone_texts={},

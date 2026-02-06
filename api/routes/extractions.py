@@ -1629,7 +1629,7 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
     When warehouse_id is provided, automatically populates delivery fields.
     """
     import json
-    from api.routes.warehouses import WarehouseRepository
+    from api.database import get_connection
 
     run = ExtractionRunRepository.get_by_id(id)
     if not run:
@@ -1656,17 +1656,23 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
     if data.warehouse_id is not None:
         merged["warehouse_id"] = data.warehouse_id
 
-        # Fetch warehouse and populate delivery fields
-        warehouse = WarehouseRepository.get_by_id(data.warehouse_id)
-        if warehouse:
-            merged["delivery_name"] = warehouse.name
-            merged["delivery_address"] = warehouse.address
-            merged["delivery_city"] = warehouse.city
-            merged["delivery_state"] = warehouse.state
-            merged["delivery_zip"] = warehouse.zip_code
-            merged["delivery_location_type"] = warehouse.location_type or "CROSS_DOCK"
-            if warehouse.buyer_reference:
-                merged["delivery_buyer_number"] = warehouse.buyer_reference
+        # Fetch warehouse from database and populate delivery fields
+        with get_connection() as conn:
+            wh_row = conn.execute(
+                "SELECT * FROM warehouses WHERE id = ?",
+                (data.warehouse_id,)
+            ).fetchone()
+
+        if wh_row:
+            wh = dict(wh_row)
+            merged["delivery_name"] = wh.get("name")
+            merged["delivery_address"] = wh.get("address")
+            merged["delivery_city"] = wh.get("city")
+            merged["delivery_state"] = wh.get("state")
+            merged["delivery_zip"] = wh.get("zip_code")
+            merged["delivery_location_type"] = wh.get("location_type") or "CROSS_DOCK"
+            if wh.get("buyer_reference"):
+                merged["delivery_buyer_number"] = wh.get("buyer_reference")
 
     # Only update if something changed
     if data.outputs_json is not None or data.warehouse_id is not None:
