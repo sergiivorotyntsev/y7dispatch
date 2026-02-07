@@ -288,7 +288,8 @@ class TestWarehousesEndpoint:
             json={
                 "code": code,
                 "name": f"Test Warehouse {code}",
-                "timezone": "America/New_York",
+                "state": "NY",
+                "city": "New York",
             },
         )
         assert response.status_code == 201
@@ -303,7 +304,8 @@ class TestWarehousesEndpoint:
             json={
                 "code": code,
                 "name": f"Test Warehouse {code}",
-                "timezone": "America/Los_Angeles",
+                "state": "CA",
+                "city": "Los Angeles",
             },
         )
         data = response.json()
@@ -319,7 +321,7 @@ class TestWarehousesEndpoint:
             json={
                 "code": "DUP01",
                 "name": "Duplicate Test",
-                "timezone": "America/New_York",
+                "state": "NY",
             },
         )
         # Second create with same code
@@ -328,7 +330,7 @@ class TestWarehousesEndpoint:
             json={
                 "code": "DUP01",
                 "name": "Duplicate Test 2",
-                "timezone": "America/New_York",
+                "state": "NY",
             },
         )
         assert response.status_code in [400, 409, 422]

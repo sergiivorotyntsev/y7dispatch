@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
+import ExportPreviewModal from '../components/ExportPreviewModal'
 
 /**
  * Documents Page - Production Workflow
@@ -177,6 +178,9 @@ function Documents() {
   const [editingPrice, setEditingPrice] = useState({ docId: null, value: '' })
   const [exportingDocId, setExportingDocId] = useState(null)
 
+  // Export preview modal
+  const [showExportPreview, setShowExportPreview] = useState(null) // { extractionId, documentId }
+
   // Run extraction on document
   async function handleRunExtraction(docId, forceNew = false) {
     const existingExtraction = docExtractions[docId]
@@ -201,21 +205,38 @@ function Documents() {
     }
   }
 
-  // Update warehouse for document
+  // Update warehouse for document - also populates delivery fields
   async function handleWarehouseChange(docId, warehouseId, e) {
     e.stopPropagation()
     const extraction = docExtractions[docId]
     if (!extraction) return
 
     try {
-      // Update extraction with warehouse (convert to int)
       const whId = warehouseId ? parseInt(warehouseId, 10) : null
       if (whId) {
-        await api.updateExtraction(extraction.id, { warehouse_id: whId })
+        // Find selected warehouse to get delivery info
+        const selectedWarehouse = warehouses.find(w => w.id === whId)
+
+        // Update extraction with warehouse AND delivery fields from warehouse
+        const updateData = {
+          warehouse_id: whId,
+          outputs_json: {
+            ...(extraction.outputs || {}),
+            warehouse_id: whId,
+            delivery_name: selectedWarehouse?.name || '',
+            delivery_address: selectedWarehouse?.address || '',
+            delivery_city: selectedWarehouse?.city || '',
+            delivery_state: selectedWarehouse?.state || '',
+            delivery_zip: selectedWarehouse?.zip_code || '',
+          }
+        }
+
+        await api.updateExtraction(extraction.id, updateData)
         fetchDocExtractions()
       }
     } catch (err) {
       console.error('Failed to update warehouse:', err)
+      setError(`Failed to update warehouse: ${err.message}`)
     }
   }
 
@@ -673,34 +694,30 @@ function Documents() {
                       <span className="text-sm text-gray-700">{pickupLocation}</span>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      {outputs.delivery_state ? (
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">
-                            {outputs.delivery_state} {outputs.delivery_zip || ''}
-                          </span>
-                          {outputs.delivery_name && (
-                            <span className="text-xs text-gray-500 truncate max-w-[120px]" title={outputs.delivery_name}>
-                              {outputs.delivery_name}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
+                      {/* Always show warehouse selector - delivery info populated from selection */}
+                      <div className="flex flex-col gap-1">
                         <select
-                          value={outputs.warehouse_id || ''}
+                          value={extraction?.warehouse_id || outputs.warehouse_id || ''}
                           onChange={(e) => handleWarehouseChange(doc.id, e.target.value, e)}
                           disabled={isExported || !extraction}
                           className={`form-select form-select-sm text-xs ${
                             isExported ? 'bg-gray-100 cursor-not-allowed' : ''
-                          }`}
+                          } ${!extraction?.warehouse_id && !outputs.warehouse_id ? 'border-orange-300' : ''}`}
                         >
-                          <option value="">Select...</option>
+                          <option value="">Select Warehouse...</option>
                           {warehouses.map((wh) => (
                             <option key={wh.id} value={wh.id}>
-                              {wh.name} - {wh.city}, {wh.state}
+                              {wh.state} - {wh.name} ({wh.city})
                             </option>
                           ))}
                         </select>
-                      )}
+                        {/* Show delivery info below dropdown if available */}
+                        {outputs.delivery_state && (
+                          <span className="text-xs text-gray-500" title={`${outputs.delivery_city || ''}, ${outputs.delivery_state} ${outputs.delivery_zip || ''}`}>
+                            {outputs.delivery_city}, {outputs.delivery_state} {outputs.delivery_zip || ''}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {editingPrice.docId === doc.id ? (
@@ -716,22 +733,36 @@ function Documents() {
                             if (e.key === 'Escape') setEditingPrice({ docId: null, value: '' })
                           }}
                           autoFocus
-                          className="form-input w-20 text-sm px-1 py-0.5"
+                          className="form-input w-24 text-sm px-2 py-1 border-primary-500"
+                          placeholder="0.00"
                         />
                       ) : (
-                        <span
-                          className={`text-sm cursor-pointer hover:underline ${
-                            priceTotal ? 'text-gray-900 font-medium' : 'text-gray-400'
-                          } ${isExported ? 'cursor-default' : ''}`}
+                        <button
+                          className={`group flex items-center gap-1.5 px-2 py-1 rounded text-sm transition-colors ${
+                            isExported
+                              ? 'cursor-default text-gray-500'
+                              : extraction
+                                ? 'hover:bg-gray-100 cursor-pointer'
+                                : 'cursor-not-allowed text-gray-400'
+                          }`}
                           onClick={(e) => {
                             if (!isExported && extraction) {
                               e.stopPropagation()
                               setEditingPrice({ docId: doc.id, value: priceTotal || '' })
                             }
                           }}
+                          disabled={isExported || !extraction}
+                          title={isExported ? 'Cannot edit exported document' : extraction ? 'Click to edit price' : 'Run extraction first'}
                         >
-                          {priceTotal ? `$${parseFloat(priceTotal).toFixed(2)}` : '-'}
-                        </span>
+                          <span className={priceTotal ? 'font-medium text-gray-900' : 'text-gray-400'}>
+                            {priceTotal ? `$${parseFloat(priceTotal).toFixed(2)}` : '—'}
+                          </span>
+                          {!isExported && extraction && (
+                            <span className="text-gray-400 group-hover:text-primary-600 transition-colors">
+                              ✏️
+                            </span>
+                          )}
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -800,11 +831,13 @@ function Documents() {
                             </button>
                             {isReady && !isExported && (
                               <button
-                                onClick={(e) => handleExportToCD(doc.id, e)}
-                                disabled={exportingDocId === doc.id}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setShowExportPreview({ extractionId: extraction.id, documentId: doc.id })
+                                }}
                                 className="text-sm text-green-600 hover:text-green-800 font-medium"
                               >
-                                {exportingDocId === doc.id ? '...' : 'Export'}
+                                Export
                               </button>
                             )}
                             {!isExported && (
@@ -840,6 +873,21 @@ function Documents() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Export Preview Modal */}
+      {showExportPreview && (
+        <ExportPreviewModal
+          extractionId={showExportPreview.extractionId}
+          documentId={showExportPreview.documentId}
+          onClose={() => setShowExportPreview(null)}
+          onExport={(result) => {
+            fetchDocExtractions()
+            if (result.posted > 0) {
+              setShowExportPreview(null)
+            }
+          }}
+        />
       )}
 
       {/* Batch Post Modal */}

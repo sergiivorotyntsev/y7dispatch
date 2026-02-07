@@ -370,19 +370,24 @@ function FieldsTab() {
     }))
   }
 
-  // Save pending changes
+  // Save pending changes to backend
   async function handleSaveChanges() {
     if (Object.keys(pendingChanges).length === 0) return
 
     setSaving(true)
     setSaveMessage(null)
     try {
-      // In a full implementation, this would call an API to persist changes
-      // For now, we'll just show success and clear pending changes
-      // await api.updateFieldConfigs(pendingChanges)
+      // Call the actual API to persist field config changes
+      const result = await api.updateFieldConfigs(pendingChanges)
 
-      setSaveMessage({ type: 'success', text: 'Field configuration saved (demo mode - API integration pending)' })
+      setSaveMessage({
+        type: 'success',
+        text: `Field configuration saved: ${result.updated || 0} updated, ${result.created || 0} created`
+      })
       setPendingChanges({})
+
+      // Reload to reflect saved changes
+      loadData()
     } catch (err) {
       setSaveMessage({ type: 'error', text: `Failed to save: ${err.message}` })
     } finally {
@@ -394,10 +399,33 @@ function FieldsTab() {
     setLoading(true)
     setError(null)
     try {
-      const [taxonomyData, schemaData] = await Promise.all([
+      const [taxonomyData, schemaData, configsData] = await Promise.all([
         api.getFieldTaxonomy(),
         api.getFieldSchema(),
+        api.getFieldConfigs().catch(() => ({ configs: [] })),
       ])
+
+      // Apply saved configs to schema fields
+      const savedConfigs = {}
+      for (const cfg of (configsData.configs || [])) {
+        savedConfigs[cfg.field_key] = cfg
+      }
+
+      // Merge saved configs into schema
+      if (schemaData?.sections) {
+        Object.values(schemaData.sections).forEach(section => {
+          section.fields.forEach(field => {
+            const saved = savedConfigs[field.key]
+            if (saved) {
+              field.source_type = saved.source_type || field.source_type
+              field.default_value = saved.default_value ?? field.default_value
+              field.required = saved.is_required ?? field.required
+              field.editable_in_review = saved.is_editable ?? field.editable_in_review
+            }
+          })
+        })
+      }
+
       setTaxonomy(taxonomyData)
       setSchema(schemaData)
     } catch (err) {

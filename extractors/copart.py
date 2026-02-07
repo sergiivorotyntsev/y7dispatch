@@ -607,7 +607,12 @@ class CopartExtractor(BaseExtractor):
         return None
 
     def _extract_seller_name(self, text: str) -> str:
-        """Extract seller name using learned rules or defaults."""
+        """
+        Extract seller name using learned rules or defaults.
+
+        Seller in Copart documents is typically an insurance company.
+        Located in the rightmost column of the 3-column layout.
+        """
         # Check for learned rule
         rule = self.get_learned_rule("seller_name")
 
@@ -623,18 +628,45 @@ class CopartExtractor(BaseExtractor):
                             if len(seller) > 2 and len(seller) < 100:
                                 return seller
 
-        # Fallback: try default patterns
+        # Fallback patterns with more flexibility
         seller_patterns = [
-            r"SELLER[:\s]*\n([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD)",
-            r"SELLER[:\s]+([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD)",
+            # "SELLER: <name>"
+            r"SELLER[:\s]+([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD|$)",
+            # "SELLER\n<name>"
+            r"SELLER[:\s]*\n([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD|$)",
+            # "SOLD THROUGH COPART"... then on next section: insurance company
+            r"SOLD\s*THROUGH.*\n.*?([A-Z][A-Za-z\s]+(?:INSURANCE|INS|MUTUAL|CASUALTY)[A-Za-z\s]*)",
         ]
+
         for pattern in seller_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 seller = match.group(1).strip()
+                # Clean up trailing numbers, IDs, dates
                 seller = re.sub(r"\s+\d+.*$", "", seller)
+                seller = re.sub(r"\s{2,}", " ", seller)
                 if len(seller) > 2 and len(seller) < 100:
                     return seller
+
+        # Additional pattern: look for insurance company names
+        insurance_patterns = [
+            r"(PROGRESSIVE\s*(?:CASUALTY\s*)?(?:INSURANCE)?(?:\s*CO)?)",
+            r"(GEICO\s*(?:INSURANCE)?)",
+            r"(STATE\s*FARM\s*(?:MUTUAL)?(?:\s*AUTOMOBILE)?(?:\s*INSURANCE)?)",
+            r"(ALLSTATE\s*(?:INSURANCE)?(?:\s*CO)?)",
+            r"(FARMERS\s*(?:INSURANCE)?)",
+            r"(USAA\s*(?:CASUALTY)?(?:\s*INSURANCE)?)",
+            r"(LIBERTY\s*MUTUAL\s*(?:INSURANCE)?)",
+            r"(TRAVELERS\s*(?:INSURANCE)?(?:\s*CO)?)",
+            r"(NATIONWIDE\s*(?:MUTUAL)?(?:\s*INSURANCE)?)",
+        ]
+
+        for pattern in insurance_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                seller = match.group(1).strip()
+                seller = re.sub(r"\s{2,}", " ", seller)
+                return seller
 
         return ""
 
@@ -650,7 +682,24 @@ class CopartExtractor(BaseExtractor):
         or:
             MEMBER: 12345678
             BROADWAY MOTORING INC
+
+        CRITICAL: Must exclude seller-related text that can appear mixed in
+        due to PDF 3-column layout extraction.
         """
+        # Common insurance/seller company names to exclude from buyer
+        SELLER_INDICATORS = [
+            "PROGRESSIVE", "GEICO", "STATE FARM", "ALLSTATE", "FARMERS",
+            "NATIONWIDE", "LIBERTY MUTUAL", "USAA", "TRAVELERS", "HARTFORD",
+            "INSURANCE", "CASUALTY", "ASSURANCE", "SOLD THROUGH", "SELLER",
+            "INS CO", "MUTUAL INS", "AUTO INS", "SOLD BY", "CONSIGNED",
+        ]
+
+        # Field labels that indicate we've passed the buyer section
+        SECTION_INDICATORS = [
+            "LOT", "VIN", "VEHICLE", "SALE", "DATE", "RECEIPT", "TOTAL",
+            "PHYSICAL", "ADDRESS", "SELLER", "SOLD", "LOCATION", "PRICE",
+        ]
+
         lines = text.split("\n")
         found_member = False
         found_member_number = False
@@ -679,20 +728,25 @@ class CopartExtractor(BaseExtractor):
 
                 # After member number, the next non-empty line should be the buyer name
                 if found_member_number:
+                    # Skip if this is a section indicator (we've passed buyer section)
+                    if any(ind in stripped.upper() for ind in SECTION_INDICATORS):
+                        continue
+
+                    # Skip if this looks like seller/insurance company
+                    if any(ind in stripped.upper() for ind in SELLER_INDICATORS):
+                        continue
+
                     # Check if this looks like a company/person name (not a field label or number)
                     if (
                         re.match(r"^[A-Z]", stripped)
-                        and not re.match(
-                            r"^(LOT|VIN|VEHICLE|SALE|DATE|RECEIPT|TOTAL|PHYSICAL)",
-                            stripped,
-                            re.IGNORECASE,
-                        )
                         and len(stripped) > 2
                         and len(stripped) < 100
                     ):
                         # Clean up - remove trailing numbers/dates
                         buyer_name = re.sub(r"\s+\d+.*$", "", stripped)
-                        return buyer_name
+                        # Double check it's not seller-related after cleanup
+                        if not any(ind in buyer_name.upper() for ind in SELLER_INDICATORS):
+                            return buyer_name
 
                 # Safety: don't search too far
                 if i > 20:

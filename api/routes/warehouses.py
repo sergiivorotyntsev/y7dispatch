@@ -3,15 +3,22 @@ Warehouse Management API - Simplified
 
 Simple warehouse CRUD with only essential fields:
 - code, name, state, city, address, zip_code
+
+Supports auto-sync from warehouses.yaml on startup.
 """
 
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
+import yaml
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from api.database import get_connection
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/warehouses", tags=["Warehouses"])
 
@@ -83,7 +90,7 @@ class WarehouseListResponse(BaseModel):
 
 
 def init_warehouses_schema():
-    """Initialize warehouses table."""
+    """Initialize warehouses table and sync from YAML if empty."""
     with get_connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS warehouses (
@@ -106,6 +113,72 @@ def init_warehouses_schema():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_state ON warehouses(state)")
 
         conn.commit()
+
+        # Auto-sync from YAML if table is empty
+        count = conn.execute("SELECT COUNT(*) FROM warehouses").fetchone()[0]
+        if count == 0:
+            _sync_warehouses_from_yaml(conn)
+
+
+def _sync_warehouses_from_yaml(conn):
+    """Load warehouses from warehouses.yaml into database."""
+    yaml_paths = [
+        Path("warehouses.yaml"),
+        Path(__file__).parent.parent.parent / "warehouses.yaml",
+    ]
+
+    yaml_file = None
+    for p in yaml_paths:
+        if p.exists():
+            yaml_file = p
+            break
+
+    if not yaml_file:
+        logger.warning("warehouses.yaml not found, skipping auto-sync")
+        return
+
+    try:
+        with open(yaml_file, "r") as f:
+            data = yaml.safe_load(f)
+
+        warehouses = data.get("warehouses", [])
+        now = datetime.utcnow().isoformat()
+
+        for wh in warehouses:
+            code = str(wh.get("id", "")).upper()
+            if not code:
+                continue
+
+            # Check if already exists
+            existing = conn.execute(
+                "SELECT id FROM warehouses WHERE code = ?", (code,)
+            ).fetchone()
+
+            if existing:
+                continue
+
+            conn.execute(
+                """
+                INSERT INTO warehouses (code, name, state, city, address, zip_code, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    code,
+                    wh.get("name", code),
+                    wh.get("state", ""),
+                    wh.get("city"),
+                    wh.get("address"),
+                    wh.get("zip_code"),
+                    True,
+                    now,
+                    now,
+                ),
+            )
+
+        conn.commit()
+        logger.info(f"Synced {len(warehouses)} warehouses from {yaml_file}")
+    except Exception as e:
+        logger.error(f"Failed to sync warehouses from YAML: {e}")
 
 
 # =============================================================================
@@ -164,13 +237,14 @@ async def list_warehouses(
         params.append(state)
 
     count_sql = sql.replace("SELECT *", "SELECT COUNT(*)")
+    count_params = list(params)  # Copy params before adding LIMIT/OFFSET
 
     sql += " ORDER BY state, name ASC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
     with get_connection() as conn:
         rows = conn.execute(sql, params).fetchall()
-        total = conn.execute(count_sql, params[:-2] if len(params) > 2 else params).fetchone()[0]
+        total = conn.execute(count_sql, count_params).fetchone()[0]
 
     items = [_row_to_response(dict(row)) for row in rows]
     return WarehouseListResponse(items=items, total=total)
@@ -191,6 +265,74 @@ async def list_warehouse_states():
         ).fetchall()
 
     return [row["state"] for row in rows]
+
+
+@router.post("/sync-yaml")
+async def sync_warehouses_from_yaml():
+    """Manually trigger sync from warehouses.yaml. Adds new warehouses, skips existing."""
+    init_warehouses_schema()
+
+    yaml_paths = [
+        Path("warehouses.yaml"),
+        Path(__file__).parent.parent.parent / "warehouses.yaml",
+    ]
+
+    yaml_file = None
+    for p in yaml_paths:
+        if p.exists():
+            yaml_file = p
+            break
+
+    if not yaml_file:
+        raise HTTPException(status_code=404, detail="warehouses.yaml not found")
+
+    try:
+        with open(yaml_file, "r") as f:
+            data = yaml.safe_load(f)
+
+        warehouses = data.get("warehouses", [])
+        added = 0
+        skipped = 0
+        now = datetime.utcnow().isoformat()
+
+        with get_connection() as conn:
+            for wh in warehouses:
+                code = str(wh.get("id", "")).upper()
+                if not code:
+                    continue
+
+                existing = conn.execute(
+                    "SELECT id FROM warehouses WHERE code = ?", (code,)
+                ).fetchone()
+
+                if existing:
+                    skipped += 1
+                    continue
+
+                conn.execute(
+                    """
+                    INSERT INTO warehouses (code, name, state, city, address, zip_code, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        code,
+                        wh.get("name", code),
+                        wh.get("state", ""),
+                        wh.get("city"),
+                        wh.get("address"),
+                        wh.get("zip_code"),
+                        True,
+                        now,
+                        now,
+                    ),
+                )
+                added += 1
+
+            conn.commit()
+
+        return {"status": "ok", "added": added, "skipped": skipped, "source": str(yaml_file)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sync failed: {e}")
 
 
 @router.get("/{id}", response_model=WarehouseResponse)

@@ -278,6 +278,7 @@ export const api = {
     method: 'DELETE',
   }),
   getWarehouseStates: () => request('/warehouses/states/list'),
+  syncWarehousesFromYaml: () => request('/warehouses/sync-yaml', { method: 'POST' }),
 
   // Templates / Field Mappings
   listTemplates: () => request('/templates/'),
@@ -337,6 +338,20 @@ export const api = {
   getFieldsBySource: (sourceType) => request(`/settings/fields/by-source/${sourceType}`),
   getFieldsForMode: (mode) => request(`/settings/fields/for-mode/${mode}`),
   getExtractedFields: () => request('/settings/fields/extracted'),
+
+  // Field Configuration Persistence
+  getFieldConfigs: () => request('/settings/fields/configs'),
+  updateFieldConfigs: (updates) => request('/settings/fields/configs', {
+    method: 'PUT',
+    body: JSON.stringify({ updates }),
+  }),
+  updateSingleFieldConfig: (fieldKey, data) => request(`/settings/fields/configs/${fieldKey}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  deleteFieldConfig: (fieldKey) => request(`/settings/fields/configs/${fieldKey}`, {
+    method: 'DELETE',
+  }),
 
   // CD Listing Info (ETag tracking)
   getCDListingInfo: (runId) => request(`/exports/cd-listing/${runId}`),
