@@ -36,7 +36,6 @@ from api.database import init_db
 from api.models import init_schema, seed_base_auction_types, seed_default_field_mappings
 from api.routes import (
     auction_types,
-    brokers,
     cd_listings,
     documents,
     exports,
@@ -125,7 +124,6 @@ app.include_router(exports.router)
 app.include_router(models.router)
 app.include_router(integrations.router)
 app.include_router(warehouses.router)
-app.include_router(brokers.router)
 app.include_router(field_mappings.router)
 app.include_router(training.router, prefix="/api")
 app.include_router(metrics.router)  # M3.P1.5: Metrics endpoints
@@ -216,11 +214,6 @@ async def startup():
 
     init_auction_profiles_schema()
     seed_default_auction_profiles()
-    # Initialize brokers schema
-    from api.brokers import init_brokers_schema, seed_default_brokers
-
-    init_brokers_schema()
-    seed_default_brokers()
 
 
 # Serve frontend (simple HTML for now)

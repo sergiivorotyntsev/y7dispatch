@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react'
 import { useSettings } from './SettingsContext'
 import api from '../../api'
 
+// US States for dropdown
+const US_STATES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
+]
+
 export default function WarehousesTab() {
   const { showMessage, setSaving } = useSettings()
   const [warehouses, setWarehouses] = useState([])
@@ -11,11 +20,10 @@ export default function WarehousesTab() {
   const [form, setForm] = useState({
     code: '',
     name: '',
-    address: '',
-    city: '',
     state: '',
+    city: '',
+    address: '',
     zip_code: '',
-    timezone: 'America/New_York',
   })
 
   useEffect(() => {
@@ -38,11 +46,10 @@ export default function WarehousesTab() {
     setForm({
       code: '',
       name: '',
-      address: '',
-      city: '',
       state: '',
+      city: '',
+      address: '',
       zip_code: '',
-      timezone: 'America/New_York',
     })
     setEditingId(null)
     setShowForm(false)
@@ -52,17 +59,22 @@ export default function WarehousesTab() {
     setForm({
       code: wh.code,
       name: wh.name,
-      address: wh.address || '',
-      city: wh.city || '',
       state: wh.state || '',
+      city: wh.city || '',
+      address: wh.address || '',
       zip_code: wh.zip_code || '',
-      timezone: wh.timezone || 'America/New_York',
     })
     setEditingId(wh.id)
     setShowForm(true)
   }
 
   async function handleSave() {
+    // Validation
+    if (!form.code || !form.name || !form.state) {
+      showMessage('error', 'Code, Name and State are required')
+      return
+    }
+
     setSaving(true)
     try {
       if (editingId) {
@@ -95,7 +107,10 @@ export default function WarehousesTab() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">Warehouses</h3>
+        <div>
+          <h3 className="text-lg font-medium">Warehouses</h3>
+          <p className="text-sm text-gray-500">Delivery locations for vehicle transport</p>
+        </div>
         <button
           onClick={() => { resetForm(); setShowForm(true); }}
           className="btn btn-primary"
@@ -110,7 +125,7 @@ export default function WarehousesTab() {
           <h4 className="font-medium mb-4">{editingId ? 'Edit Warehouse' : 'New Warehouse'}</h4>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="form-label">Code</label>
+              <label className="form-label">Code *</label>
               <input
                 type="text"
                 value={form.code}
@@ -121,12 +136,34 @@ export default function WarehousesTab() {
               />
             </div>
             <div>
-              <label className="form-label">Name</label>
+              <label className="form-label">Name *</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
                 placeholder="Main Warehouse"
+                className="form-input w-full"
+              />
+            </div>
+            <div>
+              <label className="form-label">State *</label>
+              <select
+                value={form.state}
+                onChange={e => setForm({ ...form, state: e.target.value })}
+                className="form-select w-full"
+              >
+                <option value="">Select State...</option>
+                {US_STATES.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">City</label>
+              <input
+                type="text"
+                value={form.city}
+                onChange={e => setForm({ ...form, city: e.target.value })}
                 className="form-input w-full"
               />
             </div>
@@ -140,25 +177,6 @@ export default function WarehousesTab() {
               />
             </div>
             <div>
-              <label className="form-label">City</label>
-              <input
-                type="text"
-                value={form.city}
-                onChange={e => setForm({ ...form, city: e.target.value })}
-                className="form-input w-full"
-              />
-            </div>
-            <div>
-              <label className="form-label">State</label>
-              <input
-                type="text"
-                value={form.state}
-                onChange={e => setForm({ ...form, state: e.target.value })}
-                maxLength={2}
-                className="form-input w-full"
-              />
-            </div>
-            <div>
               <label className="form-label">ZIP Code</label>
               <input
                 type="text"
@@ -166,19 +184,6 @@ export default function WarehousesTab() {
                 onChange={e => setForm({ ...form, zip_code: e.target.value })}
                 className="form-input w-full"
               />
-            </div>
-            <div>
-              <label className="form-label">Timezone</label>
-              <select
-                value={form.timezone}
-                onChange={e => setForm({ ...form, timezone: e.target.value })}
-                className="form-select w-full"
-              >
-                <option value="America/New_York">Eastern</option>
-                <option value="America/Chicago">Central</option>
-                <option value="America/Denver">Mountain</option>
-                <option value="America/Los_Angeles">Pacific</option>
-              </select>
             </div>
           </div>
           <div className="flex space-x-3 mt-4">
@@ -204,22 +209,20 @@ export default function WarehousesTab() {
           <table className="table">
             <thead>
               <tr>
-                <th>Code</th>
+                <th>State</th>
                 <th>Name</th>
-                <th>Location</th>
-                <th>Timezone</th>
+                <th>City</th>
+                <th>Code</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {warehouses.map(wh => (
                 <tr key={wh.id}>
-                  <td className="font-mono">{wh.code}</td>
+                  <td className="font-medium">{wh.state}</td>
                   <td>{wh.name}</td>
-                  <td className="text-sm text-gray-500">
-                    {[wh.city, wh.state].filter(Boolean).join(', ') || '-'}
-                  </td>
-                  <td className="text-sm">{wh.timezone?.split('/')[1] || '-'}</td>
+                  <td className="text-gray-500">{wh.city || '-'}</td>
+                  <td className="font-mono text-sm">{wh.code}</td>
                   <td>
                     <div className="flex space-x-2">
                       <button
