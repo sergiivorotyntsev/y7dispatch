@@ -214,6 +214,10 @@ async def startup():
 
     init_auction_profiles_schema()
     seed_default_auction_profiles()
+    # Initialize warehouse constants schema
+    from api.warehouse_constants import init_warehouse_constants_schema
+
+    init_warehouse_constants_schema()
 
 
 # Serve frontend (simple HTML for now)

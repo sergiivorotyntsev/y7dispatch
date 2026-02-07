@@ -132,6 +132,7 @@ export const api = {
   getDocumentText: (id) => request(`/documents/${id}/text`),
   getDocumentExportPreview: (id) => request(`/documents/${id}/export-preview`),
   getDocumentFileUrl: (id) => `${API_BASE}/documents/${id}/file`,
+  getDocumentPageImageUrl: (id, pageNum = 1, dpi = 150) => `${API_BASE}/documents/${id}/page/${pageNum}/image?dpi=${dpi}`,
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
   clearTestLabDocuments: () => request('/documents/test-lab/clear-all', { method: 'DELETE' }),
   uploadDocument: async (file, auctionTypeId, datasetSplit = 'train') => {

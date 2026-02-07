@@ -301,7 +301,7 @@ function DocumentSelector({ selectedDocumentId, onSelect, auctionType }) {
 
     setUploadingFile(file.name)
     try {
-      const result = await api.uploadDocument(file, { source: 'zone_editor' })
+      const result = await api.uploadDocument(file, null, 'train')
       await loadDocuments()
       if (result.id) {
         onSelect(result.id)

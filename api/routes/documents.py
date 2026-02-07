@@ -811,9 +811,7 @@ async def get_document_page_image(
         PNG image of the requested page
     """
     import io
-    import tempfile
 
-    from pdf2image import convert_from_path
     from fastapi.responses import Response
 
     doc = DocumentRepository.get_by_id(id)
@@ -824,10 +822,12 @@ async def get_document_page_image(
         raise HTTPException(status_code=404, detail="Document file path not found")
 
     if not os.path.exists(doc.file_path):
-        raise HTTPException(status_code=404, detail="Document file not found on disk")
+        raise HTTPException(status_code=404, detail=f"Document file not found on disk: {doc.file_path}")
 
     try:
-        # Convert single page to image
+        # Try pdf2image first (requires poppler)
+        from pdf2image import convert_from_path
+
         images = convert_from_path(
             doc.file_path,
             dpi=dpi,
@@ -836,7 +836,7 @@ async def get_document_page_image(
         )
 
         if not images:
-            raise HTTPException(status_code=404, detail=f"Page {page_num} not found")
+            raise HTTPException(status_code=404, detail=f"Page {page_num} not found in document")
 
         # Convert to PNG bytes
         img_buffer = io.BytesIO()
@@ -851,5 +851,16 @@ async def get_document_page_image(
                 "Content-Disposition": f'inline; filename="page_{page_num}.png"',
             },
         )
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="pdf2image is not installed. Run: pip install pdf2image"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to render page: {str(e)}")
+        error_msg = str(e)
+        if "poppler" in error_msg.lower() or "pdftoppm" in error_msg.lower():
+            raise HTTPException(
+                status_code=500,
+                detail="Poppler is not installed. On Ubuntu: apt-get install poppler-utils. On macOS: brew install poppler"
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to render page: {error_msg}")

@@ -2,11 +2,12 @@
  * VisualZoneEditor - Interactive visual zone editor with document background
  *
  * Features:
- * - Display PDF page as background image
+ * - Display PDF page as background image or PDF preview
  * - Drag zones to reposition them
  * - Resize zones by dragging edges/corners
  * - Click to select and edit zone properties
  * - Real-time coordinate feedback
+ * - Fallback to PDF preview if image rendering fails
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 
@@ -260,11 +261,21 @@ export default function VisualZoneEditor({
   const [imageError, setImageError] = useState(null)
   const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 })
   const [zoom, setZoom] = useState(100)
+  const [viewMode, setViewMode] = useState('image') // 'image' or 'pdf'
 
-  // Calculate image URL
+  // Calculate URLs
   const imageUrl = documentId
     ? `/api/documents/${documentId}/page/${pageNum}/image?dpi=150`
     : null
+  const pdfUrl = documentId
+    ? `/api/documents/${documentId}/file#page=${pageNum}`
+    : null
+
+  // Reset state when document changes
+  useEffect(() => {
+    setImageLoaded(false)
+    setImageError(null)
+  }, [documentId, pageNum])
 
   // Update container size when image loads
   const handleImageLoad = useCallback((e) => {
@@ -280,11 +291,22 @@ export default function VisualZoneEditor({
     }
   }, [])
 
-  // Handle image error
-  const handleImageError = useCallback(() => {
+  // Handle image error - try to get detailed error from API
+  const handleImageError = useCallback(async () => {
     setImageLoaded(false)
-    setImageError('Failed to load document image. Make sure the document exists and pdf2image is installed.')
-  }, [])
+    try {
+      // Try to fetch the image to get the error message
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        const data = await response.json()
+        setImageError(data.detail || 'Failed to load document image')
+      } else {
+        setImageError('Failed to load document image. Unknown error.')
+      }
+    } catch {
+      setImageError('Failed to load document image. Check if the server is running.')
+    }
+  }, [imageUrl])
 
   // Update container size on resize
   useEffect(() => {
@@ -324,10 +346,9 @@ export default function VisualZoneEditor({
     }
   }, [onZoneSelect])
 
-  // Calculate display dimensions based on zoom
-  const aspectRatio = imageNaturalSize.height > 0
-    ? imageNaturalSize.width / imageNaturalSize.height
-    : 612 / 792 // Default Letter size
+  // Default page dimensions for PDF mode
+  const defaultWidth = 612
+  const defaultHeight = 792
 
   return (
     <div className="flex flex-col h-full">
@@ -341,6 +362,26 @@ export default function VisualZoneEditor({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          {documentId && (
+            <div className="flex rounded border overflow-hidden mr-2">
+              <button
+                onClick={() => setViewMode('image')}
+                className={`px-2 py-1 text-xs ${viewMode === 'image' ? 'bg-blue-50 text-blue-700' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                title="Image mode (better for zone editing)"
+              >
+                Image
+              </button>
+              <button
+                onClick={() => setViewMode('pdf')}
+                className={`px-2 py-1 text-xs border-l ${viewMode === 'pdf' ? 'bg-blue-50 text-blue-700' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                title="PDF mode (always works)"
+              >
+                PDF
+              </button>
+            </div>
+          )}
+
           {/* Zoom controls */}
           <button
             onClick={() => setZoom(Math.max(50, zoom - 25))}
@@ -382,17 +423,63 @@ export default function VisualZoneEditor({
               <p className="text-sm">Upload a document or select one from the list to start editing zones</p>
             </div>
           </div>
+        ) : viewMode === 'pdf' ? (
+          /* PDF Preview Mode */
+          <div
+            className="relative mx-auto bg-white shadow-lg"
+            style={{
+              width: `${(zoom / 100) * 800}px`,
+              height: `${(zoom / 100) * 800 * (defaultHeight / defaultWidth)}px`,
+            }}
+          >
+            <iframe
+              src={pdfUrl}
+              className="w-full h-full border-0"
+              title="PDF Preview"
+            />
+            {/* Zone overlay for PDF mode */}
+            <div
+              ref={containerRef}
+              className="absolute inset-0 pointer-events-auto"
+              onClick={handleBackgroundClick}
+              style={{ background: 'transparent' }}
+            >
+              {zones.map((zone, index) => (
+                <ZoneOverlay
+                  key={index}
+                  zone={zone}
+                  index={index}
+                  isSelected={selectedZoneIndex === index}
+                  containerWidth={containerSize.width || (zoom / 100) * 800}
+                  containerHeight={containerSize.height || (zoom / 100) * 800 * (defaultHeight / defaultWidth)}
+                  onSelect={handleZoneSelect}
+                  onChange={handleZoneChange}
+                />
+              ))}
+            </div>
+          </div>
         ) : imageError ? (
+          /* Error state with option to switch to PDF */
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-red-500">
-              <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="text-center max-w-md">
+              <svg className="w-16 h-16 mx-auto mb-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <p className="text-lg font-medium mb-2">Error loading document</p>
-              <p className="text-sm">{imageError}</p>
+              <p className="text-lg font-medium mb-2 text-gray-700">Image rendering unavailable</p>
+              <p className="text-sm text-gray-500 mb-4">{imageError}</p>
+              <button
+                onClick={() => setViewMode('pdf')}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+              >
+                Switch to PDF Preview
+              </button>
+              <p className="text-xs text-gray-400 mt-3">
+                PDF preview works without additional dependencies but zone editing may be less precise.
+              </p>
             </div>
           </div>
         ) : (
+          /* Image Mode */
           <div
             className="relative mx-auto bg-white shadow-lg"
             style={{
@@ -434,10 +521,10 @@ export default function VisualZoneEditor({
 
             {/* Loading overlay */}
             {!imageLoaded && !imageError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <div className="flex items-center justify-center bg-gray-100" style={{ minHeight: '400px' }}>
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="mt-3 text-sm text-gray-600">Loading document...</p>
+                  <p className="mt-3 text-sm text-gray-600">Loading document image...</p>
                 </div>
               </div>
             )}
@@ -449,6 +536,7 @@ export default function VisualZoneEditor({
       <div className="px-3 py-2 bg-gray-50 border-t text-xs text-gray-500">
         <span className="font-medium">Tips:</span> Click a zone to select it. Drag to move. Use corner/edge handles to resize.
         Coordinates are shown as percentages of page size.
+        {viewMode === 'pdf' && ' Note: PDF mode may have slight coordinate differences.'}
       </div>
     </div>
   )
