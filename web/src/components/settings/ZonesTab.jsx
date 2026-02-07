@@ -6,9 +6,11 @@
  * - Adjust zone boundaries (x0, y0, x1, y1 as percentages)
  * - Map fields to specific zones
  * - Preview zone extraction on sample documents
+ * - Visual zone editing with document background (drag & resize)
  */
 import { useState, useEffect } from 'react'
 import api from '../../api'
+import VisualZoneEditor from './VisualZoneEditor'
 
 const AUCTION_TYPES = ['COPART', 'IAA', 'MANHEIM']
 
@@ -271,11 +273,104 @@ function getZoneColor(name) {
   return colors[name.toLowerCase()] || '#6B7280'
 }
 
+function DocumentSelector({ selectedDocumentId, onSelect, auctionType }) {
+  const [documents, setDocuments] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(null)
+
+  useEffect(() => {
+    loadDocuments()
+  }, [auctionType])
+
+  async function loadDocuments() {
+    setLoading(true)
+    try {
+      // Load recent documents for this auction type
+      const result = await api.listDocuments({ limit: 20 })
+      setDocuments(result.items || [])
+    } catch (err) {
+      console.error('Failed to load documents:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleFileUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingFile(file.name)
+    try {
+      const result = await api.uploadDocument(file, { source: 'zone_editor' })
+      await loadDocuments()
+      if (result.id) {
+        onSelect(result.id)
+      }
+    } catch (err) {
+      console.error('Failed to upload document:', err)
+    } finally {
+      setUploadingFile(null)
+    }
+  }
+
+  return (
+    <div className="p-3 bg-gray-50 border-b">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-gray-700">Background Document:</span>
+
+        <select
+          value={selectedDocumentId || ''}
+          onChange={(e) => onSelect(e.target.value ? parseInt(e.target.value) : null)}
+          className="form-select form-select-sm text-sm flex-1 max-w-md"
+        >
+          <option value="">Select a document...</option>
+          {documents.map(doc => (
+            <option key={doc.id} value={doc.id}>
+              #{doc.id} - {doc.filename} ({doc.auction_type_code || 'Unknown'})
+            </option>
+          ))}
+        </select>
+
+        <span className="text-gray-400">or</span>
+
+        <label className="px-3 py-1.5 text-sm bg-white border rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2">
+          {uploadingFile ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+              <span>Uploading...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <span>Upload PDF</span>
+            </>
+          )}
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileUpload}
+            className="hidden"
+            disabled={!!uploadingFile}
+          />
+        </label>
+
+        {loading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>}
+      </div>
+    </div>
+  )
+}
+
 function TemplateEditor({ template, onSave, onCancel }) {
   const [editedTemplate, setEditedTemplate] = useState(template)
   const [selectedZone, setSelectedZone] = useState(null)
+  const [selectedZoneIndex, setSelectedZoneIndex] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [editorMode, setEditorMode] = useState('visual') // 'visual' or 'form'
+  const [selectedDocumentId, setSelectedDocumentId] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   function handleZoneChange(index, updatedZone) {
     const newZones = [...editedTemplate.zones]
@@ -283,10 +378,17 @@ function TemplateEditor({ template, onSave, onCancel }) {
     setEditedTemplate({ ...editedTemplate, zones: newZones })
   }
 
+  function handleZonesChange(newZones) {
+    setEditedTemplate({ ...editedTemplate, zones: newZones })
+  }
+
   function handleZoneDelete(index) {
     if (!confirm('Delete this zone?')) return
     const newZones = editedTemplate.zones.filter((_, i) => i !== index)
     setEditedTemplate({ ...editedTemplate, zones: newZones })
+    if (selectedZoneIndex === index) {
+      setSelectedZoneIndex(null)
+    }
   }
 
   function handleAddZone() {
@@ -300,6 +402,16 @@ function TemplateEditor({ template, onSave, onCancel }) {
       description: '',
     }
     setEditedTemplate({ ...editedTemplate, zones: [...editedTemplate.zones, newZone] })
+    setSelectedZoneIndex(editedTemplate.zones.length)
+  }
+
+  function handleZoneSelect(index) {
+    setSelectedZoneIndex(index)
+    if (index !== null && editedTemplate.zones[index]) {
+      setSelectedZone(editedTemplate.zones[index].name)
+    } else {
+      setSelectedZone(null)
+    }
   }
 
   async function handleSave() {
@@ -314,16 +426,50 @@ function TemplateEditor({ template, onSave, onCancel }) {
     }
   }
 
+  const selectedZoneData = selectedZoneIndex !== null ? editedTemplate.zones[selectedZoneIndex] : null
+
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="p-4 border-b flex items-center justify-between">
+    <div className="bg-white rounded-lg shadow flex flex-col" style={{ height: 'calc(100vh - 180px)' }}>
+      {/* Header */}
+      <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
         <div>
           <h3 className="font-semibold text-lg">{editedTemplate.name}</h3>
           <p className="text-sm text-gray-500">
             {editedTemplate.auction_type} • Version {editedTemplate.version}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          {/* Editor Mode Toggle */}
+          <div className="flex rounded-lg border overflow-hidden">
+            <button
+              onClick={() => setEditorMode('visual')}
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 ${
+                editorMode === 'visual'
+                  ? 'bg-blue-50 text-blue-700 border-r'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border-r'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Visual
+            </button>
+            <button
+              onClick={() => setEditorMode('form')}
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 ${
+                editorMode === 'form'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Form
+            </button>
+          </div>
+
           <button
             onClick={onCancel}
             className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
@@ -341,59 +487,298 @@ function TemplateEditor({ template, onSave, onCancel }) {
       </div>
 
       {error && (
-        <div className="m-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+        <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm flex-shrink-0">
           {error}
         </div>
       )}
 
-      <div className="p-4 grid grid-cols-3 gap-6">
-        {/* Zone Visualizer */}
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Zone Layout Preview</h4>
-          <ZoneVisualizer
-            zones={editedTemplate.zones}
-            selectedZone={selectedZone}
-            onSelectZone={setSelectedZone}
+      {/* Visual Editor Mode */}
+      {editorMode === 'visual' && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Document Selector */}
+          <DocumentSelector
+            selectedDocumentId={selectedDocumentId}
+            onSelect={setSelectedDocumentId}
+            auctionType={editedTemplate.auction_type}
           />
-          <p className="text-xs text-gray-500 mt-2">
-            Click a zone to select. Zones are defined as percentage of page size.
-          </p>
-        </div>
 
-        {/* Zone List */}
-        <div className="col-span-2">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-gray-700">
-              Zones ({editedTemplate.zones.length})
-            </h4>
-            <button
-              onClick={handleAddZone}
-              className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Zone
-            </button>
-          </div>
-
-          <div className="max-h-[500px] overflow-y-auto">
-            {editedTemplate.zones.map((zone, idx) => (
-              <ZoneEditor
-                key={idx}
-                zone={zone}
-                onChange={(updated) => handleZoneChange(idx, updated)}
-                onDelete={() => handleZoneDelete(idx)}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Visual Zone Editor */}
+            <div className="flex-1 overflow-hidden border-r">
+              <VisualZoneEditor
+                zones={editedTemplate.zones}
+                documentId={selectedDocumentId}
+                pageNum={currentPage}
+                onChange={handleZonesChange}
+                onZoneSelect={handleZoneSelect}
+                selectedZoneIndex={selectedZoneIndex}
               />
-            ))}
-            {editedTemplate.zones.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                No zones defined. Click "Add Zone" to create one.
+            </div>
+
+            {/* Zone Properties Sidebar */}
+            <div className="w-80 flex-shrink-0 overflow-y-auto bg-gray-50">
+              <div className="p-3 border-b bg-white sticky top-0 z-10">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-gray-700">
+                    Zones ({editedTemplate.zones.length})
+                  </h4>
+                  <button
+                    onClick={handleAddZone}
+                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Zone
+                  </button>
+                </div>
+
+                {/* Page selector */}
+                {selectedDocumentId && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-gray-500">Page:</span>
+                    <button
+                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      className="p-1 rounded hover:bg-gray-200"
+                      disabled={currentPage <= 1}
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-xs font-mono">{currentPage}</span>
+                    <button
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      className="p-1 rounded hover:bg-gray-200"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Zone List */}
+              <div className="p-3 space-y-2">
+                {editedTemplate.zones.map((zone, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-2 rounded border cursor-pointer transition-colors ${
+                      selectedZoneIndex === idx
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                    onClick={() => handleZoneSelect(idx)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded"
+                          style={{ backgroundColor: getZoneColor(zone.name) }}
+                        />
+                        <span className="text-sm font-medium">{zone.name}</span>
+                      </div>
+                      <span className="text-xs text-gray-400">
+                        {zone.fields?.length || 0} fields
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1 font-mono">
+                      ({zone.x0.toFixed(1)}%, {zone.y0.toFixed(1)}%) - ({zone.x1.toFixed(1)}%, {zone.y1.toFixed(1)}%)
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Selected Zone Editor */}
+              {selectedZoneData && (
+                <div className="p-3 border-t bg-white">
+                  <h5 className="text-sm font-medium text-gray-700 mb-3">Edit Zone: {selectedZoneData.name}</h5>
+
+                  {/* Zone Name */}
+                  <div className="mb-3">
+                    <label className="block text-xs text-gray-500 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={selectedZoneData.name}
+                      onChange={(e) => handleZoneChange(selectedZoneIndex, { ...selectedZoneData, name: e.target.value })}
+                      className="form-input form-input-sm text-sm w-full"
+                    />
+                  </div>
+
+                  {/* Zone Coordinates */}
+                  <div className="mb-3">
+                    <label className="block text-xs text-gray-500 mb-1">Coordinates (%)</label>
+                    <div className="grid grid-cols-4 gap-1">
+                      <input
+                        type="number"
+                        value={selectedZoneData.x0}
+                        onChange={(e) => handleZoneChange(selectedZoneIndex, { ...selectedZoneData, x0: parseFloat(e.target.value) || 0 })}
+                        className="form-input form-input-sm text-xs"
+                        placeholder="X0"
+                      />
+                      <input
+                        type="number"
+                        value={selectedZoneData.y0}
+                        onChange={(e) => handleZoneChange(selectedZoneIndex, { ...selectedZoneData, y0: parseFloat(e.target.value) || 0 })}
+                        className="form-input form-input-sm text-xs"
+                        placeholder="Y0"
+                      />
+                      <input
+                        type="number"
+                        value={selectedZoneData.x1}
+                        onChange={(e) => handleZoneChange(selectedZoneIndex, { ...selectedZoneData, x1: parseFloat(e.target.value) || 0 })}
+                        className="form-input form-input-sm text-xs"
+                        placeholder="X1"
+                      />
+                      <input
+                        type="number"
+                        value={selectedZoneData.y1}
+                        onChange={(e) => handleZoneChange(selectedZoneIndex, { ...selectedZoneData, y1: parseFloat(e.target.value) || 0 })}
+                        className="form-input form-input-sm text-xs"
+                        placeholder="Y1"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="mb-3">
+                    <label className="block text-xs text-gray-500 mb-1">Description</label>
+                    <input
+                      type="text"
+                      value={selectedZoneData.description || ''}
+                      onChange={(e) => handleZoneChange(selectedZoneIndex, { ...selectedZoneData, description: e.target.value })}
+                      className="form-input form-input-sm text-sm w-full"
+                      placeholder="What this zone contains..."
+                    />
+                  </div>
+
+                  {/* Fields */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-gray-500">Fields</label>
+                      <button
+                        onClick={() => {
+                          const newFields = [...(selectedZoneData.fields || []), { key: '', field_type: 'text', pattern: '' }]
+                          handleZoneChange(selectedZoneIndex, { ...selectedZoneData, fields: newFields })
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {(selectedZoneData.fields || []).map((field, fidx) => (
+                        <div key={fidx} className="flex items-center gap-1 p-1.5 bg-gray-50 rounded text-xs">
+                          <input
+                            type="text"
+                            value={field.key}
+                            onChange={(e) => {
+                              const newFields = [...selectedZoneData.fields]
+                              newFields[fidx] = { ...field, key: e.target.value }
+                              handleZoneChange(selectedZoneIndex, { ...selectedZoneData, fields: newFields })
+                            }}
+                            className="form-input form-input-sm text-xs flex-1"
+                            placeholder="field_key"
+                          />
+                          <select
+                            value={field.field_type || 'text'}
+                            onChange={(e) => {
+                              const newFields = [...selectedZoneData.fields]
+                              newFields[fidx] = { ...field, field_type: e.target.value }
+                              handleZoneChange(selectedZoneIndex, { ...selectedZoneData, fields: newFields })
+                            }}
+                            className="form-select form-select-sm text-xs w-20"
+                          >
+                            <option value="text">Text</option>
+                            <option value="address">Address</option>
+                            <option value="vin">VIN</option>
+                            <option value="date">Date</option>
+                            <option value="currency">Currency</option>
+                          </select>
+                          <button
+                            onClick={() => {
+                              const newFields = selectedZoneData.fields.filter((_, i) => i !== fidx)
+                              handleZoneChange(selectedZoneIndex, { ...selectedZoneData, fields: newFields })
+                            }}
+                            className="text-red-500 hover:text-red-700 p-1"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Delete Zone */}
+                  <button
+                    onClick={() => handleZoneDelete(selectedZoneIndex)}
+                    className="w-full text-xs text-red-600 hover:text-red-800 hover:bg-red-50 py-2 rounded border border-red-200"
+                  >
+                    Delete Zone
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Form Editor Mode (original) */}
+      {editorMode === 'form' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid grid-cols-3 gap-6">
+            {/* Zone Visualizer */}
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Zone Layout Preview</h4>
+              <ZoneVisualizer
+                zones={editedTemplate.zones}
+                selectedZone={selectedZone}
+                onSelectZone={setSelectedZone}
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Click a zone to select. Zones are defined as percentage of page size.
+              </p>
+            </div>
+
+            {/* Zone List */}
+            <div className="col-span-2">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-gray-700">
+                  Zones ({editedTemplate.zones.length})
+                </h4>
+                <button
+                  onClick={handleAddZone}
+                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Zone
+                </button>
+              </div>
+
+              <div className="max-h-[500px] overflow-y-auto">
+                {editedTemplate.zones.map((zone, idx) => (
+                  <ZoneEditor
+                    key={idx}
+                    zone={zone}
+                    onChange={(updated) => handleZoneChange(idx, updated)}
+                    onDelete={() => handleZoneDelete(idx)}
+                  />
+                ))}
+                {editedTemplate.zones.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    No zones defined. Click "Add Zone" to create one.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

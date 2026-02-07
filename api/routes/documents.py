@@ -789,3 +789,67 @@ async def clear_all_test_lab_documents():
         "deleted_count": deleted_count,
         "message": f"Deleted {deleted_count} test documents",
     }
+
+
+@router.get("/{id}/page/{page_num}/image")
+async def get_document_page_image(
+    id: int,
+    page_num: int = 1,
+    dpi: int = Query(default=150, ge=72, le=300, description="Resolution in DPI"),
+):
+    """
+    Get a specific page of a PDF document as a PNG image.
+
+    Used by the visual zone editor to display the document background.
+
+    Args:
+        id: Document ID
+        page_num: Page number (1-indexed)
+        dpi: Image resolution (default 150)
+
+    Returns:
+        PNG image of the requested page
+    """
+    import io
+    import tempfile
+
+    from pdf2image import convert_from_path
+    from fastapi.responses import Response
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.file_path:
+        raise HTTPException(status_code=404, detail="Document file path not found")
+
+    if not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail="Document file not found on disk")
+
+    try:
+        # Convert single page to image
+        images = convert_from_path(
+            doc.file_path,
+            dpi=dpi,
+            first_page=page_num,
+            last_page=page_num,
+        )
+
+        if not images:
+            raise HTTPException(status_code=404, detail=f"Page {page_num} not found")
+
+        # Convert to PNG bytes
+        img_buffer = io.BytesIO()
+        images[0].save(img_buffer, format="PNG")
+        img_buffer.seek(0)
+
+        return Response(
+            content=img_buffer.getvalue(),
+            media_type="image/png",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "Content-Disposition": f'inline; filename="page_{page_num}.png"',
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to render page: {str(e)}")
