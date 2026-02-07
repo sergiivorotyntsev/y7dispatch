@@ -68,7 +68,7 @@ def main():
         pickup_lines = extract_zone_text(page, ZONES['pickup_address'])
 
         # Skip the header line
-        address_lines = [l for l in pickup_lines if not l.startswith('PHYSICAL')]
+        address_lines = [line for line in pickup_lines if not line.startswith('PHYSICAL')]
 
         print(f"\n  Raw address lines: {address_lines}")
 
@@ -88,7 +88,7 @@ def main():
                     city = parts[0]
                     state = parts[1]
                     zipcode = parts[2]
-                    print(f"\n  Parsed pickup location:")
+                    print("\n  Parsed pickup location:")
                     print(f"    Street:  {street}")
                     print(f"    City:    {city}")
                     print(f"    State:   {state}")

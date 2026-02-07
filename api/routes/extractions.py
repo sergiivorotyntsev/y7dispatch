@@ -1191,7 +1191,7 @@ def _create_review_items_for_all_fields(
         - export: Full CD API field set with strict validation
     """
     from api.database import get_connection
-    from api.listing_fields import FieldCategory, FieldSourceType, get_registry
+    from api.listing_fields import FieldCategory, get_registry
 
     # Get centralized field registry
     registry = get_registry()
@@ -1629,6 +1629,7 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
     When warehouse_id is provided, automatically populates delivery fields.
     """
     import json
+
     from api.database import get_connection
 
     run = ExtractionRunRepository.get_by_id(id)
@@ -1914,7 +1915,7 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
             "detail": f"Extraction run {id} not found in database",
         })
         issues.append("Extraction run does not exist")
-        fixes.append(f"Check if document was uploaded. Run extraction via POST /api/extractions/run with document_id")
+        fixes.append("Check if document was uploaded. Run extraction via POST /api/extractions/run with document_id")
         response.issues_found = issues
         response.fix_actions = fixes
         return response
@@ -1989,7 +1990,7 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
             outputs = {}
 
     response.outputs_json_fields = len(outputs)
-    response.outputs_sample = {k: v for k, v in list(outputs.items())[:10]} if outputs else None
+    response.outputs_sample = dict(list(outputs.items())[:10]) if outputs else None
 
     if not outputs:
         response.steps.append({

@@ -17,11 +17,11 @@ Usage:
     print(result["pickup_city"])  # "LAS VEGAS" (from correct zone)
 """
 
-import re
 import logging
+import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
+from typing import Any, Optional
 
 import pdfplumber
 
@@ -66,10 +66,10 @@ class DocumentZone:
     y0: float  # Top edge (0-100%)
     x1: float  # Right edge (0-100%)
     y1: float  # Bottom edge (0-100%)
-    fields: List[ZoneField] = field(default_factory=list)
+    fields: list[ZoneField] = field(default_factory=list)
     description: Optional[str] = None
 
-    def to_bbox(self, page_width: float, page_height: float) -> Tuple[float, float, float, float]:
+    def to_bbox(self, page_width: float, page_height: float) -> tuple[float, float, float, float]:
         """Convert percentage coordinates to absolute bbox"""
         return (
             page_width * self.x0 / 100,
@@ -129,7 +129,7 @@ class DocumentTemplate:
     name: str
     auction_type: str
     version: int = 1
-    zones: List[DocumentZone] = field(default_factory=list)
+    zones: list[DocumentZone] = field(default_factory=list)
     description: Optional[str] = None
     is_active: bool = True
 
@@ -163,11 +163,11 @@ class DocumentTemplate:
 @dataclass
 class ExtractionResult:
     """Result of zone-based extraction"""
-    fields: Dict[str, Any]
-    zone_texts: Dict[str, str]  # Raw text from each zone
+    fields: dict[str, Any]
+    zone_texts: dict[str, str]  # Raw text from each zone
     confidence: float
     template_id: str
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class ZoneExtractor:
@@ -191,7 +191,7 @@ class ZoneExtractor:
     US_STATES = r"AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY"
 
     def __init__(self):
-        self.templates: Dict[str, DocumentTemplate] = {}
+        self.templates: dict[str, DocumentTemplate] = {}
         self._load_default_templates()
 
     def _load_default_templates(self):
@@ -616,7 +616,7 @@ class ZoneExtractor:
 
         return None
 
-    def _parse_city_state_zip(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _parse_city_state_zip(self, text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """Parse city, state, ZIP from text"""
         # Normalize whitespace - replace newlines with spaces
         text_normalized = re.sub(r'[\n\r]+', ' ', text)
@@ -666,7 +666,7 @@ class ZoneExtractor:
 
         return None, None, None
 
-    def _extract_manheim_page4_pickup(self, pdf_path: str) -> Dict[str, str]:
+    def _extract_manheim_page4_pickup(self, pdf_path: str) -> dict[str, str]:
         """
         Extract pickup location from Manheim Page 4 (Vehicle Release).
 

@@ -4,8 +4,9 @@ Analyze Copart invoice PDF to determine exact zone boundaries for extraction.
 Outputs page dimensions, text coordinates, and column boundaries.
 """
 
-import pdfplumber
 from collections import defaultdict
+
+import pdfplumber
 
 PDF_PATH = "/home/user/y7dispatch/tests/sample_docs/invoice.pdf"
 
@@ -145,7 +146,7 @@ def analyze_pdf():
             if text == 'SELLER:':
                 seller_x = word['x0']
 
-        print(f"\n   Column header X positions:")
+        print("\n   Column header X positions:")
         print(f"      MEMBER:                starts at X = {member_x}")
         print(f"      PHYSICAL ADDRESS...:   starts at X = {physical_x}")
         print(f"      SELLER:                starts at X = {seller_x}")
@@ -155,7 +156,7 @@ def analyze_pdf():
             left_boundary = (member_x + physical_x) / 2
             right_boundary = (physical_x + seller_x) / 2
 
-            print(f"\n   Suggested column boundaries:")
+            print("\n   Suggested column boundaries:")
             print(f"      Left column (MEMBER):     X = 0 to {left_boundary:.1f} pts")
             print(f"      Center column (ADDRESS):  X = {left_boundary:.1f} to {right_boundary:.1f} pts")
             print(f"      Right column (SELLER):    X = {right_boundary:.1f} to {width:.1f} pts")

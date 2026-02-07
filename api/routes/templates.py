@@ -7,8 +7,7 @@ Users can view, create, and modify templates for different document types.
 
 import json
 import logging
-from typing import List, Optional
-from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -17,10 +16,9 @@ from api.database import get_connection
 from extractors.zone_extractor import (
     DocumentTemplate,
     DocumentZone,
-    ZoneField,
     FieldType,
+    ZoneField,
     get_zone_extractor,
-    ExtractionResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,7 +100,7 @@ class ZoneModel(BaseModel):
     y0: float = Field(..., ge=0, le=100, description="Top edge (%)")
     x1: float = Field(..., ge=0, le=100, description="Right edge (%)")
     y1: float = Field(..., ge=0, le=100, description="Bottom edge (%)")
-    fields: List[ZoneFieldModel] = []
+    fields: list[ZoneFieldModel] = []
     description: Optional[str] = None
 
 
@@ -112,7 +110,7 @@ class TemplateModel(BaseModel):
     name: str
     auction_type: str
     version: int = 1
-    zones: List[ZoneModel] = []
+    zones: list[ZoneModel] = []
     description: Optional[str] = None
     is_active: bool = True
 
@@ -124,7 +122,7 @@ class TemplateResponse(BaseModel):
     name: str
     auction_type: str
     version: int
-    zones: List[ZoneModel]
+    zones: list[ZoneModel]
     description: Optional[str] = None
     is_active: bool = True
     created_at: Optional[str] = None
@@ -133,7 +131,7 @@ class TemplateResponse(BaseModel):
 
 class TemplateListResponse(BaseModel):
     """Response model for template list"""
-    items: List[TemplateResponse]
+    items: list[TemplateResponse]
     total: int
 
 
@@ -150,7 +148,7 @@ class ZoneExtractionResponse(BaseModel):
     zone_texts: dict
     confidence: float
     template_id: str
-    warnings: List[str] = []
+    warnings: list[str] = []
 
 
 class TemplateFeedbackRequest(BaseModel):
@@ -172,7 +170,7 @@ class TemplateRepository:
     """Database operations for templates"""
 
     @staticmethod
-    def list_all(auction_type: Optional[str] = None, active_only: bool = True) -> List[dict]:
+    def list_all(auction_type: Optional[str] = None, active_only: bool = True) -> list[dict]:
         """List all templates"""
         with get_connection() as conn:
             sql = "SELECT * FROM extraction_templates WHERE 1=1"
@@ -314,7 +312,7 @@ def sync_default_templates():
     """
     extractor = get_zone_extractor()
 
-    for auction_type, template in extractor.templates.items():
+    for _auction_type, template in extractor.templates.items():
         existing = TemplateRepository.get_by_id(template.template_id)
 
         if not existing:

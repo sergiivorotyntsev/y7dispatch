@@ -6,18 +6,18 @@ This script tests both traditional pattern extraction and new zone-based extract
 on all sample documents to compare results and identify improvements needed.
 """
 
+import json
 import os
 import sys
-import json
 from pathlib import Path
-from datetime import datetime
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pdfplumber
-from extractors.zone_extractor import get_zone_extractor, ZoneExtractor
+
 from extractors import ExtractorManager
+from extractors.zone_extractor import get_zone_extractor
 
 
 def extract_raw_text(pdf_path: str) -> str:
@@ -238,7 +238,7 @@ def run_all_tests():
             by_type[doc_type] = []
         by_type[doc_type].append(r)
 
-    print(f"\nDocuments by type:")
+    print("\nDocuments by type:")
     for doc_type, docs in by_type.items():
         print(f"  {doc_type}: {len(docs)} documents")
 
@@ -246,12 +246,12 @@ def run_all_tests():
     pattern_success = sum(1 for r in results if r["pattern_result"]["success"])
     zone_success = sum(1 for r in results if r["zone_result"]["success"])
 
-    print(f"\nExtraction success:")
+    print("\nExtraction success:")
     print(f"  Pattern: {pattern_success}/{len(results)}")
     print(f"  Zone: {zone_success}/{len(results)}")
 
     # Field extraction rates
-    print(f"\nKey field extraction (Pattern vs Zone):")
+    print("\nKey field extraction (Pattern vs Zone):")
     key_fields = ["pickup_address", "pickup_city", "pickup_state", "pickup_zip", "vehicle_vin"]
 
     for field in key_fields:
