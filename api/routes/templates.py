@@ -329,14 +329,75 @@ def db_to_response(row: dict) -> TemplateResponse:
     )
 
 
+def db_to_domain(row: dict) -> DocumentTemplate:
+    """Convert database row to domain DocumentTemplate for ZoneExtractor"""
+    zones_data = json.loads(row.get("zones_json", "[]"))
+    zones = []
+
+    for z in zones_data:
+        fields = [
+            ZoneField(
+                key=f["key"],
+                field_type=FieldType(f.get("field_type", "text")),
+                pattern=f.get("pattern"),
+                label=f.get("label"),
+                required=f.get("required", False),
+            )
+            for f in z.get("fields", [])
+        ]
+        zones.append(
+            DocumentZone(
+                name=z["name"],
+                x0=z["x0"],
+                y0=z["y0"],
+                x1=z["x1"],
+                y1=z["y1"],
+                fields=fields,
+                description=z.get("description"),
+            )
+        )
+
+    return DocumentTemplate(
+        template_id=row["template_id"],
+        name=row["name"],
+        auction_type=row["auction_type"],
+        version=row.get("version", 1),
+        zones=zones,
+        description=row.get("description"),
+        is_active=row.get("is_active", True),
+    )
+
+
 def sync_default_templates():
     """
-    Sync default templates from ZoneExtractor to database.
-    Called at startup to ensure templates exist.
+    Sync templates between database and ZoneExtractor.
+    Called at startup to ensure templates are properly loaded.
+
+    Priority:
+    1. Load existing templates FROM database (user edits preserved)
+    2. Create defaults only if no DB record exists
     """
     extractor = get_zone_extractor()
 
-    for _auction_type, template in extractor.templates.items():
+    # First, load ALL existing templates from database into extractor
+    all_db_templates = TemplateRepository.list_all(active_only=False)
+    loaded_auction_types = set()
+
+    for row in all_db_templates:
+        try:
+            template = db_to_domain(row)
+            extractor.register_template(template)
+            loaded_auction_types.add(template.auction_type)
+            logger.info(f"Loaded template from database: {template.template_id}")
+        except Exception as e:
+            logger.warning(f"Failed to load template {row.get('template_id')}: {e}")
+
+    # Then, create defaults only for auction types not in database
+    for auction_type, template in list(extractor.templates.items()):
+        if auction_type in loaded_auction_types:
+            # Already loaded from DB, skip
+            continue
+
         existing = TemplateRepository.get_by_id(template.template_id)
 
         if not existing:

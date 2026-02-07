@@ -135,6 +135,10 @@ export const api = {
   getDocumentPageImageUrl: (id, pageNum = 1, dpi = 150) => `${API_BASE}/documents/${id}/page/${pageNum}/image?dpi=${dpi}`,
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
   clearTestLabDocuments: () => request('/documents/test-lab/clear-all', { method: 'DELETE' }),
+  listTrainingDocuments: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return request(`/documents/training/list${query ? `?${query}` : ''}`)
+  },
   uploadDocument: async (file, auctionTypeId, datasetSplit = 'train') => {
     const formData = new FormData()
     formData.append('file', file)
@@ -144,6 +148,20 @@ export const api = {
     }
     formData.append('dataset_split', datasetSplit)
     formData.append('auto_classify', 'true')  // Enable auto-classification
+    return request('/documents/upload', {
+      method: 'POST',
+      body: formData,
+    })
+  },
+  uploadTrainingDocument: async (file, auctionTypeId = null) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (auctionTypeId !== null && auctionTypeId !== undefined) {
+      formData.append('auction_type_id', auctionTypeId)
+    }
+    formData.append('dataset_split', 'train')
+    formData.append('source', 'test_lab')  // Mark as training document
+    formData.append('auto_classify', 'true')
     return request('/documents/upload', {
       method: 'POST',
       body: formData,

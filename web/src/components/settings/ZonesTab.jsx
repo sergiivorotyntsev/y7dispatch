@@ -285,11 +285,11 @@ function DocumentSelector({ selectedDocumentId, onSelect, auctionType }) {
   async function loadDocuments() {
     setLoading(true)
     try {
-      // Load recent documents for this auction type
-      const result = await api.listDocuments({ limit: 20 })
+      // Load TRAINING documents only (separate from production)
+      const result = await api.listTrainingDocuments({ limit: 50 })
       setDocuments(result.items || [])
     } catch (err) {
-      console.error('Failed to load documents:', err)
+      console.error('Failed to load training documents:', err)
     } finally {
       setLoading(false)
     }
@@ -301,13 +301,14 @@ function DocumentSelector({ selectedDocumentId, onSelect, auctionType }) {
 
     setUploadingFile(file.name)
     try {
-      const result = await api.uploadDocument(file, null, 'train')
+      // Upload as TRAINING document (is_test=true, source=test_lab)
+      const result = await api.uploadTrainingDocument(file, null)
       await loadDocuments()
       if (result.id) {
         onSelect(result.id)
       }
     } catch (err) {
-      console.error('Failed to upload document:', err)
+      console.error('Failed to upload training document:', err)
     } finally {
       setUploadingFile(null)
     }
@@ -316,7 +317,7 @@ function DocumentSelector({ selectedDocumentId, onSelect, auctionType }) {
   return (
     <div className="p-3 bg-gray-50 border-b">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-gray-700">Background Document:</span>
+        <span className="text-sm font-medium text-gray-700">Training Document:</span>
 
         <select
           value={selectedDocumentId || ''}

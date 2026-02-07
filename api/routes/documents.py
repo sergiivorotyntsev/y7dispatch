@@ -434,6 +434,55 @@ async def list_documents(
     )
 
 
+@router.get("/training/list")
+async def list_training_documents(
+    auction_type_id: Optional[int] = None,
+    limit: int = Query(default=50, le=100),
+    offset: int = 0,
+):
+    """
+    List documents for training/testing purposes only.
+
+    Returns documents that are marked as test or from test_lab source.
+    These are separate from production documents and used for
+    zone configuration, extraction testing, and model training.
+    """
+    from api.database import get_connection
+
+    sql = "SELECT * FROM documents WHERE (is_test = 1 OR source = 'test_lab')"
+    params = []
+
+    if auction_type_id:
+        sql += " AND auction_type_id = ?"
+        params.append(auction_type_id)
+
+    sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        docs = [Document(**dict(row)) for row in rows]
+
+        total = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE (is_test = 1 OR source = 'test_lab')"
+        ).fetchone()[0]
+
+    items = []
+    for doc in docs:
+        at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
+        items.append(
+            DocumentResponse(
+                **doc.__dict__,
+                auction_type_code=at.code if at else None,
+            )
+        )
+
+    return {
+        "items": items,
+        "total": total,
+    }
+
+
 @router.get("/{id}", response_model=DocumentResponse)
 async def get_document(id: int):
     """Get a single document by ID."""
