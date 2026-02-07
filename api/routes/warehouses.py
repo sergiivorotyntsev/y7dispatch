@@ -138,7 +138,7 @@ def _sync_warehouses_from_yaml(conn):
         return
 
     try:
-        with open(yaml_file, "r") as f:
+        with open(yaml_file) as f:
             data = yaml.safe_load(f)
 
         warehouses = data.get("warehouses", [])
@@ -287,7 +287,7 @@ async def sync_warehouses_from_yaml():
         raise HTTPException(status_code=404, detail="warehouses.yaml not found")
 
     try:
-        with open(yaml_file, "r") as f:
+        with open(yaml_file) as f:
             data = yaml.safe_load(f)
 
         warehouses = data.get("warehouses", [])
