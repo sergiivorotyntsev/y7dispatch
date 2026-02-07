@@ -608,4 +608,7 @@ def seed_default_auction_profiles():
         except Exception as e:
             # Log but don't fail if profile already exists
             import logging
-            logging.getLogger(__name__).warning(f"Could not create profile {profile.auction_code}: {e}")
+
+            logging.getLogger(__name__).warning(
+                f"Could not create profile {profile.auction_code}: {e}"
+            )

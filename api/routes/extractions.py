@@ -726,6 +726,7 @@ def run_extraction(
 
                 if zone_template:
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.info(f"Using zone extraction for {auction_type.code}")
 
@@ -750,9 +751,12 @@ def run_extraction(
                                     "method": f"zone_extractor:{zone_result.template_id}",
                                 }
 
-                        logger.info(f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}")
+                        logger.info(
+                            f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}"
+                        )
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(f"Zone extraction error: {e}")
                 metrics["zone_extraction_error"] = str(e)
 
@@ -955,9 +959,15 @@ def run_extraction(
         # because it extracts from the correct column/region
         # =================================================================
         zone_priority_fields = [
-            "pickup_address", "pickup_city", "pickup_state", "pickup_zip",
-            "pickup_name", "pickup_phone", "pickup_location_type",
-            "seller_id", "seller_name",  # These come from correct zones
+            "pickup_address",
+            "pickup_city",
+            "pickup_state",
+            "pickup_zip",
+            "pickup_name",
+            "pickup_phone",
+            "pickup_location_type",
+            "seller_id",
+            "seller_name",  # These come from correct zones
         ]
 
         if zone_outputs:
@@ -1531,6 +1541,7 @@ async def list_runs_needing_review(
 async def get_extraction_run(id: int):
     """Get detailed extraction run with field-level outputs."""
     import logging
+
     logger = logging.getLogger(__name__)
 
     try:
@@ -1559,13 +1570,15 @@ async def get_extraction_run(id: int):
                     except (TypeError, ValueError):
                         confidence = None
 
-                fields.append(ExtractionFieldOutput(
-                    source_key=item.source_key or "",
-                    internal_key=item.internal_key,
-                    cd_key=item.cd_key,
-                    value=value,
-                    confidence=confidence,
-                ))
+                fields.append(
+                    ExtractionFieldOutput(
+                        source_key=item.source_key or "",
+                        internal_key=item.internal_key,
+                        cd_key=item.cd_key,
+                        value=value,
+                        confidence=confidence,
+                    )
+                )
             except Exception as field_err:
                 logger.warning(f"Skipping field {item.source_key}: {field_err}")
                 continue
@@ -1576,6 +1589,7 @@ async def get_extraction_run(id: int):
             outputs = {}
         elif isinstance(outputs, str):
             import json
+
             try:
                 outputs = json.loads(outputs)
             except json.JSONDecodeError:
@@ -1660,8 +1674,7 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
         # Fetch warehouse from database and populate delivery fields
         with get_connection() as conn:
             wh_row = conn.execute(
-                "SELECT * FROM warehouses WHERE id = ?",
-                (data.warehouse_id,)
+                "SELECT * FROM warehouses WHERE id = ?", (data.warehouse_id,)
             ).fetchone()
 
         if wh_row:
@@ -1909,42 +1922,52 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     # Step 1: Get extraction run
     run = ExtractionRunRepository.get_by_id(id)
     if not run:
-        response.steps.append({
-            "step": "1. Get extraction run",
-            "status": "FAILED",
-            "detail": f"Extraction run {id} not found in database",
-        })
+        response.steps.append(
+            {
+                "step": "1. Get extraction run",
+                "status": "FAILED",
+                "detail": f"Extraction run {id} not found in database",
+            }
+        )
         issues.append("Extraction run does not exist")
-        fixes.append("Check if document was uploaded. Run extraction via POST /api/extractions/run with document_id")
+        fixes.append(
+            "Check if document was uploaded. Run extraction via POST /api/extractions/run with document_id"
+        )
         response.issues_found = issues
         response.fix_actions = fixes
         return response
 
-    response.steps.append({
-        "step": "1. Get extraction run",
-        "status": "OK",
-        "detail": f"Run ID={run.id}, status={run.status}, created={run.created_at}",
-    })
+    response.steps.append(
+        {
+            "step": "1. Get extraction run",
+            "status": "OK",
+            "detail": f"Run ID={run.id}, status={run.status}, created={run.created_at}",
+        }
+    )
     response.document_id = run.document_id
 
     # Step 2: Get document
     doc = DocumentRepository.get_by_id(run.document_id) if run.document_id else None
     if not doc:
-        response.steps.append({
-            "step": "2. Get document",
-            "status": "FAILED",
-            "detail": f"Document ID={run.document_id} not found",
-        })
+        response.steps.append(
+            {
+                "step": "2. Get document",
+                "status": "FAILED",
+                "detail": f"Document ID={run.document_id} not found",
+            }
+        )
         issues.append("Document record missing from database")
         fixes.append("Re-upload the document")
     else:
         response.document_filename = doc.filename
         file_exists = os.path.exists(doc.file_path) if doc.file_path else False
-        response.steps.append({
-            "step": "2. Get document",
-            "status": "OK" if file_exists else "WARNING",
-            "detail": f"filename={doc.filename}, file_exists={file_exists}, path={doc.file_path}",
-        })
+        response.steps.append(
+            {
+                "step": "2. Get document",
+                "status": "OK" if file_exists else "WARNING",
+                "detail": f"filename={doc.filename}, file_exists={file_exists}, path={doc.file_path}",
+            }
+        )
         if not file_exists:
             issues.append("PDF file not found on disk")
             fixes.append(f"Re-upload the document. Expected path: {doc.file_path}")
@@ -1952,28 +1975,34 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     # Step 3: Get auction type
     at = AuctionTypeRepository.get_by_id(run.auction_type_id) if run.auction_type_id else None
     if not at:
-        response.steps.append({
-            "step": "3. Get auction type",
-            "status": "FAILED",
-            "detail": f"Auction type ID={run.auction_type_id} not found",
-        })
+        response.steps.append(
+            {
+                "step": "3. Get auction type",
+                "status": "FAILED",
+                "detail": f"Auction type ID={run.auction_type_id} not found",
+            }
+        )
         issues.append("Auction type not found")
         fixes.append("Check auction_types table is seeded. Restart server to re-seed.")
     else:
         response.auction_type = at.code
-        response.steps.append({
-            "step": "3. Get auction type",
-            "status": "OK",
-            "detail": f"code={at.code}, name={at.name}",
-        })
+        response.steps.append(
+            {
+                "step": "3. Get auction type",
+                "status": "OK",
+                "detail": f"code={at.code}, name={at.name}",
+            }
+        )
 
     # Step 4: Check extraction status
     status_ok = run.status in ("needs_review", "reviewed", "exported")
-    response.steps.append({
-        "step": "4. Extraction status",
-        "status": "OK" if status_ok else "FAILED",
-        "detail": f"status={run.status}, score={run.extraction_score}, time_ms={run.processing_time_ms}",
-    })
+    response.steps.append(
+        {
+            "step": "4. Extraction status",
+            "status": "OK" if status_ok else "FAILED",
+            "detail": f"status={run.status}, score={run.extraction_score}, time_ms={run.processing_time_ms}",
+        }
+    )
     if run.status == "failed":
         issues.append(f"Extraction failed: {run.errors_json}")
         fixes.append("Check extraction errors. May need OCR or different extractor.")
@@ -1993,19 +2022,23 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     response.outputs_sample = dict(list(outputs.items())[:10]) if outputs else None
 
     if not outputs:
-        response.steps.append({
-            "step": "5. Check outputs_json",
-            "status": "FAILED",
-            "detail": "outputs_json is empty - no fields extracted",
-        })
+        response.steps.append(
+            {
+                "step": "5. Check outputs_json",
+                "status": "FAILED",
+                "detail": "outputs_json is empty - no fields extracted",
+            }
+        )
         issues.append("No fields were extracted from document")
         fixes.append("Check debug endpoint for text quality. Document may need OCR.")
     else:
-        response.steps.append({
-            "step": "5. Check outputs_json",
-            "status": "OK",
-            "detail": f"{len(outputs)} fields extracted: {list(outputs.keys())[:5]}...",
-        })
+        response.steps.append(
+            {
+                "step": "5. Check outputs_json",
+                "status": "OK",
+                "detail": f"{len(outputs)} fields extracted: {list(outputs.keys())[:5]}...",
+            }
+        )
 
     # Step 6: Check review_items
     review_items = ReviewItemRepository.get_by_run(id)
@@ -2016,20 +2049,26 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     ]
 
     if not review_items:
-        response.steps.append({
-            "step": "6. Check review_items",
-            "status": "FAILED",
-            "detail": "No review_items created for this extraction",
-        })
+        response.steps.append(
+            {
+                "step": "6. Check review_items",
+                "status": "FAILED",
+                "detail": "No review_items created for this extraction",
+            }
+        )
         issues.append("review_items table is empty for this run")
-        fixes.append("review_items are created by _create_review_items_for_all_fields(). Check if extraction completed.")
+        fixes.append(
+            "review_items are created by _create_review_items_for_all_fields(). Check if extraction completed."
+        )
     else:
         filled = sum(1 for r in review_items if r.predicted_value)
-        response.steps.append({
-            "step": "6. Check review_items",
-            "status": "OK",
-            "detail": f"{len(review_items)} items, {filled} with values",
-        })
+        response.steps.append(
+            {
+                "step": "6. Check review_items",
+                "status": "OK",
+                "detail": f"{len(review_items)} items, {filled} with values",
+            }
+        )
 
     # Step 7: Check field_mappings
     with get_connection() as conn:
@@ -2042,28 +2081,34 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     response.field_mappings_count = mapping_count
 
     if mapping_count == 0:
-        response.steps.append({
-            "step": "7. Check field_mappings",
-            "status": "WARNING",
-            "detail": f"No field_mappings for auction_type_id={run.auction_type_id}. Using defaults.",
-        })
+        response.steps.append(
+            {
+                "step": "7. Check field_mappings",
+                "status": "WARNING",
+                "detail": f"No field_mappings for auction_type_id={run.auction_type_id}. Using defaults.",
+            }
+        )
         issues.append("field_mappings not seeded for this auction type")
         fixes.append("Restart server to re-seed field_mappings. Or use default fields.")
     else:
-        response.steps.append({
-            "step": "7. Check field_mappings",
-            "status": "OK",
-            "detail": f"{mapping_count} field mappings configured",
-        })
+        response.steps.append(
+            {
+                "step": "7. Check field_mappings",
+                "status": "OK",
+                "detail": f"{mapping_count} field mappings configured",
+            }
+        )
 
     # Step 8: Check field_evidence
     evidence = FieldEvidenceRepository.get_by_run(id)
     response.field_evidence_count = len(evidence)
-    response.steps.append({
-        "step": "8. Check field_evidence",
-        "status": "OK" if evidence else "INFO",
-        "detail": f"{len(evidence)} evidence records (for PDF highlighting)",
-    })
+    response.steps.append(
+        {
+            "step": "8. Check field_evidence",
+            "status": "OK" if evidence else "INFO",
+            "detail": f"{len(evidence)} evidence records (for PDF highlighting)",
+        }
+    )
 
     # Step 9: Check metrics for OCR/text issues
     metrics = run.metrics_json or {}
@@ -2078,25 +2123,31 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     needs_ocr = metrics.get("needs_ocr", False)
 
     if text_length < 100 and not ocr_applied:
-        response.steps.append({
-            "step": "9. Text quality",
-            "status": "FAILED",
-            "detail": f"Only {text_length} chars extracted, OCR not applied",
-        })
+        response.steps.append(
+            {
+                "step": "9. Text quality",
+                "status": "FAILED",
+                "detail": f"Only {text_length} chars extracted, OCR not applied",
+            }
+        )
         issues.append("Document has very little text and OCR was not applied")
         fixes.append("Install ocrmypdf for OCR support, or manually enter data")
     elif needs_ocr and not ocr_applied:
-        response.steps.append({
-            "step": "9. Text quality",
-            "status": "WARNING",
-            "detail": f"OCR recommended but not applied. text_length={text_length}",
-        })
+        response.steps.append(
+            {
+                "step": "9. Text quality",
+                "status": "WARNING",
+                "detail": f"OCR recommended but not applied. text_length={text_length}",
+            }
+        )
     else:
-        response.steps.append({
-            "step": "9. Text quality",
-            "status": "OK",
-            "detail": f"text_length={text_length}, ocr_applied={ocr_applied}",
-        })
+        response.steps.append(
+            {
+                "step": "9. Text quality",
+                "status": "OK",
+                "detail": f"text_length={text_length}, ocr_applied={ocr_applied}",
+            }
+        )
 
     # Summary
     response.issues_found = issues

@@ -114,9 +114,9 @@ def test_zone_extraction(pdf_path: str, auction_type: str) -> dict:
 def analyze_document(pdf_path: str) -> dict:
     """Analyze a single document with both extraction methods"""
     filename = os.path.basename(pdf_path)
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Analyzing: {filename}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Extract raw text
     text = extract_raw_text(pdf_path)
@@ -161,7 +161,7 @@ def analyze_document(pdf_path: str) -> dict:
         # Print zone texts for debugging
         print("\nZone Texts:")
         for zone_name, zone_text in zone_result.get("zone_texts", {}).items():
-            preview = zone_text[:150].replace('\n', ' ') if zone_text else "(empty)"
+            preview = zone_text[:150].replace("\n", " ") if zone_text else "(empty)"
             print(f"  [{zone_name}]: {preview}...")
     else:
         print(f"Error: {zone_result.get('error')}")
@@ -173,8 +173,14 @@ def analyze_document(pdf_path: str) -> dict:
 
     # Key fields to compare
     key_fields = [
-        "pickup_address", "pickup_city", "pickup_state", "pickup_zip",
-        "vehicle_vin", "vehicle_year", "vehicle_make", "vehicle_model"
+        "pickup_address",
+        "pickup_city",
+        "pickup_state",
+        "pickup_zip",
+        "vehicle_vin",
+        "vehicle_year",
+        "vehicle_make",
+        "vehicle_model",
     ]
 
     differences = []
@@ -183,11 +189,13 @@ def analyze_document(pdf_path: str) -> dict:
         z_val = zone_fields.get(field)
 
         if p_val != z_val:
-            differences.append({
-                "field": field,
-                "pattern": p_val,
-                "zone": z_val,
-            })
+            differences.append(
+                {
+                    "field": field,
+                    "pattern": p_val,
+                    "zone": z_val,
+                }
+            )
 
     if differences:
         print("Differences found:")
@@ -226,9 +234,9 @@ def run_all_tests():
         results.append(result)
 
     # Summary report
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SUMMARY REPORT")
-    print("="*60)
+    print("=" * 60)
 
     # Group by document type
     by_type = {}
@@ -255,12 +263,16 @@ def run_all_tests():
     key_fields = ["pickup_address", "pickup_city", "pickup_state", "pickup_zip", "vehicle_vin"]
 
     for field in key_fields:
-        pattern_count = sum(1 for r in results
-                          if r["pattern_result"]["success"]
-                          and r["pattern_result"].get("fields", {}).get(field))
-        zone_count = sum(1 for r in results
-                        if r["zone_result"]["success"]
-                        and r["zone_result"].get("fields", {}).get(field))
+        pattern_count = sum(
+            1
+            for r in results
+            if r["pattern_result"]["success"] and r["pattern_result"].get("fields", {}).get(field)
+        )
+        zone_count = sum(
+            1
+            for r in results
+            if r["zone_result"]["success"] and r["zone_result"].get("fields", {}).get(field)
+        )
         print(f"  {field}: Pattern={pattern_count}, Zone={zone_count}")
 
     # Documents with differences
@@ -268,16 +280,18 @@ def run_all_tests():
     print(f"\nDocuments with differences: {len(docs_with_diff)}")
 
     # Common issues
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ISSUES AND RECOMMENDATIONS")
-    print("="*60)
+    print("=" * 60)
 
     issues = []
 
     # Check for zone extraction failures
     for r in results:
         if not r["zone_result"]["success"]:
-            issues.append(f"Zone extraction failed for {r['filename']}: {r['zone_result'].get('error')}")
+            issues.append(
+                f"Zone extraction failed for {r['filename']}: {r['zone_result'].get('error')}"
+            )
         elif r["zone_result"].get("warnings"):
             for w in r["zone_result"]["warnings"]:
                 issues.append(f"{r['filename']}: {w}")

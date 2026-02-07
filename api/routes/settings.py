@@ -696,9 +696,7 @@ async def get_field_configs():
     _init_field_configs_table()
 
     with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM field_configs ORDER BY field_key"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM field_configs ORDER BY field_key").fetchall()
 
     return {
         "configs": [
@@ -733,8 +731,7 @@ async def update_field_configs(data: FieldConfigsBatchUpdate):
         for field_key, updates in data.updates.items():
             # Check if exists
             existing = conn.execute(
-                "SELECT id FROM field_configs WHERE field_key = ?",
-                (field_key,)
+                "SELECT id FROM field_configs WHERE field_key = ?", (field_key,)
             ).fetchone()
 
             if existing:
@@ -753,12 +750,13 @@ async def update_field_configs(data: FieldConfigsBatchUpdate):
                     params.append(updates.get("is_required", updates.get("required", False)))
                 if "is_editable" in updates or "editable_in_review" in updates:
                     set_parts.append("is_editable = ?")
-                    params.append(updates.get("is_editable", updates.get("editable_in_review", True)))
+                    params.append(
+                        updates.get("is_editable", updates.get("editable_in_review", True))
+                    )
 
                 params.append(field_key)
                 conn.execute(
-                    f"UPDATE field_configs SET {', '.join(set_parts)} WHERE field_key = ?",
-                    params
+                    f"UPDATE field_configs SET {', '.join(set_parts)} WHERE field_key = ?", params
                 )
                 updated += 1
             else:
@@ -777,7 +775,7 @@ async def update_field_configs(data: FieldConfigsBatchUpdate):
                         updates.get("is_editable", updates.get("editable_in_review", True)),
                         now,
                         now,
-                    )
+                    ),
                 )
                 created += 1
 
@@ -798,8 +796,7 @@ async def update_single_field_config(field_key: str, data: FieldConfigUpdate):
 
     with get_connection() as conn:
         existing = conn.execute(
-            "SELECT id FROM field_configs WHERE field_key = ?",
-            (field_key,)
+            "SELECT id FROM field_configs WHERE field_key = ?", (field_key,)
         ).fetchone()
 
         if existing:
@@ -821,8 +818,7 @@ async def update_single_field_config(field_key: str, data: FieldConfigUpdate):
 
             params.append(field_key)
             conn.execute(
-                f"UPDATE field_configs SET {', '.join(set_parts)} WHERE field_key = ?",
-                params
+                f"UPDATE field_configs SET {', '.join(set_parts)} WHERE field_key = ?", params
             )
         else:
             conn.execute(
@@ -839,7 +835,7 @@ async def update_single_field_config(field_key: str, data: FieldConfigUpdate):
                     data.is_editable if data.is_editable is not None else True,
                     now,
                     now,
-                )
+                ),
             )
 
         conn.commit()
@@ -855,10 +851,7 @@ async def delete_field_config(field_key: str):
     _init_field_configs_table()
 
     with get_connection() as conn:
-        result = conn.execute(
-            "DELETE FROM field_configs WHERE field_key = ?",
-            (field_key,)
-        )
+        result = conn.execute("DELETE FROM field_configs WHERE field_key = ?", (field_key,))
         conn.commit()
 
         if result.rowcount == 0:

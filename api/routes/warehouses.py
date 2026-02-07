@@ -150,9 +150,7 @@ def _sync_warehouses_from_yaml(conn):
                 continue
 
             # Check if already exists
-            existing = conn.execute(
-                "SELECT id FROM warehouses WHERE code = ?", (code,)
-            ).fetchone()
+            existing = conn.execute("SELECT id FROM warehouses WHERE code = ?", (code,)).fetchone()
 
             if existing:
                 continue
@@ -207,7 +205,17 @@ async def create_warehouse(data: WarehouseCreate):
             INSERT INTO warehouses (code, name, state, city, address, zip_code, is_active, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (data.code, data.name, data.state, data.city, data.address, data.zip_code, True, now, now),
+            (
+                data.code,
+                data.name,
+                data.state,
+                data.city,
+                data.address,
+                data.zip_code,
+                True,
+                now,
+                now,
+            ),
         )
         conn.commit()
 
