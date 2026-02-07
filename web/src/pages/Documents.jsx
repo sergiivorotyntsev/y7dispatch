@@ -103,7 +103,7 @@ function Documents() {
     fetchDocuments()
   }, [fetchDocuments])
 
-  // Fetch latest extraction status for each document
+  // Fetch latest extraction status for each document (production only)
   const fetchDocExtractions = useCallback(async () => {
     try {
       const result = await api.listExtractions({ limit: 200 })
@@ -112,13 +112,19 @@ function Documents() {
       let readyToExport = 0
       let exported = 0
 
+      // Get set of production document IDs
+      const prodDocIds = new Set(documents.map(d => d.id))
+
       for (const run of (result.items || [])) {
+        // Skip extraction runs from test/training documents
+        if (!prodDocIds.has(run.document_id)) continue
+
         // Keep the latest extraction per document
         if (!extractionsByDoc[run.document_id] || run.id > extractionsByDoc[run.document_id].id) {
           extractionsByDoc[run.document_id] = run
         }
 
-        // Count stats
+        // Count stats (only for production documents)
         if (run.status === 'needs_review') needsReview++
         else if (run.status === 'reviewed' || run.status === 'approved') readyToExport++
         else if (run.status === 'exported') exported++
@@ -134,7 +140,7 @@ function Documents() {
     } catch (err) {
       console.error('Failed to fetch extractions:', err)
     }
-  }, [])
+  }, [documents])
 
   useEffect(() => {
     fetchDocExtractions()

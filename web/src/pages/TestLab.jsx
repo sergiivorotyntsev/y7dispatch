@@ -432,9 +432,11 @@ function TestLab() {
   async function handleUploadTrainingDoc(file, auctionTypeId) {
     setUploadingTrainingDoc(true)
     try {
-      await api.uploadDocument(file, auctionTypeId, 'train')
+      // Upload as TRAINING document (is_test=true, source=test_lab)
+      await api.uploadTrainingDocument(file, auctionTypeId)
       loadTrainingStats()
       loadRecentTests()
+      loadDocuments() // Refresh training documents list
     } catch (err) {
       alert('Error uploading training document: ' + err.message)
     } finally {
@@ -2175,10 +2177,11 @@ function ZoneTemplatesTab({ auctionTypes }) {
 
   async function loadDocuments() {
     try {
-      const result = await api.listDocuments({ limit: 50 })
+      // Load TRAINING documents only (separate from production)
+      const result = await api.listTrainingDocuments({ limit: 50 })
       setDocuments(result.items || [])
     } catch (err) {
-      console.error('Failed to load documents:', err)
+      console.error('Failed to load training documents:', err)
     }
   }
 
