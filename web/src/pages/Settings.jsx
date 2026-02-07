@@ -8,6 +8,7 @@ import {
   WarehousesTab,
   AuditLogTab,
   FieldsTab,
+  ZonesTab,
 } from '../components/settings'
 
 function SettingsContent() {
@@ -17,6 +18,7 @@ function SettingsContent() {
   const tabs = [
     { id: 'targets', label: 'Export Targets' },
     { id: 'fields', label: 'Fields' },
+    { id: 'zones', label: 'Extraction Zones' },
     { id: 'cd', label: 'Central Dispatch' },
     { id: 'email', label: 'Email' },
     { id: 'warehouses', label: 'Warehouses' },
@@ -68,6 +70,7 @@ function SettingsContent() {
         <div className="card-body">
           {activeTab === 'targets' && <ExportTargetsTab />}
           {activeTab === 'fields' && <FieldsTab />}
+          {activeTab === 'zones' && <ZonesTab />}
           {activeTab === 'cd' && <CDTab />}
           {activeTab === 'email' && <EmailTab />}
           {activeTab === 'warehouses' && <WarehousesTab />}

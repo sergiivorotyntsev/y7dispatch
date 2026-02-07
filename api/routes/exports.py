@@ -1107,22 +1107,48 @@ async def preview_cd_payload(run_id: int):
 
     Useful for debugging before export.
     """
-    run = ExtractionRunRepository.get_by_id(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Extraction run not found")
+    try:
+        run = ExtractionRunRepository.get_by_id(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Extraction run not found")
 
-    doc = DocumentRepository.get_by_id(run.document_id)
+        doc = DocumentRepository.get_by_id(run.document_id)
 
-    payload, errors = build_cd_payload(run_id)
+        # Check if run has required data
+        if not run.auction_type_id:
+            return CDPayloadPreview(
+                dispatch_id="",
+                run_id=run_id,
+                document_filename=doc.filename if doc else None,
+                payload={},
+                validation_errors=[
+                    "Extraction run missing auction type. Please re-run extraction."
+                ],
+                is_valid=False,
+            )
 
-    return CDPayloadPreview(
-        dispatch_id=payload.get("externalId", ""),
-        run_id=run_id,
-        document_filename=doc.filename if doc else None,
-        payload=payload,
-        validation_errors=errors,
-        is_valid=len(errors) == 0,
-    )
+        payload, errors = build_cd_payload(run_id)
+
+        return CDPayloadPreview(
+            dispatch_id=payload.get("externalId", ""),
+            run_id=run_id,
+            document_filename=doc.filename if doc else None,
+            payload=payload,
+            validation_errors=errors,
+            is_valid=len(errors) == 0,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating preview for run {run_id}: {e}")
+        return CDPayloadPreview(
+            dispatch_id="",
+            run_id=run_id,
+            document_filename=None,
+            payload={},
+            validation_errors=[f"Failed to generate preview: {str(e)}"],
+            is_valid=False,
+        )
 
 
 @router.get("/jobs", response_model=ExportJobListResponse)

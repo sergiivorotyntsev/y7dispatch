@@ -80,12 +80,20 @@ const SOURCES = {
   },
 }
 
-function FieldCard({ field, onEdit, expanded, onToggle }) {
-  const source = SOURCES[field.source_type] || SOURCES.extracted
+function FieldCard({ field, onEdit, expanded, onToggle, pendingChanges = {} }) {
+  // Apply pending changes to field values for display
+  const pending = pendingChanges[field.key] || {}
+  const currentSourceType = pending.source_type ?? field.source_type
+  const currentDefaultValue = pending.default_value ?? field.default_value
+  const currentRequired = pending.required ?? field.required
+  const currentEditable = pending.editable_in_review ?? field.editable_in_review
+
+  const source = SOURCES[currentSourceType] || SOURCES.extracted
   const category = CATEGORIES[field.category] || CATEGORIES.cd_optional
+  const hasChanges = Object.keys(pending).length > 0
 
   return (
-    <div className={`rounded border ${source.bgClass} border-gray-200`}>
+    <div className={`rounded border ${source.bgClass} border-gray-200 ${hasChanges ? 'ring-2 ring-orange-400' : ''}`}>
       <div
         className="p-3 cursor-pointer hover:bg-opacity-80"
         onClick={() => onToggle && onToggle(field.key)}
@@ -95,7 +103,10 @@ function FieldCard({ field, onEdit, expanded, onToggle }) {
             <div className="flex items-center gap-2">
               <span className="text-lg">{source.icon}</span>
               <span className="font-medium text-sm">{field.label}</span>
-              {field.required && (
+              {hasChanges && (
+                <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded">Modified</span>
+              )}
+              {currentRequired && (
                 <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded">Required</span>
               )}
               {field.export_only && (
@@ -135,7 +146,7 @@ function FieldCard({ field, onEdit, expanded, onToggle }) {
                 Source Type
               </label>
               <select
-                value={field.source_type}
+                value={currentSourceType}
                 onChange={(e) => onEdit && onEdit(field.key, { source_type: e.target.value })}
                 className="form-select form-select-sm text-xs w-full"
               >
@@ -146,14 +157,14 @@ function FieldCard({ field, onEdit, expanded, onToggle }) {
               </select>
             </div>
 
-            {/* Default Value */}
+            {/* Default Value - show input when source is constant */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
-                Default Value
+                {currentSourceType === 'constant' ? 'Constant Value' : 'Default Value'}
               </label>
               {field.options?.length > 0 ? (
                 <select
-                  value={field.default_value || ''}
+                  value={currentDefaultValue || ''}
                   onChange={(e) => onEdit && onEdit(field.key, { default_value: e.target.value })}
                   className="form-select form-select-sm text-xs w-full"
                 >
@@ -165,10 +176,10 @@ function FieldCard({ field, onEdit, expanded, onToggle }) {
               ) : (
                 <input
                   type={field.field_type === 'number' ? 'number' : 'text'}
-                  value={field.default_value || ''}
+                  value={currentDefaultValue || ''}
                   onChange={(e) => onEdit && onEdit(field.key, { default_value: e.target.value })}
-                  className="form-input form-input-sm text-xs w-full"
-                  placeholder="Enter default..."
+                  className={`form-input form-input-sm text-xs w-full ${currentSourceType === 'constant' ? 'border-purple-400 bg-purple-50' : ''}`}
+                  placeholder={currentSourceType === 'constant' ? 'Enter constant value...' : 'Enter default...'}
                 />
               )}
             </div>
@@ -179,7 +190,7 @@ function FieldCard({ field, onEdit, expanded, onToggle }) {
             <label className="flex items-center gap-2 text-xs">
               <input
                 type="checkbox"
-                checked={field.editable_in_review !== false}
+                checked={currentEditable !== false}
                 onChange={(e) => onEdit && onEdit(field.key, { editable_in_review: e.target.checked })}
                 className="form-checkbox h-3.5 w-3.5"
               />
@@ -188,7 +199,7 @@ function FieldCard({ field, onEdit, expanded, onToggle }) {
             <label className="flex items-center gap-2 text-xs">
               <input
                 type="checkbox"
-                checked={field.required || false}
+                checked={currentRequired || false}
                 onChange={(e) => onEdit && onEdit(field.key, { required: e.target.checked })}
                 className="form-checkbox h-3.5 w-3.5"
               />
@@ -215,9 +226,12 @@ function FieldCard({ field, onEdit, expanded, onToggle }) {
   )
 }
 
-function CategorySection({ category, fields, expandedField, onToggleField, onEditField }) {
+function CategorySection({ category, fields, expandedField, onToggleField, onEditField, pendingChanges = {} }) {
   const config = CATEGORIES[category] || CATEGORIES.cd_optional
   const [sectionExpanded, setSectionExpanded] = useState(true)
+
+  // Count modified fields in this section
+  const modifiedCount = fields.filter(f => pendingChanges[f.key]).length
 
   return (
     <div className={`rounded-lg border ${config.borderClass} ${config.bgClass} mb-4`}>
@@ -231,6 +245,11 @@ function CategorySection({ category, fields, expandedField, onToggleField, onEdi
             <span className="ml-2 text-sm font-normal text-gray-500">
               ({fields.length} fields)
             </span>
+            {modifiedCount > 0 && (
+              <span className="ml-2 text-sm font-normal text-orange-600">
+                ({modifiedCount} modified)
+              </span>
+            )}
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
         </div>
@@ -252,6 +271,7 @@ function CategorySection({ category, fields, expandedField, onToggleField, onEdi
               expanded={expandedField === field.key}
               onToggle={onToggleField}
               onEdit={onEditField}
+              pendingChanges={pendingChanges}
             />
           ))}
         </div>
@@ -568,6 +588,7 @@ function FieldsTab() {
               expandedField={expandedField}
               onToggleField={handleToggleField}
               onEditField={handleEditField}
+              pendingChanges={pendingChanges}
             />
           ))}
         </div>
