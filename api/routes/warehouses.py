@@ -37,6 +37,10 @@ class WarehouseCreate(BaseModel):
     city: Optional[str] = None
     address: Optional[str] = None
     zip_code: Optional[str] = None
+    phone: Optional[str] = None
+    contact_name: Optional[str] = None
+    transport_special_instructions: Optional[str] = None
+    is_default: bool = False
 
     @field_validator("code")
     @classmethod
@@ -57,6 +61,10 @@ class WarehouseUpdate(BaseModel):
     city: Optional[str] = None
     address: Optional[str] = None
     zip_code: Optional[str] = None
+    phone: Optional[str] = None
+    contact_name: Optional[str] = None
+    transport_special_instructions: Optional[str] = None
+    is_default: Optional[bool] = None
 
     @field_validator("state")
     @classmethod
@@ -74,6 +82,10 @@ class WarehouseResponse(BaseModel):
     city: Optional[str] = None
     address: Optional[str] = None
     zip_code: Optional[str] = None
+    phone: Optional[str] = None
+    contact_name: Optional[str] = None
+    transport_special_instructions: Optional[str] = None
+    is_default: bool = False
     is_active: bool = True
 
 
@@ -101,11 +113,33 @@ def init_warehouses_schema():
                 city TEXT,
                 address TEXT,
                 zip_code TEXT,
+                phone TEXT,
+                contact_name TEXT,
+                transport_special_instructions TEXT,
+                is_default BOOLEAN DEFAULT FALSE,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Add new columns if they don't exist (migration for existing DBs)
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN phone TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN contact_name TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN transport_special_instructions TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN is_default BOOLEAN DEFAULT FALSE")
+        except Exception:
+            pass
 
         # Create indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code)")
@@ -202,8 +236,8 @@ async def create_warehouse(data: WarehouseCreate):
 
         cursor = conn.execute(
             """
-            INSERT INTO warehouses (code, name, state, city, address, zip_code, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, transport_special_instructions, is_default, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.code,
@@ -212,6 +246,10 @@ async def create_warehouse(data: WarehouseCreate):
                 data.city,
                 data.address,
                 data.zip_code,
+                data.phone,
+                data.contact_name,
+                data.transport_special_instructions,
+                data.is_default,
                 True,
                 now,
                 now,
@@ -374,6 +412,14 @@ async def update_warehouse(id: int, data: WarehouseUpdate):
         updates["address"] = data.address
     if data.zip_code is not None:
         updates["zip_code"] = data.zip_code
+    if data.phone is not None:
+        updates["phone"] = data.phone
+    if data.contact_name is not None:
+        updates["contact_name"] = data.contact_name
+    if data.transport_special_instructions is not None:
+        updates["transport_special_instructions"] = data.transport_special_instructions
+    if data.is_default is not None:
+        updates["is_default"] = data.is_default
 
     if not updates:
         return await get_warehouse(id)
@@ -431,5 +477,9 @@ def _row_to_response(row: dict) -> WarehouseResponse:
         city=row.get("city"),
         address=row.get("address"),
         zip_code=row.get("zip_code"),
+        phone=row.get("phone"),
+        contact_name=row.get("contact_name"),
+        transport_special_instructions=row.get("transport_special_instructions"),
+        is_default=row.get("is_default", False),
         is_active=row.get("is_active", True),
     )

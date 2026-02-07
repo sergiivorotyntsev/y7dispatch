@@ -24,6 +24,10 @@ export default function WarehousesTab() {
     city: '',
     address: '',
     zip_code: '',
+    phone: '',
+    contact_name: '',
+    transport_special_instructions: '',
+    is_default: false,
   })
 
   useEffect(() => {
@@ -50,6 +54,10 @@ export default function WarehousesTab() {
       city: '',
       address: '',
       zip_code: '',
+      phone: '',
+      contact_name: '',
+      transport_special_instructions: '',
+      is_default: false,
     })
     setEditingId(null)
     setShowForm(false)
@@ -63,6 +71,10 @@ export default function WarehousesTab() {
       city: wh.city || '',
       address: wh.address || '',
       zip_code: wh.zip_code || '',
+      phone: wh.phone || '',
+      contact_name: wh.contact_name || '',
+      transport_special_instructions: wh.transport_special_instructions || '',
+      is_default: wh.is_default || false,
     })
     setEditingId(wh.id)
     setShowForm(true)
@@ -185,6 +197,50 @@ export default function WarehousesTab() {
                 className="form-input w-full"
               />
             </div>
+            <div>
+              <label className="form-label">Phone</label>
+              <input
+                type="text"
+                value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })}
+                placeholder="(555) 123-4567"
+                className="form-input w-full"
+              />
+            </div>
+            <div>
+              <label className="form-label">Contact Name</label>
+              <input
+                type="text"
+                value={form.contact_name}
+                onChange={e => setForm({ ...form, contact_name: e.target.value })}
+                placeholder="John Smith"
+                className="form-input w-full"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 mt-6">
+                <input
+                  type="checkbox"
+                  checked={form.is_default}
+                  onChange={e => setForm({ ...form, is_default: e.target.checked })}
+                  className="form-checkbox"
+                />
+                <span className="text-sm">Default Warehouse</span>
+              </label>
+            </div>
+            <div className="col-span-2">
+              <label className="form-label">Transport Special Instructions</label>
+              <textarea
+                value={form.transport_special_instructions}
+                onChange={e => setForm({ ...form, transport_special_instructions: e.target.value })}
+                placeholder="Appointment required, hours: Mon-Fri 8am-5pm, etc."
+                className="form-input w-full"
+                rows={3}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                These instructions will be included in exports to Central Dispatch
+              </p>
+            </div>
           </div>
           <div className="flex space-x-3 mt-4">
             <button onClick={handleSave} className="btn btn-primary">
@@ -213,16 +269,27 @@ export default function WarehousesTab() {
                 <th>Name</th>
                 <th>City</th>
                 <th>Code</th>
+                <th>Contact</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {warehouses.map(wh => (
-                <tr key={wh.id}>
-                  <td className="font-medium">{wh.state}</td>
+                <tr key={wh.id} className={wh.is_default ? 'bg-green-50' : ''}>
+                  <td className="font-medium">
+                    {wh.state}
+                    {wh.is_default && (
+                      <span className="ml-2 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Default</span>
+                    )}
+                  </td>
                   <td>{wh.name}</td>
                   <td className="text-gray-500">{wh.city || '-'}</td>
                   <td className="font-mono text-sm">{wh.code}</td>
+                  <td className="text-gray-500 text-sm">
+                    {wh.contact_name && <div>{wh.contact_name}</div>}
+                    {wh.phone && <div>{wh.phone}</div>}
+                    {!wh.contact_name && !wh.phone && '-'}
+                  </td>
                   <td>
                     <div className="flex space-x-2">
                       <button
@@ -245,6 +312,16 @@ export default function WarehousesTab() {
           </table>
         </div>
       )}
+
+      {/* Help text */}
+      <div className="bg-blue-50 p-4 rounded-lg">
+        <h4 className="font-medium text-blue-800 mb-2">About Warehouses</h4>
+        <ul className="text-sm text-blue-700 space-y-1">
+          <li>• Warehouses are used as delivery locations when exporting to Central Dispatch</li>
+          <li>• The default warehouse is auto-selected for new documents</li>
+          <li>• Transport Special Instructions are included in the CD listing notes</li>
+        </ul>
+      </div>
     </div>
   )
 }
