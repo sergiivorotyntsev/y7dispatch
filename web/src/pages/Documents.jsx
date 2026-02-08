@@ -106,13 +106,15 @@ function Documents() {
   // Fetch latest extraction status for each document (production only)
   const fetchDocExtractions = useCallback(async () => {
     try {
-      const result = await api.listExtractions({ limit: 200 })
+      // Only load extractions from production documents (is_test=false)
+      // This ensures Documents page doesn't show Test Lab extractions
+      const result = await api.listExtractions({ limit: 200, is_test: false })
       const extractionsByDoc = {}
       let needsReview = 0
       let readyToExport = 0
       let exported = 0
 
-      // Get set of production document IDs
+      // Get set of production document IDs (additional client-side filter)
       const prodDocIds = new Set(documents.map(d => d.id))
 
       for (const run of (result.items || [])) {
@@ -611,7 +613,13 @@ function Documents() {
                   />
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Order ID
+                  Load ID
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Make
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Model
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Auction
@@ -620,7 +628,7 @@ function Documents() {
                   Pickup
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Delivery
+                  Warehouse
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Price
@@ -656,11 +664,30 @@ function Documents() {
                     : rawOutputs
                 ) : {}
 
-                const orderId = outputs.vehicle_lot || outputs.lot_number || outputs.stock_number || outputs.order_id || '-'
+                // Build Load ID from Year + Make + Model (like in Test Lab)
+                const vehicleYear = outputs.vehicle_year || ''
+                const vehicleMake = outputs.vehicle_make || ''
+                const vehicleModel = outputs.vehicle_model || ''
+                const lotNumber = outputs.vehicle_lot || outputs.lot_number || outputs.stock_number || ''
+
+                // Load ID format: "YEAR MAKE MODEL" or fallback to lot number
+                const loadId = vehicleYear && vehicleMake && vehicleModel
+                  ? `${vehicleYear} ${vehicleMake} ${vehicleModel}`.trim()
+                  : lotNumber || '-'
+
                 const pickupState = outputs.pickup_state || '-'
                 const pickupZip = outputs.pickup_zip || ''
-                const pickupLocation = pickupState !== '-' ? `${pickupState} ${pickupZip}`.trim() : '-'
+                const pickupCity = outputs.pickup_city || ''
+                const pickupLocation = pickupCity || pickupState !== '-'
+                  ? `${pickupCity ? pickupCity + ', ' : ''}${pickupState} ${pickupZip}`.trim()
+                  : '-'
                 const priceTotal = outputs.price_total || null
+
+                // Warehouse/Delivery info - from warehouse selection
+                const warehouseName = warehouses.find(w => w.id === (extraction?.warehouse_id || outputs.warehouse_id))?.name || ''
+                const deliveryCity = outputs.delivery_city || ''
+                const deliveryState = outputs.delivery_state || ''
+                const deliveryInfo = warehouseName || (deliveryCity ? `${deliveryCity}, ${deliveryState}` : '-')
 
                 const sourceDisplay = getSourceDisplay(doc)
                 const exportStatus = getExportStatus(extraction)
@@ -682,9 +709,20 @@ function Documents() {
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-sm font-medium text-gray-900">
-                        {orderId}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="font-mono text-sm font-medium text-gray-900">
+                          {loadId}
+                        </span>
+                        {lotNumber && loadId !== lotNumber && (
+                          <span className="text-xs text-gray-500">Lot: {lotNumber}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-900">{vehicleMake || '-'}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-900">{vehicleModel || '-'}</span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 text-xs font-medium rounded ${
@@ -700,7 +738,7 @@ function Documents() {
                       <span className="text-sm text-gray-700">{pickupLocation}</span>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      {/* Always show warehouse selector - delivery info populated from selection */}
+                      {/* Warehouse selector - sets delivery destination */}
                       <div className="flex flex-col gap-1">
                         <select
                           value={extraction?.warehouse_id || outputs.warehouse_id || ''}

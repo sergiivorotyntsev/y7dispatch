@@ -6,7 +6,6 @@ system, separate from the main SQLite-based database.py module.
 
 import os
 from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
@@ -46,8 +45,38 @@ def init_training_db():
     )
 
 
-@contextmanager
 def get_session() -> Generator[Session, None, None]:
-    """Get a SQLModel session for dependency injection."""
-    with Session(engine) as session:
+    """Get a SQLModel session for FastAPI dependency injection.
+
+    Note: Do NOT use @contextmanager decorator here - it's incompatible
+    with FastAPI's Depends() which expects a raw generator function.
+    """
+    session = Session(engine)
+    try:
         yield session
+    finally:
+        session.close()
+
+
+class SessionContext:
+    """Context manager wrapper for get_session() for use outside FastAPI.
+
+    Use this when you need `with ... as session:` syntax in non-FastAPI code.
+
+    Example:
+        with SessionContext() as session:
+            service = TrainingService(session)
+            ...
+    """
+
+    def __init__(self):
+        self.session = None
+
+    def __enter__(self) -> Session:
+        self.session = Session(engine)
+        return self.session
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            self.session.close()
+        return False

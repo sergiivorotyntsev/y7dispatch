@@ -130,7 +130,9 @@ function TestLab() {
   async function loadRecentTests() {
     setLoadingTests(true)
     try {
-      const data = await api.listExtractions({ limit: 20 })
+      // Only load extractions from training/test documents (is_test=true)
+      // This ensures Test Lab doesn't show production documents
+      const data = await api.listExtractions({ limit: 20, is_test: true })
       setRecentTests(data.items || [])
     } catch (err) {
       console.error('Failed to load recent tests:', err)

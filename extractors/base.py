@@ -109,10 +109,10 @@ class BaseExtractor(ABC):
 
         try:
             # Try to load rules from training database
-            from api.training_db import get_session
+            from api.training_db import SessionContext
             from services.training_service import TrainingService
 
-            with get_session() as session:
+            with SessionContext() as session:
                 service = TrainingService(session)
                 rules_data = service.get_rules_for_extractor(self.auction_type_code)
 

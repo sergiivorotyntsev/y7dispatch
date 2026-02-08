@@ -1379,13 +1379,33 @@ async def list_extraction_runs(
     document_id: Optional[int] = Query(None),
     auction_type_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
+    is_test: Optional[bool] = Query(None, description="Filter by test/training documents"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """List extraction runs with optional filtering."""
+    """List extraction runs with optional filtering.
+
+    Parameters:
+    - is_test: If True, returns only training/test document runs.
+               If False, returns only production document runs.
+               If None, returns all.
+    """
     from api.database import get_connection
 
-    sql = "SELECT * FROM extraction_runs WHERE 1=1"
+    # Base query with optional join to documents for is_test filter
+    if is_test is not None:
+        sql = """
+            SELECT er.* FROM extraction_runs er
+            JOIN documents d ON er.document_id = d.id
+            WHERE 1=1
+        """
+        if is_test:
+            sql += " AND (d.is_test = 1 OR d.source = 'test_lab')"
+        else:
+            sql += " AND (d.is_test = 0 OR d.is_test IS NULL) AND (d.source != 'test_lab' OR d.source IS NULL)"
+    else:
+        sql = "SELECT * FROM extraction_runs WHERE 1=1"
+
     params = []
 
     if document_id:

@@ -111,51 +111,125 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     }
   }
 
-  // Parse fields from preview payload
+  // Define all CD fields with their requirements
+  const CD_FIELD_DEFINITIONS = {
+    // Vehicle fields (required)
+    vehicle_vin: { label: 'VIN', category: 'cd_required', group: 'Vehicle' },
+    vehicle_year: { label: 'Year', category: 'cd_required', group: 'Vehicle' },
+    vehicle_make: { label: 'Make', category: 'cd_required', group: 'Vehicle' },
+    vehicle_model: { label: 'Model', category: 'cd_required', group: 'Vehicle' },
+    vehicle_type: { label: 'Vehicle Type', category: 'cd_required', group: 'Vehicle' },
+    // Vehicle fields (optional)
+    vehicle_color: { label: 'Color', category: 'cd_optional', group: 'Vehicle' },
+    vehicle_condition: { label: 'Condition', category: 'cd_optional', group: 'Vehicle' },
+    is_operable: { label: 'Operable', category: 'cd_optional', group: 'Vehicle' },
+    vehicle_lot: { label: 'Lot Number', category: 'cd_optional', group: 'Vehicle' },
+
+    // Pickup fields (required)
+    pickup_city: { label: 'Pickup City', category: 'cd_required', group: 'Pickup' },
+    pickup_state: { label: 'Pickup State', category: 'cd_required', group: 'Pickup' },
+    // Pickup fields (optional)
+    pickup_name: { label: 'Pickup Location', category: 'cd_optional', group: 'Pickup' },
+    pickup_address: { label: 'Pickup Address', category: 'cd_optional', group: 'Pickup' },
+    pickup_zip: { label: 'Pickup ZIP', category: 'cd_optional', group: 'Pickup' },
+    pickup_phone: { label: 'Pickup Phone', category: 'cd_optional', group: 'Pickup' },
+    pickup_contact: { label: 'Pickup Contact', category: 'cd_optional', group: 'Pickup' },
+
+    // Delivery/Warehouse fields (required) - ВАЖНО: Delivery = Warehouse
+    delivery_city: { label: 'Delivery City (Warehouse)', category: 'cd_required', group: 'Delivery/Warehouse' },
+    delivery_state: { label: 'Delivery State', category: 'cd_required', group: 'Delivery/Warehouse' },
+    // Delivery fields (optional)
+    delivery_name: { label: 'Delivery Location', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    delivery_address: { label: 'Delivery Address', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    delivery_zip: { label: 'Delivery ZIP', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    delivery_phone: { label: 'Delivery Phone', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    delivery_contact: { label: 'Delivery Contact', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    warehouse_id: { label: 'Warehouse ID', category: 'internal', group: 'Delivery/Warehouse' },
+
+    // Pricing
+    price_total: { label: 'Total Price', category: 'cd_optional', group: 'Pricing' },
+    carrier_pay: { label: 'Carrier Pay', category: 'cd_optional', group: 'Pricing' },
+
+    // Dates
+    sale_date: { label: 'Sale Date', category: 'cd_optional', group: 'Dates' },
+    available_date: { label: 'Available Date', category: 'cd_optional', group: 'Dates' },
+    pickup_date: { label: 'Pickup Date', category: 'cd_optional', group: 'Dates' },
+
+    // Reference info
+    buyer_id: { label: 'Buyer ID', category: 'cd_optional', group: 'Reference' },
+    buyer_name: { label: 'Buyer Name', category: 'cd_optional', group: 'Reference' },
+    lot_number: { label: 'Lot Number', category: 'cd_optional', group: 'Reference' },
+    stock_number: { label: 'Stock Number', category: 'cd_optional', group: 'Reference' },
+
+    // Notes
+    notes: { label: 'Notes', category: 'cd_optional', group: 'Notes' },
+    transport_special_instructions: { label: 'Special Instructions', category: 'cd_optional', group: 'Notes' },
+  }
+
+  // Parse fields from preview payload AND extraction outputs
   const fields = []
   if (previewData?.payload) {
     const payload = previewData.payload
 
-    // Vehicle info
+    // Vehicle info from payload
     if (payload.vehicles?.[0]) {
       const v = payload.vehicles[0]
-      fields.push({ key: 'vin', value: v.vin, category: 'cd_required' })
-      fields.push({ key: 'year', value: v.year, category: 'cd_required' })
-      fields.push({ key: 'make', value: v.make, category: 'cd_required' })
-      fields.push({ key: 'model', value: v.model, category: 'cd_required' })
-      fields.push({ key: 'vehicle_type', value: v.type, category: 'cd_optional' })
-      fields.push({ key: 'is_operable', value: v.is_operable?.toString(), category: 'cd_optional' })
+      fields.push({ key: 'vehicle_vin', value: v.vin, category: 'cd_required', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_year', value: v.year, category: 'cd_required', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_make', value: v.make, category: 'cd_required', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_model', value: v.model, category: 'cd_required', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_type', value: v.type, category: 'cd_required', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_color', value: v.color, category: 'cd_optional', group: 'Vehicle' })
+      fields.push({ key: 'is_operable', value: v.is_operable?.toString(), category: 'cd_optional', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_lot', value: v.lot_number, category: 'cd_optional', group: 'Vehicle' })
     }
 
     // Origin (pickup)
     if (payload.origin) {
       const o = payload.origin
-      fields.push({ key: 'pickup_name', value: o.contact?.name, category: 'cd_optional' })
-      fields.push({ key: 'pickup_address', value: o.address?.street, category: 'cd_optional' })
-      fields.push({ key: 'pickup_city', value: o.address?.city, category: 'cd_required' })
-      fields.push({ key: 'pickup_state', value: o.address?.state, category: 'cd_required' })
-      fields.push({ key: 'pickup_zip', value: o.address?.zip, category: 'cd_optional' })
+      fields.push({ key: 'pickup_name', value: o.contact?.name || o.name, category: 'cd_optional', group: 'Pickup' })
+      fields.push({ key: 'pickup_address', value: o.address?.street, category: 'cd_optional', group: 'Pickup' })
+      fields.push({ key: 'pickup_city', value: o.address?.city, category: 'cd_required', group: 'Pickup' })
+      fields.push({ key: 'pickup_state', value: o.address?.state, category: 'cd_required', group: 'Pickup' })
+      fields.push({ key: 'pickup_zip', value: o.address?.zip, category: 'cd_optional', group: 'Pickup' })
+      fields.push({ key: 'pickup_phone', value: o.contact?.phone, category: 'cd_optional', group: 'Pickup' })
     }
 
-    // Destination (delivery)
+    // Destination (delivery = warehouse)
     if (payload.destination) {
       const d = payload.destination
-      fields.push({ key: 'delivery_name', value: d.contact?.name, category: 'cd_optional' })
-      fields.push({ key: 'delivery_address', value: d.address?.street, category: 'cd_optional' })
-      fields.push({ key: 'delivery_city', value: d.address?.city, category: 'cd_required' })
-      fields.push({ key: 'delivery_state', value: d.address?.state, category: 'cd_required' })
-      fields.push({ key: 'delivery_zip', value: d.address?.zip, category: 'cd_optional' })
+      fields.push({ key: 'delivery_name', value: d.contact?.name || d.name, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_address', value: d.address?.street, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_city', value: d.address?.city, category: 'cd_required', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_state', value: d.address?.state, category: 'cd_required', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_zip', value: d.address?.zip, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_phone', value: d.contact?.phone, category: 'cd_optional', group: 'Delivery/Warehouse' })
     }
 
     // Pricing
     if (payload.pricing) {
-      fields.push({ key: 'price', value: payload.pricing.carrier_pay, category: 'cd_optional' })
+      fields.push({ key: 'price_total', value: payload.pricing.carrier_pay || payload.pricing.total, category: 'cd_optional', group: 'Pricing' })
     }
 
     // Dates
     if (payload.dates) {
-      fields.push({ key: 'available_date', value: payload.dates.available_date, category: 'cd_optional' })
-      fields.push({ key: 'pickup_date', value: payload.dates.pickup_date, category: 'cd_optional' })
+      fields.push({ key: 'sale_date', value: payload.dates.sale_date, category: 'cd_optional', group: 'Dates' })
+      fields.push({ key: 'available_date', value: payload.dates.available_date, category: 'cd_optional', group: 'Dates' })
+      fields.push({ key: 'pickup_date', value: payload.dates.pickup_date, category: 'cd_optional', group: 'Dates' })
+    }
+
+    // Reference info
+    if (payload.reference) {
+      fields.push({ key: 'buyer_id', value: payload.reference.buyer_id, category: 'cd_optional', group: 'Reference' })
+      fields.push({ key: 'lot_number', value: payload.reference.lot_number, category: 'cd_optional', group: 'Reference' })
+    }
+
+    // Notes
+    if (payload.notes) {
+      fields.push({ key: 'notes', value: payload.notes, category: 'cd_optional', group: 'Notes' })
+    }
+    if (payload.special_instructions) {
+      fields.push({ key: 'transport_special_instructions', value: payload.special_instructions, category: 'cd_optional', group: 'Notes' })
     }
   }
 
@@ -269,28 +343,53 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
           )}
 
           {!loading && !error && view === 'table' && (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Field</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Value</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {enrichedFields.map((f, i) => (
-                  <FieldRow
-                    key={i}
-                    field={f.key}
-                    value={f.value}
-                    source={f.source}
-                    category={f.category}
-                    isValid={f.isValid}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <div className="space-y-4">
+              {/* Group fields by their group */}
+              {['Vehicle', 'Pickup', 'Delivery/Warehouse', 'Pricing', 'Dates', 'Reference', 'Notes'].map(groupName => {
+                const groupFields = enrichedFields.filter(f => f.group === groupName)
+                if (groupFields.length === 0) return null
+
+                const hasRequiredMissing = groupFields.some(f => f.category === 'cd_required' && !f.isValid)
+
+                return (
+                  <div key={groupName} className="border rounded-lg overflow-hidden">
+                    <div className={`px-4 py-2 font-medium text-sm ${
+                      hasRequiredMissing ? 'bg-red-50 text-red-800' : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {groupName}
+                      {groupName === 'Delivery/Warehouse' && (
+                        <span className="ml-2 text-xs font-normal text-gray-500">
+                          (Warehouse = Delivery destination)
+                        </span>
+                      )}
+                      {hasRequiredMissing && <span className="ml-2 text-red-600">⚠ Missing required fields</span>}
+                    </div>
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-1/4">Field</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-2/5">Value</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-1/6">Source</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-1/6">Required</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {groupFields.map((f, i) => (
+                          <FieldRow
+                            key={i}
+                            field={f.key}
+                            value={f.value}
+                            source={f.source}
+                            category={f.category}
+                            isValid={f.isValid}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })}
+            </div>
           )}
 
           {!loading && !error && view === 'json' && (
