@@ -197,12 +197,23 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     resolved = resolver.resolve_all(extracted_values, context)
 
     # Build item_map from resolved values (for backward compatibility)
+    # CRITICAL: FieldResolver returns canonical keys (e.g., pickup_postal_code)
+    # but validation/payload expects aliases (e.g., pickup_zip).
+    # We populate item_map with BOTH canonical and alias keys.
+    from extractors.field_resolver import get_all_key_variants
+
     item_map = {}
     field_sources_info = {}  # Track where each field value came from
     for field_key, resolved_field in resolved.items():
         if resolved_field.value is not None:
+            # Add canonical key
             item_map[field_key] = resolved_field.value
             field_sources_info[field_key] = resolved_field.source.value
+            # Add all alias variants so lookup works by any key
+            for variant in get_all_key_variants(field_key):
+                if variant not in item_map:
+                    item_map[variant] = resolved_field.value
+                    field_sources_info[variant] = resolved_field.source.value
 
     errors = []
     warnings = []
