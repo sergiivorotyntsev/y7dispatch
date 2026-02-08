@@ -41,6 +41,55 @@ class FieldType(str, Enum):
     NUMBER = "number"
 
 
+# Default field configurations for common field keys
+# These are used when fields from database don't have complete metadata
+DEFAULT_FIELD_CONFIGS = {
+    "vehicle_vin": {
+        "field_type": FieldType.VIN,
+        "pattern": r"\b([A-HJ-NPR-Z0-9]{17})\b",
+        "required": True,
+    },
+    "vehicle_year": {
+        "field_type": FieldType.NUMBER,
+        "pattern": r"\b(19[89]\d|20[0-2]\d)\b",
+    },
+    "vehicle_make": {"field_type": FieldType.TEXT},
+    "vehicle_model": {"field_type": FieldType.TEXT},
+    "vehicle_lot": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"(?:LOT|STOCK)\s*#?\s*:?\s*(\d{6,10})",
+    },
+    "pickup_address": {"field_type": FieldType.ADDRESS, "required": True},
+    "pickup_city": {"field_type": FieldType.TEXT, "required": True},
+    "pickup_state": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"\b(AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b",
+        "required": True,
+    },
+    "pickup_zip": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"\b(\d{5}(?:-\d{4})?)\b",
+        "required": True,
+    },
+    "pickup_phone": {
+        "field_type": FieldType.PHONE,
+        "pattern": r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})",
+    },
+    "buyer_id": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"(?:Member|MEMBER|Buyer)\s*#?\s*:?\s*(\d+)",
+    },
+    "total_amount": {
+        "field_type": FieldType.CURRENCY,
+        "pattern": r"(?:Total|Amount\s*Due)[:\s]*\$?([\d,]+\.?\d*)",
+    },
+    "sale_date": {
+        "field_type": FieldType.DATE,
+        "pattern": r"(?:Sale|Sold)\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
+    },
+}
+
+
 @dataclass
 class ZoneField:
     """A field to extract from a zone"""
@@ -50,6 +99,17 @@ class ZoneField:
     pattern: Optional[str] = None  # Optional regex pattern
     label: Optional[str] = None  # Label to look for (e.g., "City:")
     required: bool = False
+
+    def apply_defaults(self):
+        """Apply default configuration from DEFAULT_FIELD_CONFIGS if available"""
+        defaults = DEFAULT_FIELD_CONFIGS.get(self.key, {})
+        if defaults:
+            if self.field_type == FieldType.TEXT and "field_type" in defaults:
+                self.field_type = defaults["field_type"]
+            if not self.pattern and "pattern" in defaults:
+                self.pattern = defaults["pattern"]
+            if not self.required and defaults.get("required"):
+                self.required = defaults["required"]
 
 
 @dataclass
@@ -203,16 +263,97 @@ class ZoneExtractor:
     def __init__(self):
         self.templates: dict[str, DocumentTemplate] = {}
         self._load_default_templates()
+        # Load templates from database (overrides defaults)
+        self._load_database_templates()
 
     def _load_default_templates(self):
         """Load default templates for known auction types"""
-        # These will be loaded from database in production
-        # For now, define programmatically
+        # These serve as fallbacks if no database templates exist
 
         # COPART Invoice Template
         self.templates["COPART"] = self._create_copart_template()
         self.templates["IAA"] = self._create_iaa_template()
         self.templates["MANHEIM"] = self._create_manheim_template()
+
+    def _load_database_templates(self):
+        """
+        Load templates from database, overriding defaults.
+        This allows users to customize zone definitions via the UI.
+        """
+        try:
+            from api.routes.templates import TemplateRepository
+            import json
+
+            templates = TemplateRepository.list_all(active_only=True)
+            for row in templates:
+                try:
+                    auction_type = row.get("auction_type", "").upper()
+                    if not auction_type:
+                        continue
+
+                    # Parse zones from JSON
+                    zones_data = json.loads(row.get("zones_json", "[]"))
+                    zones = []
+
+                    for zd in zones_data:
+                        # Convert field definitions
+                        fields = []
+                        for fd in zd.get("fields", []):
+                            # Handle both dict and ZoneField formats
+                            if isinstance(fd, dict):
+                                field_type_str = fd.get("field_type", "text").lower()
+                                # Convert string to FieldType enum by value
+                                field_type = FieldType.TEXT  # default
+                                for ft in FieldType:
+                                    if ft.value == field_type_str:
+                                        field_type = ft
+                                        break
+
+                                zone_field = ZoneField(
+                                    key=fd.get("key", ""),
+                                    field_type=field_type,
+                                    pattern=fd.get("pattern"),
+                                    label=fd.get("label"),
+                                    required=fd.get("required", False),
+                                )
+                                # Apply default patterns/types for known fields
+                                zone_field.apply_defaults()
+                                fields.append(zone_field)
+
+                        zone = DocumentZone(
+                            name=zd.get("name", ""),
+                            x0=float(zd.get("x0", 0)),
+                            y0=float(zd.get("y0", 0)),
+                            x1=float(zd.get("x1", 100)),
+                            y1=float(zd.get("y1", 100)),
+                            description=zd.get("description", ""),
+                            fields=fields,
+                        )
+                        zones.append(zone)
+
+                    if zones:
+                        template = DocumentTemplate(
+                            template_id=row.get("template_id", ""),
+                            name=row.get("name", ""),
+                            auction_type=auction_type,
+                            version=row.get("version", 1),
+                            description=row.get("description", ""),
+                            zones=zones,
+                        )
+                        self.templates[auction_type] = template
+                        logger.info(f"Loaded template from database: {auction_type} with {len(zones)} zones")
+
+                except Exception as e:
+                    logger.warning(f"Failed to parse template {row.get('template_id')}: {e}")
+
+        except Exception as e:
+            # Database might not be available during tests
+            logger.debug(f"Could not load templates from database: {e}")
+
+    def reload_templates(self):
+        """Reload templates from database. Call after user updates templates."""
+        self._load_default_templates()
+        self._load_database_templates()
 
     def _create_copart_template(self) -> DocumentTemplate:
         """

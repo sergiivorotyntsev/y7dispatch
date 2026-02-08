@@ -649,7 +649,11 @@ async def get_run_evidence(run_id: int):
 
 
 @router.get("/{run_id}/preflight", response_model=PreflightResponse)
-async def get_run_preflight(run_id: int, mode: str = "training"):
+async def get_run_preflight(
+    run_id: int,
+    mode: str = "training",
+    warehouse_id: Optional[int] = None,
+):
     """
     Get preflight validation for a run before export.
 
@@ -660,10 +664,13 @@ async def get_run_preflight(run_id: int, mode: str = "training"):
         mode: "training" skips export-only fields (delivery address,
               vehicle_type, trailer_type, available_date, etc.)
               "export" checks all CD API required fields.
+        warehouse_id: Optional warehouse ID to use for delivery fields validation.
+                      If provided, delivery fields are populated from warehouse data.
     """
     import json
 
     from api.listing_fields import get_registry
+    from api.routes.warehouses import _get_warehouse_by_id
 
     run = ExtractionRunRepository.get_by_id(run_id)
     if not run:
@@ -674,13 +681,21 @@ async def get_run_preflight(run_id: int, mode: str = "training"):
     if isinstance(outputs, str):
         outputs = json.loads(outputs)
 
-    # Check if warehouse is selected
+    # Get warehouse data if warehouse_id provided
+    warehouse_data = None
     warehouse_selected = bool(outputs.get("warehouse_id") or outputs.get("delivery_address"))
+
+    if warehouse_id:
+        warehouse_data = _get_warehouse_by_id(warehouse_id)
+        warehouse_selected = warehouse_data is not None
 
     # Get blocking issues from field registry
     registry = get_registry()
     raw_issues = registry.get_blocking_issues(
-        outputs, warehouse_selected=warehouse_selected, mode=mode
+        outputs,
+        warehouse_selected=warehouse_selected,
+        warehouse_data=warehouse_data,
+        mode=mode,
     )
 
     # Build issue list

@@ -467,6 +467,22 @@ async def delete_warehouse(
 # =============================================================================
 
 
+def _get_warehouse_by_id(warehouse_id: int) -> Optional[dict]:
+    """
+    Get warehouse data by ID.
+    Returns dict with warehouse fields or None if not found.
+    Used by other modules for validation.
+    """
+    init_warehouses_schema()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM warehouses WHERE id = ?", (warehouse_id,)
+        ).fetchone()
+    if row:
+        return dict(row)
+    return None
+
+
 def _row_to_response(row: dict) -> WarehouseResponse:
     """Convert database row to response model."""
     return WarehouseResponse(

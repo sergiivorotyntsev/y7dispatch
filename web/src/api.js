@@ -224,7 +224,14 @@ export const api = {
 
   // Review Preflight (M3.P2) - Get validation status before export
   // mode: "training" skips export-only fields, "export" checks all
-  getRunPreflight: (runId, mode = 'training') => request(`/review/${runId}/preflight?mode=${mode}`),
+  // warehouseId: optional warehouse ID to validate delivery fields
+  getRunPreflight: (runId, mode = 'training', warehouseId = null) => {
+    let url = `/review/${runId}/preflight?mode=${mode}`
+    if (warehouseId) {
+      url += `&warehouse_id=${warehouseId}`
+    }
+    return request(url)
+  },
 
   // Get latest extraction run for a document
   getDocumentExtractions: (documentId) => request(`/extractions/?document_id=${documentId}&limit=1`),

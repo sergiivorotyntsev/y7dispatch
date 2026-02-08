@@ -628,16 +628,19 @@ def _api_to_domain(api_template: TemplateModel) -> DocumentTemplate:
     """Convert API model to domain model"""
     zones = []
     for z in api_template.zones:
-        fields = [
-            ZoneField(
+        fields = []
+        for f in z.fields:
+            zone_field = ZoneField(
                 key=f.key,
                 field_type=FieldType(f.field_type),
                 pattern=f.pattern,
                 label=f.label,
                 required=f.required,
             )
-            for f in z.fields
-        ]
+            # Apply default patterns/types for known fields
+            zone_field.apply_defaults()
+            fields.append(zone_field)
+
         zones.append(
             DocumentZone(
                 name=z.name,

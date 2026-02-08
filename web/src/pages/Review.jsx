@@ -510,6 +510,7 @@ function Review() {
               runId={parseInt(runId)}
               onIssueClick={(fieldKey) => setHighlightedField(fieldKey)}
               mode={isTrainingMode ? 'training' : 'production'}
+              warehouseId={selectedWarehouse ? parseInt(selectedWarehouse) : null}
             />
 
             {/* Progress Bar */}
@@ -551,6 +552,47 @@ function Review() {
                     </option>
                   ))}
                 </select>
+
+                {/* Show selected warehouse delivery details */}
+                {selectedWarehouse && (() => {
+                  const wh = warehouses.find(w => w.id.toString() === selectedWarehouse)
+                  if (!wh) return null
+                  return (
+                    <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
+                      <div className="text-xs font-medium text-gray-500 mb-2">Delivery Address (from warehouse)</div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-gray-500">Name: </span>
+                          <span className="font-medium">{wh.name}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Phone: </span>
+                          <span className="font-medium">{wh.phone || '-'}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-500">Address: </span>
+                          <span className="font-medium">{wh.address || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">City: </span>
+                          <span className="font-medium">{wh.city || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">State: </span>
+                          <span className="font-medium">{wh.state || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">ZIP: </span>
+                          <span className="font-medium">{wh.zip_code || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Contact: </span>
+                          <span className="font-medium">{wh.contact_name || '-'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             )}
 

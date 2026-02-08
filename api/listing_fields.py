@@ -1064,13 +1064,20 @@ class ListingFieldRegistry:
 
         return None
 
-    def validate_all(self, data: dict[str, Any]) -> list[dict[str, str]]:
+    def validate_all(self, data: dict[str, Any], skip_internal: bool = True) -> list[dict[str, str]]:
         """
         Validate all fields in data dict.
         Returns list of {field: key, error: message} for invalid fields.
+
+        Args:
+            data: Field values dict
+            skip_internal: If True, skip INTERNAL fields (not sent to CD API)
         """
         errors = []
         for field_def in LISTING_FIELDS:
+            # Skip INTERNAL fields - they're not sent to CD API
+            if skip_internal and field_def.category == FieldCategory.INTERNAL:
+                continue
             value = data.get(field_def.key)
             error = self.validate_field(field_def.key, value)
             if error:
@@ -1127,6 +1134,7 @@ class ListingFieldRegistry:
         self,
         data: dict[str, Any],
         warehouse_selected: bool = False,
+        warehouse_data: dict[str, Any] = None,
         mode: str = "export",
     ) -> list[dict[str, str]]:
         """
@@ -1136,6 +1144,7 @@ class ListingFieldRegistry:
         Args:
             data: Field values dict
             warehouse_selected: Whether a warehouse has been selected
+            warehouse_data: Warehouse data dict to apply to delivery fields
             mode: "export" for full CD API validation, "training" for extraction review only
 
         In "training" mode, fields marked export_only=True are skipped
@@ -1154,12 +1163,36 @@ class ListingFieldRegistry:
         # Apply defaults before validation
         effective_data = self.apply_defaults(data)
 
+        # Apply warehouse data to delivery fields if provided
+        if warehouse_data:
+            warehouse_selected = True
+            field_mapping = {
+                "delivery_name": "name",
+                "delivery_address": "address",
+                "delivery_city": "city",
+                "delivery_state": "state",
+                "delivery_zip": "zip_code",
+                "delivery_phone": "phone",
+                "delivery_contact": "contact_name",
+            }
+            for field_key, wh_key in field_mapping.items():
+                if wh_key in warehouse_data and warehouse_data[wh_key]:
+                    effective_data[field_key] = warehouse_data[wh_key]
+
         # Check required fields
         for field_key in self._required_fields:
             field_def = self._fields[field_key]
 
+            # Skip INTERNAL fields - they're not sent to CD API
+            if field_def.category == FieldCategory.INTERNAL:
+                continue
+
             # In training mode, skip fields that are only required at export
             if mode == "training" and field_def.export_only:
+                continue
+
+            # Skip delivery fields if warehouse is selected (they come from warehouse)
+            if warehouse_selected and field_key.startswith("delivery_"):
                 continue
 
             value = effective_data.get(field_key)
