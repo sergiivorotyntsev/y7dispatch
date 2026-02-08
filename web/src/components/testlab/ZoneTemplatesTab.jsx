@@ -97,14 +97,46 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
     if (!selectedTemplate?.template_id) return
     setSaving(true)
     try {
-      await api.updateZoneTemplate(selectedTemplate.template_id, {
-        zones: editingZones,
-      })
+      // Format zones correctly for the API
+      const formattedZones = editingZones.map(zone => ({
+        name: zone.name,
+        x0: zone.x0,
+        y0: zone.y0,
+        x1: zone.x1,
+        y1: zone.y1,
+        description: zone.description || null,
+        // Ensure fields are in the correct format (ZoneFieldModel)
+        fields: (zone.fields || []).map(f => {
+          if (typeof f === 'string') {
+            return { key: f, field_type: 'text', required: false }
+          }
+          return {
+            key: f.key || f,
+            field_type: f.field_type || 'text',
+            pattern: f.pattern || null,
+            label: f.label || null,
+            required: f.required || false,
+          }
+        }),
+      }))
+
+      // Send complete template data (not just zones)
+      const updateData = {
+        template_id: selectedTemplate.template_id,
+        name: selectedTemplate.name,
+        auction_type: selectedTemplate.auction_type,
+        version: (selectedTemplate.version || 1) + 1,
+        zones: formattedZones,
+        description: selectedTemplate.description || null,
+        is_active: selectedTemplate.is_active !== false,
+      }
+
+      await api.updateZoneTemplate(selectedTemplate.template_id, updateData)
       // Update local state
-      setSelectedTemplate(prev => ({ ...prev, zones: editingZones }))
+      setSelectedTemplate(prev => ({ ...prev, zones: formattedZones, version: updateData.version }))
       setTemplates(prev => prev.map(t =>
         t.template_id === selectedTemplate.template_id
-          ? { ...t, zones: editingZones }
+          ? { ...t, zones: formattedZones, version: updateData.version }
           : t
       ))
       setEditMode(false)
@@ -112,7 +144,16 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
       alert('Zones saved successfully!')
     } catch (err) {
       console.error('Failed to save zones:', err)
-      alert('Failed to save: ' + err.message)
+      // Better error message parsing
+      let errorMsg = 'Unknown error'
+      if (err.message) {
+        errorMsg = err.message
+      } else if (err.detail) {
+        errorMsg = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+      } else if (typeof err === 'object') {
+        errorMsg = JSON.stringify(err)
+      }
+      alert('Failed to save: ' + errorMsg)
     } finally {
       setSaving(false)
     }

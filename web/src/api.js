@@ -22,7 +22,22 @@ async function request(endpoint, options = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error(error.detail || `HTTP ${response.status}`)
+    // Handle Pydantic validation errors (detail is array of objects)
+    let errorMsg = `HTTP ${response.status}`
+    if (error.detail) {
+      if (Array.isArray(error.detail)) {
+        // Pydantic validation error format
+        errorMsg = error.detail.map(e => {
+          const loc = e.loc ? e.loc.join(' → ') : ''
+          return `${loc}: ${e.msg}`
+        }).join('; ')
+      } else if (typeof error.detail === 'string') {
+        errorMsg = error.detail
+      } else {
+        errorMsg = JSON.stringify(error.detail)
+      }
+    }
+    throw new Error(errorMsg)
   }
 
   // Handle empty responses

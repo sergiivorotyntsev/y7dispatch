@@ -20,8 +20,9 @@ function Review() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  // Training mode flag - from URL or default
-  const isTrainingMode = searchParams.get('mode') === 'training' || true
+  // Mode: 'training' (from Test Lab) or 'production' (from Documents)
+  // Training mode only if explicitly set via URL param
+  const isTrainingMode = searchParams.get('mode') === 'training'
 
   const [run, setRun] = useState(null)
   const [items, setItems] = useState([])
@@ -48,6 +49,10 @@ function Review() {
   const [pricing, setPricing] = useState(null)
   const [pricingLoading, setPricingLoading] = useState(false)
 
+  // Production mode fields
+  const [loadSpecificTerms, setLoadSpecificTerms] = useState('')
+  const [transportSpecialInstructions, setTransportSpecialInstructions] = useState('')
+
   // Load pricing recommendation
   const loadPricing = useCallback(async () => {
     if (!runId) return
@@ -62,6 +67,13 @@ function Review() {
     }
   }, [runId])
 
+  // Generate Load-Specific Terms template based on auction and warehouse
+  const generateLoadSpecificTerms = useCallback((auctionType, warehouseName) => {
+    const auctionName = auctionType?.toUpperCase() || 'AUCTION'
+    const whName = warehouseName || 'WAREHOUSE'
+    return `TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY). Pick-up location - ${auctionName}, Delivery - ${whName}`
+  }, [])
+
   // Load warehouses
   const loadWarehouses = useCallback(async () => {
     try {
@@ -70,8 +82,11 @@ function Review() {
       const defaultWh = (data.items || []).find(w => w.is_default)
       if (defaultWh) {
         setSelectedWarehouse(defaultWh.id.toString())
+        // Set transport special instructions from warehouse
+        setTransportSpecialInstructions(defaultWh.transport_special_instructions || defaultWh.hours || '')
       } else if (data.items?.length > 0) {
         setSelectedWarehouse(data.items[0].id.toString())
+        setTransportSpecialInstructions(data.items[0].transport_special_instructions || data.items[0].hours || '')
       }
     } catch (err) {
       console.error('Failed to load warehouses:', err)
@@ -114,12 +129,17 @@ function Review() {
 
       await loadWarehouses()
       await loadPricing()
+
+      // Set initial Load-Specific Terms for production mode
+      if (!isTrainingMode && runData.run?.auction_type_code) {
+        setLoadSpecificTerms(generateLoadSpecificTerms(runData.run.auction_type_code, null))
+      }
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [runId, loadWarehouses, loadPricing])
+  }, [runId, loadWarehouses, loadPricing, isTrainingMode, generateLoadSpecificTerms])
 
   useEffect(() => {
     fetchData()
@@ -158,6 +178,20 @@ function Review() {
         export: !prev[key].export,
       },
     }))
+  }
+
+  // Handle warehouse change - update transport instructions and load terms
+  function handleWarehouseChange(warehouseId) {
+    setSelectedWarehouse(warehouseId)
+    const wh = warehouses.find(w => w.id.toString() === warehouseId)
+    if (wh) {
+      // Update transport special instructions from warehouse
+      setTransportSpecialInstructions(wh.transport_special_instructions || wh.hours || '')
+      // Update load-specific terms with warehouse name
+      if (run?.auction_type_code) {
+        setLoadSpecificTerms(generateLoadSpecificTerms(run.auction_type_code, wh.name))
+      }
+    }
   }
 
   // Submit for training
@@ -265,6 +299,67 @@ function Review() {
     }
   }
 
+  // Submit for production export
+  async function handleSubmitProduction() {
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      // Prepare items with all fields
+      const itemsToSubmit = Object.values(fields).map(f => ({
+        item_id: f.id,
+        corrected_value: f.corrected || '',
+        is_match_ok: f.status === 'correct' || f.status === 'corrected',
+        export_field: f.export,
+      }))
+
+      // Apply warehouse data if selected
+      const wh = warehouses.find(w => w.id.toString() === selectedWarehouse)
+      if (wh) {
+        const deliveryMappings = {
+          'delivery_name': wh.name,
+          'delivery_address': wh.address,
+          'delivery_city': wh.city,
+          'delivery_state': wh.state,
+          'delivery_zip': wh.zip_code,
+          'delivery_phone': wh.phone || '',
+          'delivery_contact': wh.contact_name || '',
+          'transport_special_instructions': transportSpecialInstructions,
+          'load_specific_terms': loadSpecificTerms,
+        }
+        for (const item of itemsToSubmit) {
+          const fieldData = Object.values(fields).find(f => f.id === item.item_id)
+          if (fieldData && deliveryMappings[fieldData.key]) {
+            item.corrected_value = deliveryMappings[fieldData.key]
+          }
+        }
+      }
+
+      // Submit review with production flag
+      await api.submitReview({
+        run_id: parseInt(runId),
+        items: itemsToSubmit,
+        warehouse_id: selectedWarehouse ? parseInt(selectedWarehouse) : null,
+        mark_for_export: true,
+        load_specific_terms: loadSpecificTerms,
+        transport_special_instructions: transportSpecialInstructions,
+      })
+
+      setSuccess('Document approved for export to Central Dispatch!')
+
+      // Navigate back to Documents after short delay
+      setTimeout(() => {
+        navigate('/')
+      }, 2000)
+
+    } catch (err) {
+      setError(`Failed to approve: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Quick actions
   function markAllCorrect() {
     const updated = {}
@@ -295,8 +390,8 @@ function Review() {
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
           <h2 className="text-lg font-medium text-red-800 mb-2">Extraction Not Found</h2>
           <p className="text-red-600 mb-4">The requested extraction run could not be found.</p>
-          <button onClick={() => navigate('/test-lab')} className="btn btn-primary">
-            Back to Test Lab
+          <button onClick={() => navigate(isTrainingMode ? '/test-lab' : '/')} className="btn btn-primary">
+            {isTrainingMode ? 'Back to Test Lab' : 'Back to Documents'}
           </button>
         </div>
       </div>
@@ -313,9 +408,12 @@ function Review() {
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Review & Train</h1>
+            <h1 className="text-xl font-bold text-gray-900">
+              {isTrainingMode ? 'Review & Train' : 'Review for Export'}
+            </h1>
             <p className="text-sm text-gray-500">
               {run.document_filename} • {run.auction_type_code}
+              {!isTrainingMode && <span className="ml-2 text-primary-600 font-medium">→ Central Dispatch</span>}
             </p>
           </div>
           <div className="flex items-center space-x-3">
@@ -338,19 +436,29 @@ function Review() {
             )}
 
             <button
-              onClick={() => navigate('/test-lab')}
+              onClick={() => navigate(isTrainingMode ? '/test-lab' : '/')}
               className="btn btn-secondary text-sm"
             >
               Cancel
             </button>
 
-            <button
-              onClick={handleSubmitTraining}
-              className="btn btn-primary"
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save & Train'}
-            </button>
+            {isTrainingMode ? (
+              <button
+                onClick={handleSubmitTraining}
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : 'Save & Train'}
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmitProduction}
+                className="btn btn-primary bg-green-600 hover:bg-green-700"
+                disabled={saving}
+              >
+                {saving ? 'Approving...' : 'Approve for Export'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -367,10 +475,14 @@ function Review() {
             <svg className="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="font-medium text-green-800">Training Updated!</span>
+            <span className="font-medium text-green-800">
+              {isTrainingMode ? 'Training Updated!' : 'Approved for Export!'}
+            </span>
           </div>
           <p className="text-green-700 mt-1 ml-7">{success}</p>
-          <p className="text-green-600 text-sm mt-2 ml-7">Redirecting to Test Lab...</p>
+          <p className="text-green-600 text-sm mt-2 ml-7">
+            Redirecting to {isTrainingMode ? 'Test Lab' : 'Documents'}...
+          </p>
         </div>
       )}
 
@@ -397,6 +509,7 @@ function Review() {
             <PreflightBanner
               runId={parseInt(runId)}
               onIssueClick={(fieldKey) => setHighlightedField(fieldKey)}
+              mode={isTrainingMode ? 'training' : 'production'}
             />
 
             {/* Progress Bar */}
@@ -428,7 +541,7 @@ function Review() {
                 </label>
                 <select
                   value={selectedWarehouse}
-                  onChange={(e) => setSelectedWarehouse(e.target.value)}
+                  onChange={(e) => handleWarehouseChange(e.target.value)}
                   className="form-select w-full"
                 >
                   <option value="">-- Select Warehouse --</option>
@@ -438,6 +551,48 @@ function Review() {
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {/* Production Mode: CD Export Fields */}
+            {!isTrainingMode && (
+              <div className="bg-blue-50 rounded-lg shadow-sm border border-blue-200 p-4 mb-4">
+                <h3 className="text-sm font-medium text-blue-900 mb-3 flex items-center">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Central Dispatch Export Fields
+                </h3>
+
+                {/* Load-Specific Terms */}
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Load-Specific Terms
+                    <span className="text-gray-400 ml-1">(payment/pickup info)</span>
+                  </label>
+                  <textarea
+                    value={loadSpecificTerms}
+                    onChange={(e) => setLoadSpecificTerms(e.target.value)}
+                    rows={2}
+                    className="form-textarea w-full text-sm"
+                    placeholder="TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY)..."
+                  />
+                </div>
+
+                {/* Transport Special Instructions */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Transport Special Instructions
+                    <span className="text-gray-400 ml-1">(warehouse hours/requirements)</span>
+                  </label>
+                  <textarea
+                    value={transportSpecialInstructions}
+                    onChange={(e) => setTransportSpecialInstructions(e.target.value)}
+                    rows={2}
+                    className="form-textarea w-full text-sm"
+                    placeholder="Mon-Fri 8am-5pm, call ahead..."
+                  />
+                </div>
               </div>
             )}
 
@@ -622,16 +777,29 @@ function Review() {
                     </>
                   )}
                 </div>
-                <button
-                  onClick={handleSubmitTraining}
-                  className="btn btn-primary"
-                  disabled={saving}
-                >
-                  {saving ? 'Saving...' : 'Save & Train'}
-                </button>
+                {isTrainingMode ? (
+                  <button
+                    onClick={handleSubmitTraining}
+                    className="btn btn-primary"
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save & Train'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSubmitProduction}
+                    className="btn btn-primary bg-green-600 hover:bg-green-700"
+                    disabled={saving}
+                  >
+                    {saving ? 'Approving...' : 'Approve for Export'}
+                  </button>
+                )}
               </div>
               <p className="text-xs text-gray-500 mt-3">
-                Your corrections help train the system to extract similar documents more accurately.
+                {isTrainingMode
+                  ? 'Your corrections help train the system to extract similar documents more accurately.'
+                  : 'After approval, this listing will be ready for export to Central Dispatch.'
+                }
               </p>
             </div>
           </div>

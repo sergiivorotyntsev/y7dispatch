@@ -79,6 +79,10 @@ class ReviewSubmitRequest(BaseModel):
     run_id: int = Field(..., description="Extraction run ID")
     items: list[ReviewItemUpdate] = Field(..., description="Updated review items")
     mark_as_reviewed: bool = Field(True, description="Mark run as reviewed after submit")
+    warehouse_id: Optional[int] = Field(None, description="Selected warehouse ID")
+    mark_for_export: bool = Field(False, description="Mark run ready for CD export")
+    load_specific_terms: Optional[str] = Field(None, description="Load-specific terms for CD")
+    transport_special_instructions: Optional[str] = Field(None, description="Transport special instructions")
 
 
 class ReviewSubmitResponse(BaseModel):
@@ -349,16 +353,46 @@ async def submit_review(data: ReviewSubmitRequest):
             status_code=400, detail={"message": "Some items not found", "errors": errors}
         )
 
-    # Mark run as reviewed
-    if data.mark_as_reviewed:
-        ExtractionRunRepository.update(data.run_id, status="reviewed")
+    # Update run outputs with production fields if provided
+    import json
+
+    outputs = run.outputs_json or {}
+    if isinstance(outputs, str):
+        outputs = json.loads(outputs)
+
+    if data.warehouse_id:
+        outputs["warehouse_id"] = data.warehouse_id
+    if data.load_specific_terms:
+        outputs["load_specific_terms"] = data.load_specific_terms
+    if data.transport_special_instructions:
+        outputs["transport_special_instructions"] = data.transport_special_instructions
+
+    # Determine status
+    new_status = run.status
+    if data.mark_for_export:
+        new_status = "approved"
+    elif data.mark_as_reviewed:
+        new_status = "reviewed"
+
+    # Update run
+    ExtractionRunRepository.update(
+        data.run_id,
+        status=new_status,
+        outputs_json=json.dumps(outputs) if outputs else None,
+    )
+
+    # Build message
+    if data.mark_for_export:
+        message = f"Approved for export. {items_updated} items reviewed."
+    else:
+        message = f"Review submitted. {items_updated} items updated, {training_examples_created} training examples created."
 
     return ReviewSubmitResponse(
         run_id=data.run_id,
-        status="reviewed" if data.mark_as_reviewed else run.status,
+        status=new_status,
         items_updated=items_updated,
         training_examples_created=training_examples_created,
-        message=f"Review submitted. {items_updated} items updated, {training_examples_created} training examples created.",
+        message=message,
     )
 
 
