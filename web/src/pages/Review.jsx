@@ -366,6 +366,8 @@ function Review() {
                 runId={parseInt(runId)}
                 highlightedField={highlightedField}
                 onBlockClick={(block) => console.log('Block clicked:', block)}
+                auctionTypeId={run?.auction_type_id}
+                showZones={true}
               />
             </div>
           )}

@@ -14,6 +14,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../api'
+import ZoneVisualization from './ZoneVisualization'
 
 // Default PDF page dimensions (Letter size at 72 DPI)
 const DEFAULT_PAGE_WIDTH = 612
@@ -25,14 +26,18 @@ function PDFViewer({
   highlightedField = null,
   onBlockClick = null,
   showAllBlocks = false,
+  auctionTypeId = null,  // For loading zone templates
+  showZones = true,      // Toggle zone visualization
 }) {
   const [evidence, setEvidence] = useState(null)
   const [blocks, setBlocks] = useState([])
+  const [zones, setZones] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [scale, setScale] = useState(1.0)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
+  const [showZoneOverlay, setShowZoneOverlay] = useState(showZones)
 
   const containerRef = useRef(null)
   const iframeRef = useRef(null)
@@ -65,6 +70,25 @@ function PDFViewer({
 
     fetchEvidence()
   }, [runId])
+
+  // Fetch zone templates for the auction type
+  useEffect(() => {
+    if (!auctionTypeId) return
+
+    const fetchZones = async () => {
+      try {
+        const template = await api.getZoneTemplate(auctionTypeId)
+        if (template && template.zones) {
+          setZones(template.zones)
+        }
+      } catch (err) {
+        console.error('Failed to fetch zone template:', err)
+        setZones([])
+      }
+    }
+
+    fetchZones()
+  }, [auctionTypeId])
 
   // Update container size on resize
   useEffect(() => {
@@ -165,6 +189,20 @@ function PDFViewer({
             </button>
           </div>
 
+          {zones.length > 0 && (
+            <button
+              onClick={() => setShowZoneOverlay(!showZoneOverlay)}
+              className={`text-xs px-2 py-1 rounded ${
+                showZoneOverlay
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+              title={showZoneOverlay ? 'Hide extraction zones' : 'Show extraction zones'}
+            >
+              {showZoneOverlay ? 'Zones: ON' : 'Zones: OFF'}
+            </button>
+          )}
+
           <a
             href={pdfUrl}
             target="_blank"
@@ -190,11 +228,25 @@ function PDFViewer({
           title="Document PDF"
         />
 
-        {/* Overlay for bboxes */}
+        {/* Overlay for bboxes and zones */}
         <div
           className="absolute inset-0 pointer-events-none overflow-hidden"
           style={{ pointerEvents: 'none' }}
         >
+          {/* Zone visualization overlay */}
+          {showZoneOverlay && zones.length > 0 && (
+            <ZoneVisualization
+              zones={zones.filter(z => (z.page_num || 1) === currentPage)}
+              highlightedField={highlightedField}
+              containerWidth={containerSize.width}
+              containerHeight={containerSize.height}
+              onZoneClick={(zone) => {
+                console.log('Zone clicked:', zone)
+                // Could scroll to first field in zone
+              }}
+            />
+          )}
+
           {/* Show all blocks if enabled */}
           {showAllBlocks && currentPageBlocks.map((block, idx) => {
             const coords = toScreenCoords(block.bbox)
@@ -258,17 +310,26 @@ function PDFViewer({
         )}
       </div>
 
-      {/* Evidence summary footer */}
-      {evidence && Object.keys(evidence).length > 0 && (
-        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
-          {Object.keys(evidence).length} fields with evidence
-          {highlightedField && highlightedEvidence.length > 0 && (
-            <span className="ml-2 text-blue-600">
-              | {highlightedEvidence.length} evidence block{highlightedEvidence.length > 1 ? 's' : ''} for {highlightedField.replace(/_/g, ' ')}
-            </span>
+      {/* Evidence and zones summary footer */}
+      {(evidence && Object.keys(evidence).length > 0) || zones.length > 0 ? (
+        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
+          <div>
+            {evidence && Object.keys(evidence).length > 0 && (
+              <span>{Object.keys(evidence).length} fields with evidence</span>
+            )}
+            {highlightedField && highlightedEvidence.length > 0 && (
+              <span className="ml-2 text-blue-600">
+                | {highlightedEvidence.length} evidence block{highlightedEvidence.length > 1 ? 's' : ''} for {highlightedField.replace(/_/g, ' ')}
+              </span>
+            )}
+          </div>
+          {zones.length > 0 && (
+            <div className="text-gray-400">
+              {zones.length} extraction zone{zones.length > 1 ? 's' : ''} defined
+            </div>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
