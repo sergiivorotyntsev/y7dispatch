@@ -44,6 +44,24 @@ function Review() {
   const [warehouses, setWarehouses] = useState([])
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
 
+  // Market Intelligence Pricing
+  const [pricing, setPricing] = useState(null)
+  const [pricingLoading, setPricingLoading] = useState(false)
+
+  // Load pricing recommendation
+  const loadPricing = useCallback(async () => {
+    if (!runId) return
+    setPricingLoading(true)
+    try {
+      const data = await api.getPricingRecommendation(runId)
+      setPricing(data)
+    } catch (err) {
+      console.error('Failed to load pricing:', err)
+    } finally {
+      setPricingLoading(false)
+    }
+  }, [runId])
+
   // Load warehouses
   const loadWarehouses = useCallback(async () => {
     try {
@@ -95,12 +113,13 @@ function Review() {
       setFields(initialFields)
 
       await loadWarehouses()
+      await loadPricing()
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [runId, loadWarehouses])
+  }, [runId, loadWarehouses, loadPricing])
 
   useEffect(() => {
     fetchData()
@@ -419,6 +438,54 @@ function Review() {
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {/* Market Intelligence Pricing */}
+            {pricing && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700">Recommended Price</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {pricing.pickup_location && pricing.delivery_location
+                        ? `${pricing.pickup_location} → ${pricing.delivery_location}`
+                        : 'Based on route and vehicle'}
+                    </p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    pricing.price_source === 'market_intelligence' ? 'bg-green-100 text-green-800' :
+                    pricing.price_source === 'user_override' ? 'bg-blue-100 text-blue-800' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {pricing.price_source === 'market_intelligence' ? 'MI API' :
+                     pricing.price_source === 'user_override' ? 'Custom' :
+                     'Default'}
+                  </span>
+                </div>
+                <div className="flex items-baseline space-x-4">
+                  <span className="text-2xl font-bold text-gray-900">
+                    ${pricing.suggested_price?.toFixed(2) || '---'}
+                  </span>
+                  {pricing.low_price && pricing.high_price && (
+                    <span className="text-sm text-gray-500">
+                      Range: ${pricing.low_price?.toFixed(0)} - ${pricing.high_price?.toFixed(0)}
+                    </span>
+                  )}
+                </div>
+                {pricing.confidence < 0.5 && (
+                  <p className="text-xs text-yellow-600 mt-2">
+                    Low confidence - consider adjusting based on vehicle condition
+                  </p>
+                )}
+              </div>
+            )}
+            {pricingLoading && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+                <div className="flex items-center text-gray-500">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600 mr-2"></div>
+                  <span className="text-sm">Loading pricing recommendation...</span>
+                </div>
               </div>
             )}
 

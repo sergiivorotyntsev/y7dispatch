@@ -17,8 +17,19 @@ import api from '../api'
 import ZoneVisualization from './ZoneVisualization'
 
 // Default PDF page dimensions (Letter size at 72 DPI)
+// These are used to convert absolute PDF coordinates to percentages
 const DEFAULT_PAGE_WIDTH = 612
 const DEFAULT_PAGE_HEIGHT = 792
+
+// Convert absolute PDF coordinates to percentage-based (0-100)
+function toPercentCoords(bbox, pageWidth = DEFAULT_PAGE_WIDTH, pageHeight = DEFAULT_PAGE_HEIGHT) {
+  return {
+    x0: (bbox.x0 / pageWidth) * 100,
+    y0: (bbox.y0 / pageHeight) * 100,
+    x1: (bbox.x1 / pageWidth) * 100,
+    y1: (bbox.y1 / pageHeight) * 100,
+  }
+}
 
 function PDFViewer({
   pdfUrl,
@@ -35,8 +46,6 @@ function PDFViewer({
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
-  const [scale, setScale] = useState(1.0)
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const [showZoneOverlay, setShowZoneOverlay] = useState(showZones)
 
   const containerRef = useRef(null)
@@ -90,33 +99,6 @@ function PDFViewer({
     fetchZones()
   }, [auctionTypeId])
 
-  // Update container size on resize
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.offsetWidth,
-          height: containerRef.current.offsetHeight,
-        })
-      }
-    }
-
-    updateSize()
-    window.addEventListener('resize', updateSize)
-    return () => window.removeEventListener('resize', updateSize)
-  }, [])
-
-  // Calculate scale factor based on container width
-  useEffect(() => {
-    if (containerSize.width > 0) {
-      // Assume standard PDF width, calculate scale to fit container
-      const newScale = containerSize.width / DEFAULT_PAGE_WIDTH
-      setScale(newScale)
-    }
-  }, [containerSize.width])
-
   // Get blocks for current page
   const currentPageBlocks = blocks.filter(b => (b.page_num || 1) === currentPage)
 
@@ -125,15 +107,17 @@ function PDFViewer({
     ? evidence[highlightedField] || []
     : []
 
-  // Convert PDF coordinates to screen coordinates
-  const toScreenCoords = useCallback((bbox) => {
+  // Convert PDF coordinates to percentage-based overlay coordinates
+  // Using percentages ensures proper alignment regardless of iframe rendering scale
+  const toOverlayCoords = useCallback((bbox) => {
+    const pct = toPercentCoords(bbox)
     return {
-      left: bbox.x0 * scale,
-      top: bbox.y0 * scale,
-      width: (bbox.x1 - bbox.x0) * scale,
-      height: (bbox.y1 - bbox.y0) * scale,
+      left: `${pct.x0}%`,
+      top: `${pct.y0}%`,
+      width: `${pct.x1 - pct.x0}%`,
+      height: `${pct.y1 - pct.y0}%`,
     }
-  }, [scale])
+  }, [])
 
   // Handle page navigation
   const goToPage = (page) => {
@@ -238,8 +222,6 @@ function PDFViewer({
             <ZoneVisualization
               zones={zones.filter(z => (z.page_num || 1) === currentPage)}
               highlightedField={highlightedField}
-              containerWidth={containerSize.width}
-              containerHeight={containerSize.height}
               onZoneClick={(zone) => {
                 console.log('Zone clicked:', zone)
                 // Could scroll to first field in zone
@@ -249,7 +231,7 @@ function PDFViewer({
 
           {/* Show all blocks if enabled */}
           {showAllBlocks && currentPageBlocks.map((block, idx) => {
-            const coords = toScreenCoords(block.bbox)
+            const coords = toOverlayCoords(block.bbox)
             return (
               <div
                 key={`block-${idx}`}
@@ -268,7 +250,7 @@ function PDFViewer({
           {highlightedEvidence
             .filter(ev => (ev.page_num || 1) === currentPage && ev.bbox)
             .map((ev, idx) => {
-              const coords = toScreenCoords(ev.bbox)
+              const coords = toOverlayCoords(ev.bbox)
               return (
                 <div
                   key={`evidence-${idx}`}

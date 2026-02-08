@@ -375,6 +375,9 @@ export const api = {
   // CD Listing Info (ETag tracking)
   getCDListingInfo: (runId) => request(`/exports/cd-listing/${runId}`),
 
+  // Market Intelligence Pricing
+  getPricingRecommendation: (runId) => request(`/exports/pricing/${runId}`),
+
   // CD Listings API v2 — Preview & Push
   getCDPayload: (docId, warehouseCode = null) => {
     const qs = warehouseCode ? `?warehouse_code=${warehouseCode}` : ''

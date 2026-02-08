@@ -38,8 +38,7 @@ export default function ZoneVisualization({
   zones = [],
   highlightedField = null,
   onZoneClick = null,
-  containerWidth = 0,
-  containerHeight = 0,
+  // containerWidth and containerHeight are no longer needed - using CSS percentages
 }) {
   const [hoveredZone, setHoveredZone] = useState(null)
 
@@ -55,21 +54,16 @@ export default function ZoneVisualization({
         const isHighlighted = highlightedZone === zone
         const isHovered = hoveredZone === index
 
-        // Convert percentage coords to pixels
-        const left = (zone.x0 / 100) * containerWidth
-        const top = (zone.y0 / 100) * containerHeight
-        const width = ((zone.x1 - zone.x0) / 100) * containerWidth
-        const height = ((zone.y1 - zone.y0) / 100) * containerHeight
-
+        // Use percentage-based positioning (zones store coordinates as 0-100%)
         return (
           <div
             key={index}
             className="absolute pointer-events-auto cursor-pointer transition-all duration-200"
             style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
+              left: `${zone.x0}%`,
+              top: `${zone.y0}%`,
+              width: `${zone.x1 - zone.x0}%`,
+              height: `${zone.y1 - zone.y0}%`,
               backgroundColor: isHighlighted
                 ? colors.bg.replace('0.15', '0.35')
                 : isHovered
