@@ -33,11 +33,20 @@ function Documents() {
   const [batchPosting, setBatchPosting] = useState(false)
   const [batchResult, setBatchResult] = useState(null)
 
-  // Filters
+  // Filters and pagination
   const [filter, setFilter] = useState({
     auction_type_id: '',
     status: '',
     export_status: '',
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 25,
+    total: 0,
+  })
+  const [sortConfig, setSortConfig] = useState({
+    sortBy: 'created_at',
+    sortOrder: 'desc',
   })
 
   // Stats
@@ -60,17 +69,31 @@ function Documents() {
     setLoading(true)
     setError(null)
     try {
-      const params = { dataset_split: 'train' } // Only production docs, not test
+      const params = {
+        dataset_split: 'train',
+        limit: pagination.limit,
+        offset: (pagination.page - 1) * pagination.limit,
+      }
       if (filter.auction_type_id) params.auction_type_id = filter.auction_type_id
 
       const result = await api.listDocuments(params)
       // Filter out test documents
       const prodDocs = (result.items || []).filter(d => !d.is_test)
-      setDocuments(prodDocs)
+
+      // Sort documents client-side
+      const sorted = [...prodDocs].sort((a, b) => {
+        const aVal = a[sortConfig.sortBy] || ''
+        const bVal = b[sortConfig.sortBy] || ''
+        const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0
+        return sortConfig.sortOrder === 'desc' ? -cmp : cmp
+      })
+
+      setDocuments(sorted)
+      setPagination(p => ({ ...p, total: result.total || prodDocs.length }))
 
       // Calculate stats
       setStats({
-        total: prodDocs.length,
+        total: result.total || prodDocs.length,
         needs_review: 0,
         ready_to_export: 0,
         exported: 0,
@@ -80,7 +103,7 @@ function Documents() {
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [filter, pagination.page, pagination.limit, sortConfig])
 
   // Fetch auction types and warehouses
   useEffect(() => {
@@ -474,12 +497,12 @@ function Documents() {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Auction Type</label>
             <select
               value={filter.auction_type_id}
-              onChange={(e) => setFilter({ ...filter, auction_type_id: e.target.value })}
+              onChange={(e) => { setFilter({ ...filter, auction_type_id: e.target.value }); setPagination(p => ({ ...p, page: 1 })) }}
               className="form-select"
             >
               <option value="">All Types</option>
@@ -492,7 +515,7 @@ function Documents() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
               value={filter.status}
-              onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+              onChange={(e) => { setFilter({ ...filter, status: e.target.value }); setPagination(p => ({ ...p, page: 1 })) }}
               className="form-select"
             >
               <option value="">All Status</option>
@@ -502,11 +525,38 @@ function Documents() {
               <option value="failed">Failed</option>
             </select>
           </div>
-          <div className="flex items-end">
-            <button onClick={fetchDocuments} className="btn btn-secondary">
-              Refresh
-            </button>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+            <select
+              value={`${sortConfig.sortBy}-${sortConfig.sortOrder}`}
+              onChange={(e) => {
+                const [sortBy, sortOrder] = e.target.value.split('-')
+                setSortConfig({ sortBy, sortOrder })
+              }}
+              className="form-select"
+            >
+              <option value="created_at-desc">Newest First</option>
+              <option value="created_at-asc">Oldest First</option>
+              <option value="filename-asc">Filename A-Z</option>
+              <option value="filename-desc">Filename Z-A</option>
+            </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Per Page</label>
+            <select
+              value={pagination.limit}
+              onChange={(e) => setPagination(p => ({ ...p, limit: parseInt(e.target.value), page: 1 }))}
+              className="form-select"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          <button onClick={fetchDocuments} className="btn btn-secondary">
+            Refresh
+          </button>
         </div>
       </div>
 
@@ -600,6 +650,7 @@ function Documents() {
           </button>
         </div>
       ) : (
+        <>
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -917,6 +968,35 @@ function Documents() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {pagination.total > pagination.limit && (
+          <div className="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+            <div className="text-sm text-gray-600">
+              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} documents
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setPagination(p => ({ ...p, page: Math.max(1, p.page - 1) }))}
+                disabled={pagination.page === 1}
+                className="btn btn-sm btn-secondary disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="px-3 py-1 bg-white border rounded text-sm">
+                Page {pagination.page} of {Math.ceil(pagination.total / pagination.limit)}
+              </span>
+              <button
+                onClick={() => setPagination(p => ({ ...p, page: Math.min(Math.ceil(p.total / p.limit), p.page + 1) }))}
+                disabled={pagination.page >= Math.ceil(pagination.total / pagination.limit)}
+                className="btn btn-sm btn-secondary disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* Export Preview Modal */}
