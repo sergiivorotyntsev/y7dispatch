@@ -175,6 +175,26 @@ function Review() {
 
       const result = await trainingResult.json()
 
+      // Build success message from learning summary
+      let successMsg = result.message || `Training data saved! ${result.saved_count} corrections recorded.`
+      const ls = result.learning_summary
+      if (ls) {
+        const parts = []
+        if (ls.rules_created > 0) {
+          parts.push(`${ls.rules_created} new pattern${ls.rules_created > 1 ? 's' : ''} learned`)
+        }
+        if (ls.rules_updated > 0) {
+          parts.push(`${ls.rules_updated} pattern${ls.rules_updated > 1 ? 's' : ''} improved`)
+        }
+        if (ls.fields_improved && ls.fields_improved.length > 0) {
+          const fields = ls.fields_improved.slice(0, 3).join(', ')
+          parts.push(`confidence improved for: ${fields}`)
+        }
+        if (parts.length > 0) {
+          successMsg = `${result.saved_count} corrections saved. ${parts.join('. ')}.`
+        }
+      }
+
       // Also submit the review to update run status
       const itemsToSubmit = Object.values(fields).map(f => ({
         item_id: f.id,
@@ -212,12 +232,12 @@ function Review() {
         warehouse_id: selectedWarehouse ? parseInt(selectedWarehouse) : null,
       })
 
-      setSuccess(`Training data saved! ${result.saved_count} corrections recorded.`)
+      setSuccess(successMsg)
 
-      // Stay on page in training mode, or go to test lab
+      // Stay on page longer to show learning feedback, then go to test lab
       setTimeout(() => {
         navigate('/test-lab')
-      }, 2000)
+      }, 3000)
 
     } catch (err) {
       setError(`Failed to submit: ${err.message}`)
@@ -323,8 +343,15 @@ function Review() {
         </div>
       )}
       {success && (
-        <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-          {success}
+        <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="font-medium text-green-800">Training Updated!</span>
+          </div>
+          <p className="text-green-700 mt-1 ml-7">{success}</p>
+          <p className="text-green-600 text-sm mt-2 ml-7">Redirecting to Test Lab...</p>
         </div>
       )}
 
