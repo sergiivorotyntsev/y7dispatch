@@ -27,6 +27,67 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def find_vin_duplicate(vin: str, exclude_run_id: int = None) -> Optional[dict]:
+    """
+    Check if VIN already exists in another extraction run.
+
+    Returns info about the duplicate if found, None otherwise.
+    """
+    if not vin or len(vin) < 10:  # Skip invalid VINs
+        return None
+
+    from api.database import get_connection
+
+    with get_connection() as conn:
+        # Search for the VIN in other extraction runs' outputs
+        query = """
+            SELECT
+                er.id as run_id,
+                er.document_id,
+                d.filename as document_filename,
+                er.outputs_json,
+                er.created_at
+            FROM extraction_runs er
+            JOIN documents d ON d.id = er.document_id
+            WHERE er.outputs_json LIKE ?
+              AND er.status NOT IN ('failed', 'cancelled')
+        """
+        params = [f'%"vehicle_vin": "{vin}"%']
+
+        if exclude_run_id:
+            query += " AND er.id != ?"
+            params.append(exclude_run_id)
+
+        query += " ORDER BY er.created_at DESC LIMIT 1"
+
+        row = conn.execute(query, params).fetchone()
+
+        if row:
+            outputs = {}
+            if row["outputs_json"]:
+                try:
+                    outputs = (
+                        json.loads(row["outputs_json"])
+                        if isinstance(row["outputs_json"], str)
+                        else row["outputs_json"]
+                    )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            return {
+                "run_id": row["run_id"],
+                "document_id": row["document_id"],
+                "document_filename": row["document_filename"],
+                "vin": vin,
+                "vehicle_year": outputs.get("vehicle_year"),
+                "vehicle_make": outputs.get("vehicle_make"),
+                "vehicle_model": outputs.get("vehicle_model"),
+                "created_at": row["created_at"],
+            }
+
+    return None
+
+
 # =============================================================================
 # REQUEST/RESPONSE MODELS
 # =============================================================================
@@ -63,6 +124,19 @@ class DocumentListResponse(BaseModel):
     test_count: int = 0
 
 
+class VinDuplicateInfo(BaseModel):
+    """Info about a duplicate VIN found in another document."""
+
+    run_id: int
+    document_id: int
+    document_filename: str
+    vin: str
+    vehicle_year: Optional[str] = None
+    vehicle_make: Optional[str] = None
+    vehicle_model: Optional[str] = None
+    created_at: Optional[str] = None
+
+
 class DocumentUploadResponse(BaseModel):
     """Response model for document upload."""
 
@@ -79,6 +153,9 @@ class DocumentUploadResponse(BaseModel):
     # Classification info
     detected_source: Optional[str] = None
     classification_score: Optional[float] = None
+
+    # VIN duplicate detection
+    vin_duplicate: Optional[VinDuplicateInfo] = None
 
 
 class DocumentStatsResponse(BaseModel):
@@ -346,6 +423,22 @@ async def upload_document(
                 )
                 run_status = "failed"
 
+    # Check for VIN duplicates after extraction
+    vin_duplicate_info = None
+    if run_id and run_status not in ("failed", "manual_required"):
+        run = ExtractionRunRepository.get_by_id(run_id)
+        if run and run.outputs_json:
+            outputs = (
+                json.loads(run.outputs_json)
+                if isinstance(run.outputs_json, str)
+                else run.outputs_json
+            )
+            vin = outputs.get("vehicle_vin")
+            if vin:
+                dup = find_vin_duplicate(vin, exclude_run_id=run_id)
+                if dup:
+                    vin_duplicate_info = VinDuplicateInfo(**dup)
+
     return DocumentUploadResponse(
         document=DocumentResponse(
             **doc.__dict__,
@@ -359,7 +452,21 @@ async def upload_document(
         text_length=text_length,
         detected_source=detected_source,
         classification_score=classification_score,
+        vin_duplicate=vin_duplicate_info,
     )
+
+
+@router.get("/check-vin-duplicate/{vin}")
+async def check_vin_duplicate(vin: str, exclude_run_id: Optional[int] = None):
+    """
+    Check if a VIN already exists in another extraction run.
+
+    Returns duplicate info if found, null otherwise.
+    """
+    dup = find_vin_duplicate(vin, exclude_run_id=exclude_run_id)
+    if dup:
+        return {"is_duplicate": True, "duplicate": VinDuplicateInfo(**dup)}
+    return {"is_duplicate": False, "duplicate": None}
 
 
 @router.get("/", response_model=DocumentListResponse)

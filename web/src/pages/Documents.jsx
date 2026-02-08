@@ -189,6 +189,8 @@ function Documents() {
         classificationScore: result.classification_score,
         isDuplicate: result.is_duplicate,
         runStatus: result.run_status,
+        runId: result.run_id,
+        vinDuplicate: result.vin_duplicate,
       })
 
       setUploadFile(null)
@@ -217,7 +219,7 @@ function Documents() {
     const existingExtraction = docExtractions[docId]
     if (existingExtraction && !forceNew) {
       if (existingExtraction.status === 'needs_review') {
-        navigate(`/listing/${existingExtraction.id}`)
+        navigate(`/review/${existingExtraction.id}`)
         return
       } else if (['reviewed', 'approved'].includes(existingExtraction.status)) {
         if (!confirm('Document already processed. Run extraction again?')) return
@@ -226,9 +228,14 @@ function Documents() {
 
     setExtractingDocId(docId)
     try {
-      await api.runExtraction(docId)
-      fetchDocuments()
-      fetchDocExtractions()
+      const result = await api.runExtraction(docId)
+      // Navigate to review page after extraction
+      if (result?.run_id) {
+        navigate(`/review/${result.run_id}`)
+      } else {
+        fetchDocuments()
+        fetchDocExtractions()
+      }
     } catch (err) {
       setError(`Extraction failed: ${err.message}`)
     } finally {
@@ -430,13 +437,14 @@ function Documents() {
     return { label: extraction.status, color: 'bg-gray-100 text-gray-600' }
   }
 
-  // Navigate to listing review page
+  // Navigate to listing review page or run extraction
   function handleRowClick(doc) {
     const extraction = docExtractions[doc.id]
     if (extraction) {
-      navigate(`/listing/${extraction.id}`)
+      navigate(`/review/${extraction.id}`)
     } else {
-      navigate(`/documents/${doc.id}`)
+      // No extraction yet - run extraction first
+      handleRunExtraction(doc.id)
     }
   }
 
@@ -594,14 +602,52 @@ function Documents() {
             </div>
 
             {uploadResult && (
-              <div className={`mb-4 p-3 rounded-lg ${uploadResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+              <div className={`mb-4 p-3 rounded-lg ${
+                uploadResult.vinDuplicate ? 'bg-orange-50 border border-orange-200' :
+                uploadResult.success ? 'bg-green-50 border border-green-200' :
+                'bg-red-50 border border-red-200'
+              }`}>
                 {uploadResult.success ? (
                   <div>
-                    <p className="font-medium text-green-800">Upload successful!</p>
+                    <p className={`font-medium ${uploadResult.vinDuplicate ? 'text-orange-800' : 'text-green-800'}`}>
+                      {uploadResult.vinDuplicate ? '⚠️ Upload successful - Duplicate VIN detected!' : 'Upload successful!'}
+                    </p>
                     {uploadResult.detectedSource && (
                       <p className="text-sm text-green-700 mt-1">
                         Detected: <strong>{uploadResult.detectedSource}</strong>
                       </p>
+                    )}
+                    {uploadResult.vinDuplicate && (
+                      <div className="mt-2 p-2 bg-orange-100 rounded text-sm text-orange-800">
+                        <p className="font-medium">This VIN already exists in another document:</p>
+                        <p className="mt-1">
+                          VIN: <code className="font-mono bg-orange-200 px-1 rounded">{uploadResult.vinDuplicate.vin}</code>
+                        </p>
+                        <p>
+                          Vehicle: {uploadResult.vinDuplicate.vehicle_year} {uploadResult.vinDuplicate.vehicle_make} {uploadResult.vinDuplicate.vehicle_model}
+                        </p>
+                        <p>File: {uploadResult.vinDuplicate.document_filename}</p>
+                        <button
+                          onClick={() => {
+                            setShowUpload(false)
+                            navigate(`/review/${uploadResult.vinDuplicate.run_id}`)
+                          }}
+                          className="mt-2 text-orange-700 underline hover:text-orange-900"
+                        >
+                          View existing listing →
+                        </button>
+                      </div>
+                    )}
+                    {uploadResult.runId && !uploadResult.vinDuplicate && (
+                      <button
+                        onClick={() => {
+                          setShowUpload(false)
+                          navigate(`/review/${uploadResult.runId}`)
+                        }}
+                        className="mt-2 text-green-700 underline hover:text-green-900"
+                      >
+                        Review extracted data →
+                      </button>
                     )}
                   </div>
                 ) : (
@@ -919,7 +965,7 @@ function Documents() {
                         {extraction ? (
                           <>
                             <button
-                              onClick={() => navigate(`/listing/${extraction.id}`)}
+                              onClick={() => navigate(`/review/${extraction.id}`)}
                               className="text-sm text-blue-600 hover:text-blue-800"
                             >
                               {extraction.status === 'needs_review' ? 'Review' : 'View'}

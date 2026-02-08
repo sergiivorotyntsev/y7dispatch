@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../api'
 import { ZONE_COLORS_ARRAY } from '../../constants/zones'
 
@@ -11,6 +11,14 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
   const [zonePreview, setZonePreview] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [testResult, setTestResult] = useState(null)
+
+  // Zone editing state
+  const [editMode, setEditMode] = useState(false)
+  const [editingZones, setEditingZones] = useState([])
+  const [selectedZoneIdx, setSelectedZoneIdx] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [dragState, setDragState] = useState(null)
+  const containerRef = useRef(null)
 
   useEffect(() => {
     loadTemplates()
@@ -68,7 +76,141 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
     }
   }
 
+  // Start editing zones
+  function startEditMode() {
+    if (!selectedTemplate?.zones) return
+    setEditingZones(JSON.parse(JSON.stringify(selectedTemplate.zones)))
+    setEditMode(true)
+    setSelectedZoneIdx(null)
+  }
+
+  // Cancel editing
+  function cancelEditMode() {
+    setEditMode(false)
+    setEditingZones([])
+    setSelectedZoneIdx(null)
+    setDragState(null)
+  }
+
+  // Save edited zones
+  async function saveZones() {
+    if (!selectedTemplate?.template_id) return
+    setSaving(true)
+    try {
+      await api.updateZoneTemplate(selectedTemplate.template_id, {
+        zones: editingZones,
+      })
+      // Update local state
+      setSelectedTemplate(prev => ({ ...prev, zones: editingZones }))
+      setTemplates(prev => prev.map(t =>
+        t.template_id === selectedTemplate.template_id
+          ? { ...t, zones: editingZones }
+          : t
+      ))
+      setEditMode(false)
+      setEditingZones([])
+      alert('Zones saved successfully!')
+    } catch (err) {
+      console.error('Failed to save zones:', err)
+      alert('Failed to save: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Update a zone's coordinates
+  function updateZone(idx, updates) {
+    setEditingZones(prev => prev.map((z, i) =>
+      i === idx ? { ...z, ...updates } : z
+    ))
+  }
+
+  // Add new zone
+  function addZone() {
+    const newZone = {
+      name: `Zone ${editingZones.length + 1}`,
+      x0: 10,
+      y0: 10,
+      x1: 50,
+      y1: 30,
+      page_num: 1,
+      fields: [],
+    }
+    setEditingZones(prev => [...prev, newZone])
+    setSelectedZoneIdx(editingZones.length)
+  }
+
+  // Delete a zone
+  function deleteZone(idx) {
+    if (!confirm('Delete this zone?')) return
+    setEditingZones(prev => prev.filter((_, i) => i !== idx))
+    setSelectedZoneIdx(null)
+  }
+
+  // Handle mouse down on zone for dragging/resizing
+  function handleZoneMouseDown(e, idx, action) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!containerRef.current) return
+
+    const rect = containerRef.current.getBoundingClientRect()
+    setDragState({
+      idx,
+      action, // 'move' or 'resize'
+      startX: e.clientX,
+      startY: e.clientY,
+      containerRect: rect,
+      originalZone: { ...editingZones[idx] },
+    })
+    setSelectedZoneIdx(idx)
+  }
+
+  // Handle mouse move for dragging
+  function handleMouseMove(e) {
+    if (!dragState || !containerRef.current) return
+
+    const { idx, action, startX, startY, containerRect, originalZone } = dragState
+    const deltaX = ((e.clientX - startX) / containerRect.width) * 100
+    const deltaY = ((e.clientY - startY) / containerRect.height) * 100
+
+    if (action === 'move') {
+      const newX0 = Math.max(0, Math.min(100 - (originalZone.x1 - originalZone.x0), originalZone.x0 + deltaX))
+      const newY0 = Math.max(0, Math.min(100 - (originalZone.y1 - originalZone.y0), originalZone.y0 + deltaY))
+      updateZone(idx, {
+        x0: Math.round(newX0 * 10) / 10,
+        y0: Math.round(newY0 * 10) / 10,
+        x1: Math.round((newX0 + (originalZone.x1 - originalZone.x0)) * 10) / 10,
+        y1: Math.round((newY0 + (originalZone.y1 - originalZone.y0)) * 10) / 10,
+      })
+    } else if (action === 'resize') {
+      const newX1 = Math.max(originalZone.x0 + 5, Math.min(100, originalZone.x1 + deltaX))
+      const newY1 = Math.max(originalZone.y0 + 5, Math.min(100, originalZone.y1 + deltaY))
+      updateZone(idx, {
+        x1: Math.round(newX1 * 10) / 10,
+        y1: Math.round(newY1 * 10) / 10,
+      })
+    }
+  }
+
+  // Handle mouse up
+  function handleMouseUp() {
+    setDragState(null)
+  }
+
+  // Attach mouse events when dragging
+  useEffect(() => {
+    if (dragState) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [dragState])
+
   const zoneColors = ZONE_COLORS_ARRAY
+  const displayZones = editMode ? editingZones : (selectedTemplate?.zones || [])
 
   return (
     <div className="grid grid-cols-3 gap-6">
@@ -111,62 +253,95 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
       {/* Center: PDF Preview with Zones */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Zone Preview</h3>
-          <select
-            value={testDocumentId || ''}
-            onChange={(e) => {
-              const docId = e.target.value ? parseInt(e.target.value) : null
-              setTestDocumentId(docId)
-              if (docId && selectedTemplate) {
-                loadZonePreview(selectedTemplate.template_id, docId)
-              }
-            }}
-            className="form-select text-sm"
-          >
-            <option value="">Select document...</option>
-            {documents.map((doc) => (
-              <option key={doc.id} value={doc.id}>
-                {doc.filename} ({doc.auction_type_code || 'unknown'})
-              </option>
-            ))}
-          </select>
+          <h3 className="text-lg font-semibold">
+            {editMode ? '✏️ Edit Zones' : 'Zone Preview'}
+          </h3>
+          <div className="flex items-center gap-2">
+            <select
+              value={testDocumentId || ''}
+              onChange={(e) => {
+                const docId = e.target.value ? parseInt(e.target.value) : null
+                setTestDocumentId(docId)
+                if (docId && selectedTemplate) {
+                  loadZonePreview(selectedTemplate.template_id, docId)
+                }
+              }}
+              className="form-select text-sm"
+              disabled={editMode}
+            >
+              <option value="">Select document...</option>
+              {documents.map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.filename} ({doc.auction_type_code || 'unknown'})
+                </option>
+              ))}
+            </select>
+            {!editMode && selectedTemplate && (
+              <button
+                onClick={startEditMode}
+                className="btn btn-sm bg-blue-600 text-white hover:bg-blue-700"
+                title="Edit zones"
+              >
+                ✏️ Edit
+              </button>
+            )}
+          </div>
         </div>
 
+        {editMode && (
+          <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+            <strong>Edit Mode:</strong> Drag zones to move, drag corners to resize. Click zone to select.
+          </div>
+        )}
+
         {testDocumentId ? (
-          <div className="relative border rounded-lg overflow-hidden bg-gray-100" style={{ height: '500px' }}>
+          <div
+            ref={containerRef}
+            className={`relative border rounded-lg overflow-hidden bg-gray-100 ${editMode ? 'cursor-crosshair' : ''}`}
+            style={{ height: '500px' }}
+          >
             <iframe
               src={api.getDocumentFileUrl(testDocumentId)}
               className="w-full h-full"
               title="PDF Preview"
+              style={{ pointerEvents: editMode ? 'none' : 'auto' }}
             />
-            {selectedTemplate?.zones && (
-              <div className="absolute inset-0 pointer-events-none">
-                {selectedTemplate.zones.map((zone, i) => (
-                  <div
-                    key={i}
-                    className="absolute border-2"
+            <div className={`absolute inset-0 ${editMode ? '' : 'pointer-events-none'}`}>
+              {displayZones.map((zone, i) => (
+                <div
+                  key={i}
+                  className={`absolute border-2 ${editMode ? 'cursor-move' : ''} ${selectedZoneIdx === i ? 'ring-2 ring-yellow-400' : ''}`}
+                  style={{
+                    left: `${zone.x0}%`,
+                    top: `${zone.y0}%`,
+                    width: `${zone.x1 - zone.x0}%`,
+                    height: `${zone.y1 - zone.y0}%`,
+                    backgroundColor: zoneColors[i % zoneColors.length].bg,
+                    borderColor: zoneColors[i % zoneColors.length].border,
+                  }}
+                  onMouseDown={editMode ? (e) => handleZoneMouseDown(e, i, 'move') : undefined}
+                  onClick={editMode ? () => setSelectedZoneIdx(i) : undefined}
+                >
+                  <span
+                    className="absolute -top-5 left-0 text-xs font-bold px-1 rounded"
                     style={{
-                      left: `${zone.x0}%`,
-                      top: `${zone.y0}%`,
-                      width: `${zone.x1 - zone.x0}%`,
-                      height: `${zone.y1 - zone.y0}%`,
-                      backgroundColor: zoneColors[i % zoneColors.length].bg,
-                      borderColor: zoneColors[i % zoneColors.length].border,
+                      backgroundColor: zoneColors[i % zoneColors.length].border,
+                      color: 'white',
                     }}
                   >
-                    <span
-                      className="absolute -top-5 left-0 text-xs font-bold px-1 rounded"
-                      style={{
-                        backgroundColor: zoneColors[i % zoneColors.length].border,
-                        color: 'white',
-                      }}
-                    >
-                      {zone.name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                    {zone.name}
+                  </span>
+                  {/* Resize handle */}
+                  {editMode && (
+                    <div
+                      className="absolute bottom-0 right-0 w-4 h-4 bg-white border-2 border-gray-600 cursor-se-resize"
+                      style={{ transform: 'translate(50%, 50%)' }}
+                      onMouseDown={(e) => handleZoneMouseDown(e, i, 'resize')}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="h-[500px] flex items-center justify-center text-gray-400 border rounded-lg bg-gray-50">
@@ -175,13 +350,37 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
         )}
 
         <div className="mt-4 flex gap-2">
-          <button
-            onClick={testExtraction}
-            disabled={!testDocumentId || !selectedTemplate}
-            className="btn btn-primary flex-1"
-          >
-            Test Zone Extraction
-          </button>
+          {editMode ? (
+            <>
+              <button
+                onClick={addZone}
+                className="btn btn-secondary"
+              >
+                + Add Zone
+              </button>
+              <button
+                onClick={cancelEditMode}
+                className="btn btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveZones}
+                disabled={saving}
+                className="btn btn-primary flex-1"
+              >
+                {saving ? 'Saving...' : '💾 Save Zones'}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={testExtraction}
+              disabled={!testDocumentId || !selectedTemplate}
+              className="btn btn-primary flex-1"
+            >
+              Test Zone Extraction
+            </button>
+          )}
         </div>
       </div>
 
@@ -249,21 +448,92 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
             </div>
 
             <div>
-              <h4 className="text-sm font-medium mb-2">Zones ({selectedTemplate.zones?.length || 0}):</h4>
+              <h4 className="text-sm font-medium mb-2">Zones ({displayZones.length}):</h4>
               <div className="space-y-2 max-h-[300px] overflow-auto">
-                {selectedTemplate.zones?.map((zone, i) => (
+                {displayZones.map((zone, i) => (
                   <div
                     key={i}
-                    className="p-2 border rounded text-sm"
+                    className={`p-2 border rounded text-sm ${editMode && selectedZoneIdx === i ? 'ring-2 ring-yellow-400' : ''}`}
                     style={{ borderLeftColor: zoneColors[i % zoneColors.length].border, borderLeftWidth: '4px' }}
+                    onClick={() => editMode && setSelectedZoneIdx(i)}
                   >
-                    <div className="font-medium">{zone.name}</div>
-                    <div className="text-xs text-gray-500">
-                      ({zone.x0}%, {zone.y0}%) - ({zone.x1}%, {zone.y1}%)
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      Fields: {zone.fields?.map(f => f.key).join(', ') || 'none'}
-                    </div>
+                    {editMode ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={zone.name}
+                          onChange={(e) => updateZone(i, { name: e.target.value })}
+                          className="form-input w-full text-sm py-1"
+                          placeholder="Zone name"
+                        />
+                        <div className="grid grid-cols-4 gap-1 text-xs">
+                          <div>
+                            <label className="text-gray-500">X0</label>
+                            <input
+                              type="number"
+                              value={zone.x0}
+                              onChange={(e) => updateZone(i, { x0: parseFloat(e.target.value) || 0 })}
+                              className="form-input w-full text-xs py-0.5"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-gray-500">Y0</label>
+                            <input
+                              type="number"
+                              value={zone.y0}
+                              onChange={(e) => updateZone(i, { y0: parseFloat(e.target.value) || 0 })}
+                              className="form-input w-full text-xs py-0.5"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-gray-500">X1</label>
+                            <input
+                              type="number"
+                              value={zone.x1}
+                              onChange={(e) => updateZone(i, { x1: parseFloat(e.target.value) || 0 })}
+                              className="form-input w-full text-xs py-0.5"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-gray-500">Y1</label>
+                            <input
+                              type="number"
+                              value={zone.y1}
+                              onChange={(e) => updateZone(i, { y1: parseFloat(e.target.value) || 0 })}
+                              className="form-input w-full text-xs py-0.5"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteZone(i)}
+                          className="text-xs text-red-600 hover:text-red-800"
+                        >
+                          🗑️ Delete Zone
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="font-medium">{zone.name}</div>
+                        <div className="text-xs text-gray-500">
+                          ({zone.x0}%, {zone.y0}%) - ({zone.x1}%, {zone.y1}%)
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          Fields: {zone.fields?.map(f => f.key || f).join(', ') || 'none'}
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
