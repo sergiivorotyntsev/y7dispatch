@@ -586,7 +586,10 @@ async def preview_zones(
     Get zone preview data for a document.
 
     Returns the text extracted from each zone for visual debugging.
+    Uses the LATEST template from database, not cached version.
     """
+    import json
+
     from api.models import DocumentRepository
 
     template_row = TemplateRepository.get_by_id(template_id)
@@ -597,15 +600,48 @@ async def preview_zones(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Get zone extractor and extract from each zone
-    extractor = get_zone_extractor()
-    template = extractor.templates.get(template_row["auction_type"])
+    # Build template from database (not from extractor cache)
+    zones_data = json.loads(template_row.get("zones_json", "[]"))
+    zones = []
+    for zd in zones_data:
+        fields = []
+        for fd in zd.get("fields", []):
+            if isinstance(fd, dict):
+                field_type_str = fd.get("field_type", "text").lower()
+                field_type = FieldType.TEXT
+                for ft in FieldType:
+                    if ft.value == field_type_str:
+                        field_type = ft
+                        break
+                zone_field = ZoneField(
+                    key=fd.get("key", ""),
+                    field_type=field_type,
+                    pattern=fd.get("pattern"),
+                    label=fd.get("label"),
+                    required=fd.get("required", False),
+                )
+                zone_field.apply_defaults()
+                fields.append(zone_field)
 
-    if not template:
-        raise HTTPException(status_code=400, detail="Template not loaded in extractor")
+        zone = DocumentZone(
+            name=zd.get("name", ""),
+            x0=float(zd.get("x0", 0)),
+            y0=float(zd.get("y0", 0)),
+            x1=float(zd.get("x1", 100)),
+            y1=float(zd.get("y1", 100)),
+            description=zd.get("description", ""),
+            fields=fields,
+        )
+        zones.append(zone)
+
+    if not zones:
+        raise HTTPException(status_code=400, detail="No zones defined in template")
+
+    # Get zone extractor for text extraction
+    extractor = get_zone_extractor()
 
     zone_data = []
-    for zone in template.zones:
+    for zone in zones:
         text = extractor.extract_zone_text(doc.file_path, zone)
         zone_data.append(
             {

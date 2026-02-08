@@ -133,12 +133,20 @@ class DocumentZone:
     description: Optional[str] = None
 
     def to_bbox(self, page_width: float, page_height: float) -> tuple[float, float, float, float]:
-        """Convert percentage coordinates to absolute bbox"""
+        """
+        Convert percentage coordinates to absolute bbox.
+        Returns (x0, y0, x1, y1) in PDF points.
+        Ensures coordinates are in correct order (x0 < x1, y0 < y1).
+        """
+        # Ensure coordinates are in correct order
+        x0, x1 = min(self.x0, self.x1), max(self.x0, self.x1)
+        y0, y1 = min(self.y0, self.y1), max(self.y0, self.y1)
+
         return (
-            page_width * self.x0 / 100,
-            page_height * self.y0 / 100,
-            page_width * self.x1 / 100,
-            page_height * self.y1 / 100,
+            page_width * x0 / 100,
+            page_height * y0 / 100,
+            page_width * x1 / 100,
+            page_height * y1 / 100,
         )
 
     def to_dict(self) -> dict:

@@ -684,7 +684,7 @@ function TestLab() {
                       <div className="flex space-x-2 pt-2 border-t">
                         {result.run_id && (
                           <a
-                            href={'/review/' + result.run_id}
+                            href={'/review/' + result.run_id + '?mode=training'}
                             className="btn btn-primary flex-1 text-center"
                           >
                             {result.run_status === 'failed' ? 'Enter Data Manually' : 'Review & Correct Fields'}

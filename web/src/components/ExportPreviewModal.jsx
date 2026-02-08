@@ -166,7 +166,7 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     transport_special_instructions: { label: 'Special Instructions', category: 'cd_optional', group: 'Notes' },
   }
 
-  // Parse fields from preview payload AND extraction outputs
+  // Parse fields from preview payload (CD API V2 format with stops array)
   const fields = []
   if (previewData?.payload) {
     const payload = previewData.payload
@@ -175,61 +175,59 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     if (payload.vehicles?.[0]) {
       const v = payload.vehicles[0]
       fields.push({ key: 'vehicle_vin', value: v.vin, category: 'cd_required', group: 'Vehicle' })
-      fields.push({ key: 'vehicle_year', value: v.year, category: 'cd_required', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_year', value: v.year?.toString(), category: 'cd_required', group: 'Vehicle' })
       fields.push({ key: 'vehicle_make', value: v.make, category: 'cd_required', group: 'Vehicle' })
       fields.push({ key: 'vehicle_model', value: v.model, category: 'cd_required', group: 'Vehicle' })
-      fields.push({ key: 'vehicle_type', value: v.type, category: 'cd_required', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_type', value: v.type || payload.trailerType, category: 'cd_optional', group: 'Vehicle' })
       fields.push({ key: 'vehicle_color', value: v.color, category: 'cd_optional', group: 'Vehicle' })
-      fields.push({ key: 'is_operable', value: v.is_operable?.toString(), category: 'cd_optional', group: 'Vehicle' })
-      fields.push({ key: 'vehicle_lot', value: v.lot_number, category: 'cd_optional', group: 'Vehicle' })
+      fields.push({ key: 'is_operable', value: v.isInoperable === false ? 'Yes' : v.isInoperable === true ? 'No' : '', category: 'cd_optional', group: 'Vehicle' })
+      fields.push({ key: 'vehicle_lot', value: v.lotNumber, category: 'cd_optional', group: 'Vehicle' })
     }
 
-    // Origin (pickup)
-    if (payload.origin) {
-      const o = payload.origin
-      fields.push({ key: 'pickup_name', value: o.contact?.name || o.name, category: 'cd_optional', group: 'Pickup' })
-      fields.push({ key: 'pickup_address', value: o.address?.street, category: 'cd_optional', group: 'Pickup' })
-      fields.push({ key: 'pickup_city', value: o.address?.city, category: 'cd_required', group: 'Pickup' })
-      fields.push({ key: 'pickup_state', value: o.address?.state, category: 'cd_required', group: 'Pickup' })
-      fields.push({ key: 'pickup_zip', value: o.address?.zip, category: 'cd_optional', group: 'Pickup' })
-      fields.push({ key: 'pickup_phone', value: o.contact?.phone, category: 'cd_optional', group: 'Pickup' })
+    // Parse stops array - stopNumber 1 is Pickup, stopNumber 2 is Delivery
+    const pickupStop = payload.stops?.find(s => s.stopNumber === 1)
+    const deliveryStop = payload.stops?.find(s => s.stopNumber === 2)
+
+    // Pickup (from stops[0] or origin)
+    if (pickupStop) {
+      fields.push({ key: 'pickup_name', value: pickupStop.locationName, category: 'cd_optional', group: 'Pickup' })
+      fields.push({ key: 'pickup_address', value: pickupStop.address, category: 'cd_required', group: 'Pickup' })
+      fields.push({ key: 'pickup_city', value: pickupStop.city, category: 'cd_required', group: 'Pickup' })
+      fields.push({ key: 'pickup_state', value: pickupStop.state, category: 'cd_required', group: 'Pickup' })
+      fields.push({ key: 'pickup_zip', value: pickupStop.postalCode, category: 'cd_required', group: 'Pickup' })
+      fields.push({ key: 'pickup_phone', value: pickupStop.phone, category: 'cd_optional', group: 'Pickup' })
+      fields.push({ key: 'pickup_contact', value: pickupStop.contactName, category: 'cd_optional', group: 'Pickup' })
+      fields.push({ key: 'pickup_location_type', value: pickupStop.locationType, category: 'cd_optional', group: 'Pickup' })
     }
 
-    // Destination (delivery = warehouse)
-    if (payload.destination) {
-      const d = payload.destination
-      fields.push({ key: 'delivery_name', value: d.contact?.name || d.name, category: 'cd_optional', group: 'Delivery/Warehouse' })
-      fields.push({ key: 'delivery_address', value: d.address?.street, category: 'cd_optional', group: 'Delivery/Warehouse' })
-      fields.push({ key: 'delivery_city', value: d.address?.city, category: 'cd_required', group: 'Delivery/Warehouse' })
-      fields.push({ key: 'delivery_state', value: d.address?.state, category: 'cd_required', group: 'Delivery/Warehouse' })
-      fields.push({ key: 'delivery_zip', value: d.address?.zip, category: 'cd_optional', group: 'Delivery/Warehouse' })
-      fields.push({ key: 'delivery_phone', value: d.contact?.phone, category: 'cd_optional', group: 'Delivery/Warehouse' })
+    // Delivery/Warehouse (from stops[1] or destination)
+    if (deliveryStop) {
+      fields.push({ key: 'delivery_name', value: deliveryStop.locationName, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_address', value: deliveryStop.address, category: 'cd_required', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_city', value: deliveryStop.city, category: 'cd_required', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_state', value: deliveryStop.state, category: 'cd_required', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_zip', value: deliveryStop.postalCode, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_phone', value: deliveryStop.phone, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_contact', value: deliveryStop.contactName, category: 'cd_optional', group: 'Delivery/Warehouse' })
     }
 
     // Pricing
-    if (payload.pricing) {
-      fields.push({ key: 'price_total', value: payload.pricing.carrier_pay || payload.pricing.total, category: 'cd_optional', group: 'Pricing' })
+    if (payload.price) {
+      fields.push({ key: 'price_total', value: payload.price.total?.toString(), category: 'cd_optional', group: 'Pricing' })
+      fields.push({ key: 'carrier_pay', value: payload.price.cod?.amount?.toString(), category: 'cd_optional', group: 'Pricing' })
     }
 
     // Dates
-    if (payload.dates) {
-      fields.push({ key: 'sale_date', value: payload.dates.sale_date, category: 'cd_optional', group: 'Dates' })
-      fields.push({ key: 'available_date', value: payload.dates.available_date, category: 'cd_optional', group: 'Dates' })
-      fields.push({ key: 'pickup_date', value: payload.dates.pickup_date, category: 'cd_optional', group: 'Dates' })
-    }
+    fields.push({ key: 'available_date', value: payload.availableDate, category: 'cd_required', group: 'Dates' })
+    fields.push({ key: 'expiration_date', value: payload.expirationDate, category: 'cd_optional', group: 'Dates' })
 
     // Reference info
-    if (payload.reference) {
-      fields.push({ key: 'buyer_id', value: payload.reference.buyer_id, category: 'cd_optional', group: 'Reference' })
-      fields.push({ key: 'lot_number', value: payload.reference.lot_number, category: 'cd_optional', group: 'Reference' })
-    }
+    fields.push({ key: 'external_id', value: payload.externalId, category: 'cd_optional', group: 'Reference' })
+    fields.push({ key: 'trailer_type', value: payload.trailerType, category: 'cd_optional', group: 'Reference' })
 
     // Notes
-    if (payload.notes) {
-      fields.push({ key: 'notes', value: payload.notes, category: 'cd_optional', group: 'Notes' })
-    }
-    if (payload.special_instructions) {
-      fields.push({ key: 'transport_special_instructions', value: payload.special_instructions, category: 'cd_optional', group: 'Notes' })
+    if (payload.transportationReleaseNotes) {
+      fields.push({ key: 'transport_special_instructions', value: payload.transportationReleaseNotes, category: 'cd_optional', group: 'Notes' })
     }
   }
 
