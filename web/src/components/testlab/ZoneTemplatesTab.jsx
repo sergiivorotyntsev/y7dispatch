@@ -59,6 +59,41 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
     }
   }
 
+  // Live preview with current UNSAVED zones (for edit mode)
+  async function loadLivePreview() {
+    if (!testDocumentId || editingZones.length === 0) return
+    setPreviewLoading(true)
+    try {
+      // Format zones for the API
+      const formattedZones = editingZones.map(zone => ({
+        name: zone.name,
+        x0: zone.x0,
+        y0: zone.y0,
+        x1: zone.x1,
+        y1: zone.y1,
+        description: zone.description || null,
+        fields: (zone.fields || []).map(f => {
+          if (typeof f === 'string') {
+            return { key: f, field_type: 'text', required: false }
+          }
+          return {
+            key: f.key || f,
+            field_type: f.field_type || 'text',
+            pattern: f.pattern || null,
+            label: f.label || null,
+            required: f.required || false,
+          }
+        }),
+      }))
+      const result = await api.livePreviewZones(testDocumentId, formattedZones)
+      setZonePreview(result)
+    } catch (err) {
+      console.error('Failed to load live preview:', err)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   async function testExtraction() {
     if (!testDocumentId) {
       alert('Select a document first')
@@ -580,9 +615,28 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
               </div>
             </div>
 
-            {zonePreview && (
-              <div>
-                <h4 className="text-sm font-medium mb-2">Zone Text Preview:</h4>
+            {/* Zone Text Preview Section */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="text-sm font-medium">Zone Text Preview:</h4>
+                {editMode && testDocumentId && (
+                  <button
+                    onClick={loadLivePreview}
+                    disabled={previewLoading}
+                    className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                  >
+                    {previewLoading ? '...' : '🔄 Refresh Preview'}
+                  </button>
+                )}
+              </div>
+
+              {editMode && zonePreview?.source !== 'live_preview' && (
+                <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded mb-2">
+                  ⚠️ Preview shows SAVED zones. Click "Refresh Preview" to see current edits.
+                </div>
+              )}
+
+              {zonePreview ? (
                 <div className="space-y-2 max-h-[200px] overflow-auto">
                   {zonePreview.zones?.map((z, i) => (
                     <div key={i} className="p-2 bg-gray-50 rounded text-xs">
@@ -595,8 +649,16 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : testDocumentId ? (
+                <div className="text-xs text-gray-400 italic">
+                  {editMode ? 'Click "Refresh Preview" to see zone text' : 'Loading preview...'}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400 italic">
+                  Select a document to preview zone text
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="text-center text-gray-400 py-8">

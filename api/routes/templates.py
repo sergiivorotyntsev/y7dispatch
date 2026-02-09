@@ -660,6 +660,83 @@ async def preview_zones(
     }
 
 
+class LivePreviewRequest(BaseModel):
+    """Request for live zone preview (unsaved zones)"""
+    document_id: int
+    zones: list[ZoneModel]
+
+
+@router.post("/zones/live-preview")
+async def live_preview_zones(request: LivePreviewRequest):
+    """
+    Preview zones with CUSTOM coordinates (not from DB).
+
+    Use this when editing zones to see the text BEFORE saving.
+    This endpoint accepts zones from the request body, not from database.
+    """
+    from api.models import DocumentRepository
+
+    doc = DocumentRepository.get_by_id(request.document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not request.zones:
+        raise HTTPException(status_code=400, detail="No zones provided")
+
+    # Build zones from request (not from DB)
+    zones = []
+    for zd in request.zones:
+        fields = []
+        for fd in zd.fields:
+            field_type = FieldType.TEXT
+            for ft in FieldType:
+                if ft.value == fd.field_type.lower():
+                    field_type = ft
+                    break
+            zone_field = ZoneField(
+                key=fd.key,
+                field_type=field_type,
+                pattern=fd.pattern,
+                label=fd.label,
+                required=fd.required,
+            )
+            zone_field.apply_defaults()
+            fields.append(zone_field)
+
+        zone = DocumentZone(
+            name=zd.name,
+            x0=float(zd.x0),
+            y0=float(zd.y0),
+            x1=float(zd.x1),
+            y1=float(zd.y1),
+            description=zd.description or "",
+            fields=fields,
+        )
+        zones.append(zone)
+
+    # Get zone extractor for text extraction
+    extractor = get_zone_extractor()
+
+    zone_data = []
+    for zone in zones:
+        text = extractor.extract_zone_text(doc.file_path, zone)
+        zone_data.append(
+            {
+                "name": zone.name,
+                "description": zone.description,
+                "bbox": {"x0": zone.x0, "y0": zone.y0, "x1": zone.x1, "y1": zone.y1},
+                "text": text,
+                "fields": [f.key for f in zone.fields],
+            }
+        )
+
+    return {
+        "document_id": request.document_id,
+        "zones": zone_data,
+        "source": "live_preview",  # Indicates this is from request, not DB
+    }
+
+
 def _api_to_domain(api_template: TemplateModel) -> DocumentTemplate:
     """Convert API model to domain model"""
     zones = []

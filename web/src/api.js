@@ -462,6 +462,11 @@ export const api = {
     body: JSON.stringify(data),
   }),
   previewZones: (templateId, documentId) => request(`/templates/${templateId}/zones/preview?document_id=${documentId}`),
+  // Live preview with unsaved zones (for edit mode)
+  livePreviewZones: (documentId, zones) => request('/templates/zones/live-preview', {
+    method: 'POST',
+    body: JSON.stringify({ document_id: documentId, zones }),
+  }),
   submitTemplateFeedback: (data) => request('/templates/feedback', {
     method: 'POST',
     body: JSON.stringify(data),
