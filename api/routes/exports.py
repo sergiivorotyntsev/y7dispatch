@@ -326,6 +326,16 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
         if not get_field(field):
             errors.append(f"Missing required field: {field}")
 
+    # Validate warehouse/delivery fields
+    # If no warehouse was selected, delivery fields will have placeholder values
+    delivery_city = get_field("delivery_city") or get_field("dropoff_city")
+    if not delivery_city or delivery_city in ("TBD", ""):
+        errors.append("Missing delivery location: Please select a warehouse in Review before export")
+
+    delivery_address = get_field("delivery_address") or get_field("dropoff_address")
+    if not delivery_address or delivery_address in ("TBD", ""):
+        errors.append("Missing delivery address: Warehouse not properly configured")
+
     # Validate VIN
     vin = get_field("vehicle_vin", "")
     if vin and len(vin) != 17:
@@ -354,14 +364,14 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     }
 
     # Build delivery stop (M3.P0.2: uses resolved values from FieldResolver)
-    # Delivery address is populated from warehouse constants when warehouse is selected
+    # Delivery address MUST come from warehouse constants - no placeholders
     dropoff_stop = {
         "stopNumber": 2,
-        "locationName": get_field("delivery_name") or get_field("dropoff_name", "Warehouse"),
-        "address": get_field("delivery_address") or get_field("dropoff_address", "TBD"),
-        "city": get_field("delivery_city") or get_field("dropoff_city", "TBD"),
-        "state": get_field("delivery_state") or get_field("dropoff_state", "TX"),
-        "postalCode": get_field("delivery_zip") or get_field("dropoff_zip", "00000"),
+        "locationName": get_field("delivery_name") or get_field("dropoff_name") or "",
+        "address": get_field("delivery_address") or get_field("dropoff_address") or "",
+        "city": get_field("delivery_city") or get_field("dropoff_city") or "",
+        "state": get_field("delivery_state") or get_field("dropoff_state") or "",
+        "postalCode": get_field("delivery_zip") or get_field("dropoff_zip") or "",
         "country": "US",
         "locationType": "BUSINESS",
     }

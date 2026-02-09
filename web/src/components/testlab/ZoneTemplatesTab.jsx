@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api'
 import { ZONE_COLORS_ARRAY } from '../../constants/zones'
+import PdfZoneViewer from '../PdfZoneViewer'
 
 export default function ZoneTemplatesTab({ auctionTypes }) {
   const [templates, setTemplates] = useState([])
@@ -371,54 +372,16 @@ export default function ZoneTemplatesTab({ auctionTypes }) {
         )}
 
         {testDocumentId ? (
-          <div
-            ref={containerRef}
-            className={`relative border rounded-lg overflow-hidden bg-gray-100 ${editMode ? 'cursor-crosshair' : ''}`}
-            style={{ height: '500px' }}
-          >
-            <iframe
-              src={api.getDocumentFileUrl(testDocumentId)}
-              className="w-full h-full"
-              title="PDF Preview"
-              style={{ pointerEvents: editMode ? 'none' : 'auto' }}
-            />
-            <div className={`absolute inset-0 ${editMode ? '' : 'pointer-events-none'}`}>
-              {displayZones.map((zone, i) => (
-                <div
-                  key={i}
-                  className={`absolute border-2 ${editMode ? 'cursor-move' : ''} ${selectedZoneIdx === i ? 'ring-2 ring-yellow-400' : ''}`}
-                  style={{
-                    left: `${zone.x0}%`,
-                    top: `${zone.y0}%`,
-                    width: `${zone.x1 - zone.x0}%`,
-                    height: `${zone.y1 - zone.y0}%`,
-                    backgroundColor: zoneColors[i % zoneColors.length].bg,
-                    borderColor: zoneColors[i % zoneColors.length].border,
-                  }}
-                  onMouseDown={editMode ? (e) => handleZoneMouseDown(e, i, 'move') : undefined}
-                  onClick={editMode ? () => setSelectedZoneIdx(i) : undefined}
-                >
-                  <span
-                    className="absolute -top-5 left-0 text-xs font-bold px-1 rounded"
-                    style={{
-                      backgroundColor: zoneColors[i % zoneColors.length].border,
-                      color: 'white',
-                    }}
-                  >
-                    {zone.name}
-                  </span>
-                  {/* Resize handle */}
-                  {editMode && (
-                    <div
-                      className="absolute bottom-0 right-0 w-4 h-4 bg-white border-2 border-gray-600 cursor-se-resize"
-                      style={{ transform: 'translate(50%, 50%)' }}
-                      onMouseDown={(e) => handleZoneMouseDown(e, i, 'resize')}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <PdfZoneViewer
+            pdfUrl={api.getDocumentFileUrl(testDocumentId)}
+            zones={displayZones}
+            selectedZoneIdx={selectedZoneIdx}
+            editMode={editMode}
+            onZoneChange={updateZone}
+            onZoneSelect={setSelectedZoneIdx}
+            zoneColors={zoneColors}
+            height={500}
+          />
         ) : (
           <div className="h-[500px] flex items-center justify-center text-gray-400 border rounded-lg bg-gray-50">
             Select a document to preview zones
