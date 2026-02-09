@@ -711,49 +711,90 @@ def run_extraction(
         evidence_list = []
 
         # =================================================================
-        # ZONE-BASED EXTRACTION (PRIORITY - highest accuracy)
-        # Uses template zones to extract from correct regions
+        # ZONE-BASED EXTRACTION (PRIMARY - highest accuracy)
+        # Uses template zones from DATABASE to extract from correct regions
+        # Always loads fresh template from DB, not from singleton cache
         # =================================================================
         zone_outputs = {}
-        use_zone_extraction = True  # Feature flag
 
-        if use_zone_extraction and doc.file_path:
+        if doc.file_path:
             try:
                 from extractors.zone_extractor import get_zone_extractor
+                import logging
 
+                logger = logging.getLogger(__name__)
                 zone_extractor = get_zone_extractor()
-                zone_template = zone_extractor.get_template(auction_type.code)
 
-                if zone_template:
-                    import logging
+                # Use extract_with_logging() which ALWAYS loads from DB
+                logger.info(f"ZONE EXTRACTION: Loading template from DB for {auction_type.code}")
+                zone_result = zone_extractor.extract_with_logging(doc.file_path, auction_type.code)
 
-                    logger = logging.getLogger(__name__)
-                    logger.info(f"Using zone extraction for {auction_type.code}")
+                zone_outputs = zone_result.fields
+                metrics["zone_extraction"] = {
+                    "template_id": zone_result.template_id,
+                    "confidence": zone_result.confidence,
+                    "fields_count": len(zone_result.fields),
+                    "warnings": zone_result.warnings,
+                    "source": "database" if zone_result.template_id != "none" else "none",
+                }
 
-                    zone_result = zone_extractor.extract(doc.file_path, auction_type.code)
-
-                    if zone_result.confidence > 0.3:
-                        zone_outputs = zone_result.fields
-                        metrics["zone_extraction"] = {
-                            "template_id": zone_result.template_id,
+                # Track zone-extracted fields
+                for key, value in zone_outputs.items():
+                    if value is not None:
+                        field_sources[key] = {
+                            "value": value,
+                            "source": "ZONE_EXTRACTED",
                             "confidence": zone_result.confidence,
-                            "fields_count": len(zone_result.fields),
-                            "warnings": zone_result.warnings,
+                            "method": f"zone_extractor:{zone_result.template_id}",
                         }
 
-                        # Track zone-extracted fields
-                        for key, value in zone_outputs.items():
-                            if value is not None:
-                                field_sources[key] = {
-                                    "value": value,
-                                    "source": "ZONE_EXTRACTED",
-                                    "confidence": zone_result.confidence,
-                                    "method": f"zone_extractor:{zone_result.template_id}",
-                                }
+                logger.info(
+                    f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}"
+                )
 
-                        logger.info(
-                            f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}"
-                        )
+                # =================================================================
+                # APPLY TRAINING RULES (learned from user corrections)
+                # Training rules can provide additional patterns for extraction
+                # =================================================================
+                try:
+                    from services.training_service import TrainingService
+                    from api.training_db import SessionContext
+
+                    with SessionContext() as session:
+                        training_service = TrainingService(session)
+                        learned_rules = training_service.get_rules_for_extractor(auction_type.code)
+
+                        if learned_rules:
+                            metrics["training_rules_applied"] = len(learned_rules)
+                            logger.info(f"Training: {len(learned_rules)} learned rules available")
+
+                            # Apply learned patterns to improve extraction
+                            for field_key, rule_info in learned_rules.items():
+                                # If field wasn't found by zone extraction, try learned patterns
+                                if not zone_outputs.get(field_key) and rule_info.get("label_patterns"):
+                                    # Try to find value using learned label patterns
+                                    for pattern in rule_info["label_patterns"][:3]:  # Top 3 patterns
+                                        import re
+                                        match = re.search(
+                                            f"{pattern}[:\\s]*(\\S+(?:\\s+\\S+)*)",
+                                            raw_text,
+                                            re.IGNORECASE
+                                        )
+                                        if match:
+                                            value = match.group(1).strip()
+                                            if value and len(value) > 2:
+                                                zone_outputs[field_key] = value
+                                                field_sources[field_key] = {
+                                                    "value": value,
+                                                    "source": "TRAINING_RULE",
+                                                    "confidence": rule_info.get("confidence", 0.7),
+                                                    "method": f"training_pattern:{pattern[:30]}",
+                                                }
+                                                logger.info(f"Training rule found {field_key}: {value}")
+                                                break
+                except Exception as te:
+                    logger.debug(f"Training rules not applied: {te}")
+
             except Exception as e:
                 import logging
 
@@ -761,12 +802,23 @@ def run_extraction(
                 metrics["zone_extraction_error"] = str(e)
 
         # =================================================================
-        # M3.P0.1: BLOCK EXTRACTION (fallback/supplement)
-        # Run layout-aware extraction, then fall back to pattern
+        # BLOCK EXTRACTION (FALLBACK - only for fields not found by zone)
+        # Run layout-aware extraction as fallback for zone extraction
         # =================================================================
         block_outputs = {}
-        if doc.file_path:
+
+        # Only run block extraction if zone extraction didn't find key fields
+        zone_has_required = (
+            zone_outputs.get("vehicle_vin") and
+            zone_outputs.get("pickup_city")
+        )
+
+        if doc.file_path and not zone_has_required:
             try:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info("Block extraction FALLBACK: Zone missing required fields")
+
                 block_outputs, evidence_list = _run_block_extraction(
                     document_id=document_id,
                     run_id=run_id,
@@ -774,29 +826,44 @@ def run_extraction(
                     raw_text=raw_text,
                     metrics=metrics,
                 )
-                # Track block-extracted fields
+                # Track block-extracted fields (lower priority than zone)
                 for key, value in block_outputs.items():
-                    if value is not None:
+                    if value is not None and key not in field_sources:
                         field_sources[key] = {
                             "value": value,
-                            "source": "EXTRACTED",
-                            "confidence": 0.85,
-                            "method": "block_extractor",
+                            "source": "BLOCK_EXTRACTED",
+                            "confidence": 0.75,
+                            "method": "block_extractor_fallback",
                         }
             except Exception as e:
                 import logging
-
                 logging.getLogger(__name__).warning(f"Block extraction error: {e}")
                 metrics["block_extraction_error"] = str(e)
+        else:
+            metrics["block_extraction_skipped"] = "zone_had_required_fields"
 
         # =================================================================
-        # PATTERN EXTRACTION (fallback/supplement)
+        # PATTERN EXTRACTION (LAST RESORT - only if zone/block failed)
+        # Uses regex patterns on raw text
         # =================================================================
         from extractors import ExtractorManager
+        import logging
+
+        pattern_logger = logging.getLogger(__name__)
+
+        # Only run pattern extraction if we're missing critical fields
+        zone_and_block_fields = {**zone_outputs, **block_outputs}
+        missing_critical = not (
+            zone_and_block_fields.get("vehicle_vin") and
+            zone_and_block_fields.get("pickup_city")
+        )
+
+        if missing_critical:
+            pattern_logger.info("Pattern extraction FALLBACK: Missing critical fields")
 
         manager = ExtractorManager()
 
-        # Classify and extract
+        # Classify and extract - always for classification, but only fill missing fields
         classification = manager.get_extractor_for_text(raw_text)
         if classification:
             extractor = classification
@@ -954,32 +1021,41 @@ def run_extraction(
                             ExtractionRunRepository.update(run_id, auction_type_id=detected_type.id)
 
         # =================================================================
-        # ZONE EXTRACTION OVERRIDE (HIGHEST PRIORITY)
-        # Zone extraction is most accurate for pickup/delivery fields
-        # because it extracts from the correct column/region
+        # FINAL MERGE: ZONE EXTRACTION OVERRIDE (HIGHEST PRIORITY)
+        #
+        # Priority order (highest to lowest):
+        # 1. ZONE_EXTRACTED - From database templates, most accurate
+        # 2. TRAINING_RULE - Learned from user corrections
+        # 3. BLOCK_EXTRACTED - Fallback layout-aware extraction
+        # 4. PATTERN_EXTRACTED - Last resort regex patterns
+        #
+        # Zone extraction is definitive for location fields because
+        # it extracts from the correct column/region of the document.
         # =================================================================
-        zone_priority_fields = [
-            "pickup_address",
-            "pickup_city",
-            "pickup_state",
-            "pickup_zip",
-            "pickup_name",
-            "pickup_phone",
-            "pickup_location_type",
-            "seller_id",
-            "seller_name",  # These come from correct zones
-        ]
-
         if zone_outputs:
+            import logging
+            merge_logger = logging.getLogger(__name__)
+            merge_logger.info(f"MERGE: Zone outputs override - {len(zone_outputs)} fields")
+
             for field_key, zone_value in zone_outputs.items():
                 if zone_value is not None and str(zone_value).strip():
-                    # Zone extraction ALWAYS takes priority for location fields
-                    if field_key in zone_priority_fields:
-                        outputs[field_key] = zone_value
-                        # field_sources already set during zone extraction
-                    # For other fields, use zone value if not already set
-                    elif not outputs.get(field_key):
-                        outputs[field_key] = zone_value
+                    old_value = outputs.get(field_key)
+
+                    # Zone extraction ALWAYS overrides pattern/block for ALL fields
+                    outputs[field_key] = zone_value
+
+                    # Update field_sources if zone value is different from pattern value
+                    if old_value != zone_value and field_key in field_sources:
+                        merge_logger.info(f"  {field_key}: '{old_value}' -> '{zone_value}' (zone override)")
+
+                    # Ensure field_sources reflects zone extraction
+                    if field_key not in field_sources or field_sources[field_key].get("source") not in ("ZONE_EXTRACTED", "TRAINING_RULE"):
+                        field_sources[field_key] = {
+                            "value": zone_value,
+                            "source": "ZONE_EXTRACTED",
+                            "confidence": metrics.get("zone_extraction", {}).get("confidence", 0.8),
+                            "method": f"zone_extractor:{metrics.get('zone_extraction', {}).get('template_id', 'unknown')}",
+                        }
 
         # Calculate field metrics
         metrics["fields_extracted_count"] = len(outputs)

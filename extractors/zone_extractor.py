@@ -363,6 +363,204 @@ class ZoneExtractor:
         self._load_default_templates()
         self._load_database_templates()
 
+    def get_template_from_db(self, auction_type: str) -> Optional[DocumentTemplate]:
+        """
+        Load template directly from database (bypassing cache).
+        This ensures we always use the latest user-configured zones.
+
+        Returns None if no template found in DB - caller should use defaults.
+        """
+        import json
+        try:
+            from api.routes.templates import TemplateRepository
+
+            # Get template from database
+            row = TemplateRepository.get_by_auction_type(auction_type.upper())
+            if not row:
+                logger.info(f"No template in DB for {auction_type}, will use default")
+                return None
+
+            # Parse zones from JSON
+            zones_data = json.loads(row.get("zones_json", "[]"))
+            if not zones_data:
+                logger.warning(f"Template {row.get('template_id')} has no zones defined")
+                return None
+
+            zones = []
+            for zd in zones_data:
+                fields = []
+                for fd in zd.get("fields", []):
+                    if isinstance(fd, dict):
+                        field_type_str = fd.get("field_type", "text").lower()
+                        field_type = FieldType.TEXT
+                        for ft in FieldType:
+                            if ft.value == field_type_str:
+                                field_type = ft
+                                break
+
+                        zone_field = ZoneField(
+                            key=fd.get("key", ""),
+                            field_type=field_type,
+                            pattern=fd.get("pattern"),
+                            label=fd.get("label"),
+                            required=fd.get("required", False),
+                        )
+                        zone_field.apply_defaults()
+                        fields.append(zone_field)
+
+                zone = DocumentZone(
+                    name=zd.get("name", ""),
+                    x0=float(zd.get("x0", 0)),
+                    y0=float(zd.get("y0", 0)),
+                    x1=float(zd.get("x1", 100)),
+                    y1=float(zd.get("y1", 100)),
+                    description=zd.get("description", ""),
+                    fields=fields,
+                )
+                zones.append(zone)
+
+            template = DocumentTemplate(
+                template_id=row.get("template_id", ""),
+                name=row.get("name", ""),
+                auction_type=auction_type.upper(),
+                version=row.get("version", 1),
+                description=row.get("description", ""),
+                zones=zones,
+            )
+
+            logger.info(f"Loaded template from DB: {template.template_id} with {len(zones)} zones")
+            for z in zones:
+                logger.info(f"  Zone '{z.name}': ({z.x0:.1f}, {z.y0:.1f}) -> ({z.x1:.1f}, {z.y1:.1f}), fields: {[f.key for f in z.fields]}")
+
+            return template
+
+        except Exception as e:
+            logger.error(f"Error loading template from DB for {auction_type}: {e}")
+            return None
+
+    def extract_with_logging(self, pdf_path: str, auction_type: str, page_num: int = 0) -> ExtractionResult:
+        """
+        Extract with detailed logging for debugging.
+        Always loads template fresh from DB.
+        """
+        logger.info(f"=" * 60)
+        logger.info(f"ZONE EXTRACTION START: {auction_type}")
+        logger.info(f"PDF: {pdf_path}")
+        logger.info(f"=" * 60)
+
+        # Try to load from database first
+        template = self.get_template_from_db(auction_type)
+
+        if not template:
+            # Fall back to cached/default template
+            template = self.templates.get(auction_type.upper())
+            if template:
+                logger.info(f"Using DEFAULT template: {template.template_id}")
+            else:
+                logger.warning(f"NO TEMPLATE FOUND for {auction_type}!")
+                return ExtractionResult(
+                    fields={"auction_source": auction_type},
+                    zone_texts={},
+                    confidence=0.0,
+                    template_id="none",
+                    warnings=[f"No template found for auction type: {auction_type}"],
+                )
+        else:
+            logger.info(f"Using DATABASE template: {template.template_id}")
+
+        fields = {}
+        zone_texts = {}
+        warnings = []
+        required_found = 0
+        required_total = 0
+
+        # Extract from each zone
+        for zone in template.zones:
+            logger.info(f"-" * 40)
+            logger.info(f"Processing zone: {zone.name}")
+            logger.info(f"  Coordinates: ({zone.x0:.1f}%, {zone.y0:.1f}%) -> ({zone.x1:.1f}%, {zone.y1:.1f}%)")
+            logger.info(f"  Fields to extract: {[f.key for f in zone.fields]}")
+
+            zone_text = self.extract_zone_text(pdf_path, zone, page_num)
+            zone_texts[zone.name] = zone_text
+
+            if zone_text:
+                logger.info(f"  Extracted text ({len(zone_text)} chars):")
+                for line in zone_text.split('\n')[:5]:
+                    logger.info(f"    | {line[:80]}")
+                if len(zone_text.split('\n')) > 5:
+                    logger.info(f"    | ... ({len(zone_text.split(chr(10)))-5} more lines)")
+            else:
+                logger.warning(f"  NO TEXT extracted from zone {zone.name}!")
+                warnings.append(f"Empty text in zone: {zone.name}")
+                continue
+
+            # Parse fields from zone
+            for field_def in zone.fields:
+                if field_def.required:
+                    required_total += 1
+
+                # Special handling for city/state/zip
+                if field_def.key in ("pickup_city", "pickup_state", "pickup_zip"):
+                    if "pickup_city" not in fields:
+                        city, state, zip_code = self._parse_city_state_zip(zone_text)
+                        if city:
+                            fields["pickup_city"] = city
+                            required_found += 1
+                            logger.info(f"  Found pickup_city: {city}")
+                        if state:
+                            fields["pickup_state"] = state
+                            required_found += 1
+                            logger.info(f"  Found pickup_state: {state}")
+                        if zip_code:
+                            fields["pickup_zip"] = zip_code
+                            required_found += 1
+                            logger.info(f"  Found pickup_zip: {zip_code}")
+                    continue
+
+                value = self.parse_field_from_text(zone_text, field_def)
+
+                if value:
+                    fields[field_def.key] = value
+                    if field_def.required:
+                        required_found += 1
+                    logger.info(f"  Found {field_def.key}: {value}")
+                elif field_def.required:
+                    warnings.append(f"Required field not found: {field_def.key} in zone {zone.name}")
+                    logger.warning(f"  MISSING required field: {field_def.key}")
+
+        # Calculate confidence
+        confidence = required_found / required_total if required_total > 0 else 0.5
+
+        # Add auction source
+        fields["auction_source"] = auction_type
+        fields["pickup_location_type"] = "AUCTION"
+
+        # MANHEIM Page 4 extraction
+        if auction_type.upper() == "MANHEIM":
+            logger.info("Attempting Manheim Page 4 pickup extraction")
+            page4_pickup = self._extract_manheim_page4_pickup(pdf_path)
+            if page4_pickup:
+                for key, value in page4_pickup.items():
+                    if value and key.startswith("pickup_"):
+                        fields[key] = value
+                        logger.info(f"Page 4 pickup: {key}={value}")
+
+        logger.info(f"=" * 60)
+        logger.info(f"EXTRACTION COMPLETE: {len(fields)} fields, confidence={confidence:.2f}")
+        logger.info(f"Fields: {list(fields.keys())}")
+        if warnings:
+            logger.info(f"Warnings: {warnings}")
+        logger.info(f"=" * 60)
+
+        return ExtractionResult(
+            fields=fields,
+            zone_texts=zone_texts,
+            confidence=confidence,
+            template_id=template.template_id,
+            warnings=warnings,
+        )
+
     def _create_copart_template(self) -> DocumentTemplate:
         """
         Create template for Copart invoices.
