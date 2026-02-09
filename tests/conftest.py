@@ -65,10 +65,18 @@ def setup_test_environment():
             )
 
     yield
-    # Cleanup
+    # Cleanup - close connections first, then remove files
+    # On Windows, SQLite may hold file locks, so we need to handle this gracefully
+    import gc
+    gc.collect()  # Force garbage collection to close any lingering connections
+
     for p in (TEST_DB_PATH, TEST_TRAINING_DB_PATH):
         if os.path.exists(p):
-            os.remove(p)
+            try:
+                os.remove(p)
+            except PermissionError:
+                # On Windows, file may still be locked - ignore cleanup error
+                pass
 
 
 @pytest.fixture(scope="session")
