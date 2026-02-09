@@ -7,7 +7,7 @@
  * - Zone labels with field count
  * - Click zone to see extracted fields
  */
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState } from 'react'
 
 // Zone colors matching VisualZoneEditor
 const ZONE_COLORS = {
@@ -26,49 +26,80 @@ const ZONE_COLORS = {
   footer: { bg: 'rgba(107, 114, 128, 0.15)', border: '#6B7280' },
 }
 
+const DEFAULT_COLOR = { bg: 'rgba(107, 114, 128, 0.15)', border: '#6B7280' }
+
 function getZoneColor(name) {
-  const key = name?.toLowerCase() || ''
+  if (!name) return DEFAULT_COLOR
+  const key = name.toLowerCase()
   for (const [k, v] of Object.entries(ZONE_COLORS)) {
     if (key.includes(k)) return v
   }
-  return { bg: 'rgba(107, 114, 128, 0.15)', border: '#6B7280' }
+  return DEFAULT_COLOR
+}
+
+// Safely get fields array - extract field keys from field objects or strings
+function getZoneFields(zone) {
+  if (!zone || !zone.fields) return []
+  if (!Array.isArray(zone.fields)) return []
+
+  // Fields can be objects with {key: string} or just strings
+  return zone.fields.map(f => {
+    if (typeof f === 'string') return f
+    if (f && typeof f === 'object' && f.key) return f.key
+    return null
+  }).filter(Boolean)
 }
 
 export default function ZoneVisualization({
   zones = [],
   highlightedField = null,
   onZoneClick = null,
-  // containerWidth and containerHeight are no longer needed - using CSS percentages
 }) {
   const [hoveredZone, setHoveredZone] = useState(null)
 
-  // Find zone containing the highlighted field
-  const highlightedZone = highlightedField
-    ? zones.find(z => z.fields?.includes(highlightedField))
-    : null
+  // Find zone index containing the highlighted field (by name comparison, not reference)
+  const highlightedZoneIndex = highlightedField
+    ? zones.findIndex(z => {
+        const fields = getZoneFields(z)
+        return fields.some(f => f === highlightedField)
+      })
+    : -1
+
+  // Filter valid zones (must have coordinates)
+  const validZones = zones.filter(zone =>
+    zone &&
+    typeof zone.x0 === 'number' &&
+    typeof zone.y0 === 'number' &&
+    typeof zone.x1 === 'number' &&
+    typeof zone.y1 === 'number'
+  )
 
   return (
     <div className="absolute inset-0 pointer-events-none">
-      {zones.map((zone, index) => {
+      {validZones.map((zone, index) => {
         const colors = getZoneColor(zone.name)
-        const isHighlighted = highlightedZone === zone
+        const isHighlighted = highlightedZoneIndex === index
         const isHovered = hoveredZone === index
+        const fields = getZoneFields(zone)
 
-        // Use percentage-based positioning (zones store coordinates as 0-100%)
+        // Adjust opacity for highlighting
+        let bgColor = colors.bg
+        if (isHighlighted) {
+          bgColor = colors.bg.replace('0.15', '0.35')
+        } else if (isHovered) {
+          bgColor = colors.bg.replace('0.15', '0.25')
+        }
+
         return (
           <div
-            key={index}
+            key={`zone-${index}-${zone.name || 'unnamed'}`}
             className="absolute pointer-events-auto cursor-pointer transition-all duration-200"
             style={{
               left: `${zone.x0}%`,
               top: `${zone.y0}%`,
               width: `${zone.x1 - zone.x0}%`,
               height: `${zone.y1 - zone.y0}%`,
-              backgroundColor: isHighlighted
-                ? colors.bg.replace('0.15', '0.35')
-                : isHovered
-                ? colors.bg.replace('0.15', '0.25')
-                : colors.bg,
+              backgroundColor: bgColor,
               border: `2px ${isHighlighted ? 'solid' : 'dashed'} ${colors.border}`,
               boxShadow: isHighlighted ? `0 0 8px ${colors.border}80` : 'none',
               zIndex: isHighlighted ? 15 : 10,
@@ -77,7 +108,13 @@ export default function ZoneVisualization({
             onMouseLeave={() => setHoveredZone(null)}
             onClick={(e) => {
               e.stopPropagation()
-              if (onZoneClick) onZoneClick(zone)
+              if (onZoneClick) {
+                try {
+                  onZoneClick(zone)
+                } catch (err) {
+                  console.error('Zone click error:', err)
+                }
+              }
             }}
           >
             {/* Zone label */}
@@ -85,27 +122,27 @@ export default function ZoneVisualization({
               className="absolute -top-5 left-0 px-1.5 py-0.5 text-xs font-medium text-white rounded-t whitespace-nowrap"
               style={{ backgroundColor: colors.border }}
             >
-              {zone.name}
-              {zone.fields?.length > 0 && (
-                <span className="ml-1 opacity-80">({zone.fields.length})</span>
+              {zone.name || 'Zone'}
+              {fields.length > 0 && (
+                <span className="ml-1 opacity-80">({fields.length})</span>
               )}
             </div>
 
             {/* Field list tooltip on hover */}
-            {isHovered && zone.fields?.length > 0 && (
+            {isHovered && fields.length > 0 && (
               <div
                 className="absolute top-full left-0 mt-1 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-50"
                 style={{ minWidth: '120px', maxWidth: '200px' }}
               >
                 <div className="font-medium mb-1">Fields in zone:</div>
                 <ul className="space-y-0.5">
-                  {zone.fields.slice(0, 5).map((field, i) => (
+                  {fields.slice(0, 5).map((field, i) => (
                     <li key={i} className="truncate">
-                      {field.replace(/_/g, ' ')}
+                      {typeof field === 'string' ? field.replace(/_/g, ' ') : String(field)}
                     </li>
                   ))}
-                  {zone.fields.length > 5 && (
-                    <li className="text-gray-400">+{zone.fields.length - 5} more</li>
+                  {fields.length > 5 && (
+                    <li className="text-gray-400">+{fields.length - 5} more</li>
                   )}
                 </ul>
               </div>
