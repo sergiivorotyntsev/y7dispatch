@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api'
 import PreflightBanner from '../components/PreflightBanner'
-import PDFViewer from '../components/PDFViewer'
+import PdfZoneViewer from '../components/PdfZoneViewer'
 
 /**
  * Review & Training Page
@@ -34,6 +34,7 @@ function Review() {
   // PDF viewer state
   const [showPdf, setShowPdf] = useState(true)
   const [pdfUrl, setPdfUrl] = useState(null)
+  const [zones, setZones] = useState([])
 
   // Highlighted field for evidence display (M3.P2.2)
   const [highlightedField, setHighlightedField] = useState(null)
@@ -144,6 +145,48 @@ function Review() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Load zones for the auction type
+  useEffect(() => {
+    if (!run?.auction_type_id) return
+
+    async function loadZones() {
+      try {
+        // Get auction type code from ID
+        const auctionTypes = await api.listAuctionTypes()
+        const auctionType = auctionTypes.items?.find(at => at.id === run.auction_type_id)
+        if (!auctionType) {
+          setZones([])
+          return
+        }
+
+        // Get templates for this auction type
+        const templates = await api.listZoneTemplates({ auction_type: auctionType.code })
+        if (templates.items?.length > 0) {
+          // Use the first active template
+          const template = templates.items[0]
+          // Convert zone fields to simple format for display
+          const displayZones = (template.zones || []).map(zone => ({
+            ...zone,
+            x0: zone.x0,
+            y0: zone.y0,
+            x1: zone.x1,
+            y1: zone.y1,
+            name: zone.name,
+            fields: (zone.fields || []).map(f => typeof f === 'string' ? f : f.key),
+          }))
+          setZones(displayZones)
+        } else {
+          setZones([])
+        }
+      } catch (err) {
+        console.error('Failed to load zones:', err)
+        setZones([])
+      }
+    }
+
+    loadZones()
+  }, [run?.auction_type_id])
 
   // Update field value
   function updateField(key, value) {
@@ -489,17 +532,37 @@ function Review() {
       {/* Main Content */}
       <div className="p-6">
         <div className={`flex gap-6 ${showPdf && pdfUrl ? '' : ''}`}>
-          {/* PDF Viewer with Evidence Overlay (M3.P2.1 & M3.P2.2) */}
+          {/* PDF Viewer with Zone Overlay */}
           {showPdf && pdfUrl && (
             <div className="w-1/2 flex-shrink-0 sticky top-6">
-              <PDFViewer
-                pdfUrl={pdfUrl}
-                runId={parseInt(runId)}
-                highlightedField={highlightedField}
-                onBlockClick={(block) => console.log('Block clicked:', block)}
-                auctionTypeId={run?.auction_type_id}
-                showZones={true}
-              />
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                  <span className="font-medium text-sm text-gray-700">
+                    Original Document
+                    {zones.length > 0 && (
+                      <span className="ml-2 text-xs text-gray-500">
+                        ({zones.length} zones)
+                      </span>
+                    )}
+                  </span>
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary-600 hover:text-primary-800"
+                  >
+                    Open in new tab
+                  </a>
+                </div>
+                <PdfZoneViewer
+                  pdfUrl={pdfUrl}
+                  zones={zones}
+                  selectedZoneIdx={null}
+                  editMode={false}
+                  height={600}
+                  initialScale={1.0}
+                />
+              </div>
             </div>
           )}
 
