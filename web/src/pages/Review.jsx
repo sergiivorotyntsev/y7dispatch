@@ -30,6 +30,7 @@ function Review() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [warning, setWarning] = useState(null)  // For unmatched fields warning
 
   // PDF viewer state
   const [showPdf, setShowPdf] = useState(true)
@@ -242,6 +243,7 @@ function Review() {
     setSaving(true)
     setError(null)
     setSuccess(null)
+    setWarning(null)
 
     try {
       // Prepare corrections for training API
@@ -273,6 +275,7 @@ function Review() {
 
       // Build success message from learning summary
       let successMsg = result.message || `Training data saved! ${result.saved_count} corrections recorded.`
+      let unmatchedWarning = null
       const ls = result.learning_summary
       if (ls) {
         const parts = []
@@ -288,6 +291,11 @@ function Review() {
         }
         if (parts.length > 0) {
           successMsg = `${result.saved_count} corrections saved. ${parts.join('. ')}.`
+        }
+        // Warn about unmatched fields (value not found in document text)
+        if (ls.unmatched_fields && ls.unmatched_fields.length > 0) {
+          const unmatchedList = ls.unmatched_fields.slice(0, 3).join(', ')
+          unmatchedWarning = `Note: Could not learn patterns for ${unmatchedList}${ls.unmatched_fields.length > 3 ? ` (+${ls.unmatched_fields.length - 3} more)` : ''} - values not found in document text. Try using values exactly as they appear in the PDF.`
         }
       }
 
@@ -329,11 +337,14 @@ function Review() {
       })
 
       setSuccess(successMsg)
+      if (unmatchedWarning) {
+        setWarning(unmatchedWarning)
+      }
 
       // Stay on page longer to show learning feedback, then go to test lab
       setTimeout(() => {
         navigate('/test-lab')
-      }, 3000)
+      }, unmatchedWarning ? 5000 : 3000)  // Extra time if there's a warning
 
     } catch (err) {
       setError(`Failed to submit: ${err.message}`)
@@ -526,6 +537,19 @@ function Review() {
           <p className="text-green-600 text-sm mt-2 ml-7">
             Redirecting to {isTrainingMode ? 'Test Lab' : 'Documents'}...
           </p>
+        </div>
+      )}
+      {warning && (
+        <div className="mx-6 mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <span className="font-medium text-yellow-800">Learning Limited</span>
+              <p className="text-yellow-700 text-sm mt-1">{warning}</p>
+            </div>
+          </div>
         </div>
       )}
 

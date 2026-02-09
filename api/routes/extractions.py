@@ -770,28 +770,61 @@ def run_extraction(
 
                             # Apply learned patterns to improve extraction
                             for field_key, rule_info in learned_rules.items():
-                                # If field wasn't found by zone extraction, try learned patterns
-                                if not zone_outputs.get(field_key) and rule_info.get("label_patterns"):
-                                    # Try to find value using learned label patterns
-                                    for pattern in rule_info["label_patterns"][:3]:  # Top 3 patterns
-                                        import re
-                                        match = re.search(
-                                            f"{pattern}[:\\s]*(\\S+(?:\\s+\\S+)*)",
-                                            raw_text,
-                                            re.IGNORECASE
-                                        )
-                                        if match:
-                                            value = match.group(1).strip()
-                                            if value and len(value) > 2:
-                                                zone_outputs[field_key] = value
-                                                field_sources[field_key] = {
-                                                    "value": value,
-                                                    "source": "TRAINING_RULE",
-                                                    "confidence": rule_info.get("confidence", 0.7),
-                                                    "method": f"training_pattern:{pattern[:30]}",
-                                                }
-                                                logger.info(f"Training rule found {field_key}: {value}")
-                                                break
+                                if not rule_info.get("label_patterns"):
+                                    continue
+
+                                current_value = zone_outputs.get(field_key)
+                                current_source = field_sources.get(field_key, {})
+                                current_confidence = current_source.get("confidence", 0)
+                                rule_confidence = rule_info.get("confidence", 0.5)
+                                rule_validations = rule_info.get("validation_count", 0)
+
+                                # Criteria for applying training rule:
+                                # 1. Field is missing, OR
+                                # 2. Rule has high confidence (>0.7) AND many validations (>3) AND current extraction has lower confidence
+                                should_apply = (
+                                    not current_value or
+                                    (rule_confidence > 0.7 and rule_validations >= 3 and rule_confidence > current_confidence)
+                                )
+
+                                if not should_apply:
+                                    continue
+
+                                # Try to find value using learned label patterns
+                                for pattern in rule_info["label_patterns"][:3]:  # Top 3 patterns
+                                    import re
+                                    # More specific pattern matching for different field types
+                                    if "lot" in field_key.lower() or "stock" in field_key.lower():
+                                        value_pattern = r"[\dA-Z]+-?\d+|\d{5,}"
+                                    elif "vin" in field_key.lower():
+                                        value_pattern = r"[A-HJ-NPR-Z0-9]{17}"
+                                    else:
+                                        value_pattern = r"\S+(?:\s+\S+)*"
+
+                                    match = re.search(
+                                        f"{pattern}[:\\s]*({value_pattern})",
+                                        raw_text,
+                                        re.IGNORECASE
+                                    )
+                                    if match:
+                                        value = match.group(1).strip()
+                                        if value and len(value) > 2:
+                                            # Log if overriding existing value
+                                            if current_value and current_value != value:
+                                                logger.info(
+                                                    f"Training rule OVERRIDE {field_key}: "
+                                                    f"'{current_value}' -> '{value}' "
+                                                    f"(rule_confidence={rule_confidence:.2f}, validations={rule_validations})"
+                                                )
+                                            zone_outputs[field_key] = value
+                                            field_sources[field_key] = {
+                                                "value": value,
+                                                "source": "TRAINING_RULE",
+                                                "confidence": rule_confidence,
+                                                "method": f"training_pattern:{pattern[:30]}",
+                                                "overrode_value": current_value if current_value else None,
+                                            }
+                                            break
                 except Exception as te:
                     logger.debug(f"Training rules not applied: {te}")
 

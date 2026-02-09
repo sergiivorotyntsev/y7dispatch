@@ -53,6 +53,7 @@ class LearningSummary(BaseModel):
     rules_updated: int = 0
     patterns_learned: list[str] = []
     fields_improved: list[str] = []
+    unmatched_fields: list[str] = []  # Fields where corrected value not found in document text
 
 
 class SubmitCorrectionsResponse(BaseModel):
@@ -127,6 +128,12 @@ def submit_corrections(request: SubmitCorrectionsRequest, session: Session = Dep
         if learning_summary.get("fields_improved"):
             fields = ", ".join(learning_summary["fields_improved"][:3])
             message_parts.append(f"Confidence improved for: {fields}")
+        if learning_summary.get("unmatched_fields"):
+            unmatched = ", ".join(learning_summary["unmatched_fields"][:3])
+            message_parts.append(
+                f"Note: Could not learn patterns for {unmatched} - "
+                "value not found in document text."
+            )
 
         return SubmitCorrectionsResponse(
             success=True,

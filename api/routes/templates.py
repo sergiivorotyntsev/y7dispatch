@@ -91,12 +91,24 @@ except Exception as e:
 
 
 class ZoneFieldModel(BaseModel):
-    """API model for zone field"""
+    """API model for zone field
+
+    Attributes:
+        key: Field key (e.g., 'vehicle_lot')
+        field_type: Type hint for parsing (text, vin, date, currency, etc.)
+        pattern: Regex pattern to extract value (optional)
+        label: Human-readable label for UI
+        label_patterns: List of label patterns to find value after (e.g., ['Stock\\s*No', 'StockNo'])
+        extract_strategy: How to extract value: 'after_label', 'regex', 'full_zone' (default: 'after_label')
+        required: Whether field is required
+    """
 
     key: str
     field_type: str = "text"
     pattern: Optional[str] = None
     label: Optional[str] = None
+    label_patterns: list[str] = []  # Patterns to find value after (e.g., ["Stock\\s*No"])
+    extract_strategy: str = "after_label"  # How to extract: after_label, regex, full_zone
     required: bool = False
 
 

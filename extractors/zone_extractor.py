@@ -98,6 +98,8 @@ class ZoneField:
     field_type: FieldType = FieldType.TEXT
     pattern: Optional[str] = None  # Optional regex pattern
     label: Optional[str] = None  # Label to look for (e.g., "City:")
+    label_patterns: list[str] = field(default_factory=list)  # Multiple label patterns (e.g., ["Stock\\s*No", "StockNo"])
+    extract_strategy: str = "after_label"  # How to extract: after_label, regex, full_zone
     required: bool = False
 
     def apply_defaults(self):
@@ -163,6 +165,8 @@ class DocumentZone:
                     "field_type": f.field_type.value,
                     "pattern": f.pattern,
                     "label": f.label,
+                    "label_patterns": f.label_patterns,
+                    "extract_strategy": f.extract_strategy,
                     "required": f.required,
                 }
                 for f in self.fields
@@ -179,6 +183,8 @@ class DocumentZone:
                 field_type=FieldType(f.get("field_type", "text")),
                 pattern=f.get("pattern"),
                 label=f.get("label"),
+                label_patterns=f.get("label_patterns", []),
+                extract_strategy=f.get("extract_strategy", "after_label"),
                 required=f.get("required", False),
             )
             for f in data.get("fields", [])
@@ -322,6 +328,8 @@ class ZoneExtractor:
                                     field_type=field_type,
                                     pattern=fd.get("pattern"),
                                     label=fd.get("label"),
+                                    label_patterns=fd.get("label_patterns", []),
+                                    extract_strategy=fd.get("extract_strategy", "after_label"),
                                     required=fd.get("required", False),
                                 )
                                 # Apply default patterns/types for known fields
@@ -403,6 +411,8 @@ class ZoneExtractor:
                             field_type=field_type,
                             pattern=fd.get("pattern"),
                             label=fd.get("label"),
+                            label_patterns=fd.get("label_patterns", []),
+                            extract_strategy=fd.get("extract_strategy", "after_label"),
                             required=fd.get("required", False),
                         )
                         zone_field.apply_defaults()
@@ -1005,11 +1015,12 @@ class ZoneExtractor:
         """
         Parse a specific field from zone text.
 
-        Strategies:
+        Strategies (in order of priority):
         1. If pattern is defined, use regex
-        2. If label is defined, look for "Label: Value" format
-        3. For ADDRESS type, use special address parsing
-        4. For CITY_STATE_ZIP, extract city/state/zip pattern
+        2. If label_patterns array is defined, try each pattern to find value after label
+        3. If single label is defined, look for "Label: Value" format
+        4. For ADDRESS type, use special address parsing
+        5. For CITY_STATE_ZIP, extract city/state/zip pattern
         """
         if not text:
             return None
@@ -1027,14 +1038,44 @@ class ZoneExtractor:
                     # Pattern has no capturing group, return full match
                     return match.group(0).strip()
 
-        # Strategy 2: Look for label
+        # Strategy 2: Try each label_pattern (learned from training)
+        if field_def.label_patterns:
+            for label_pattern in field_def.label_patterns:
+                try:
+                    # Build pattern to extract value after label
+                    # Handle different extract strategies
+                    if field_def.extract_strategy == "regex":
+                        # Use label_pattern directly as regex
+                        match = re.search(label_pattern, text, re.IGNORECASE)
+                        if match:
+                            try:
+                                return match.group(1).strip()
+                            except IndexError:
+                                return match.group(0).strip()
+                    else:
+                        # Default: after_label - look for value after label
+                        # Pattern: label followed by optional colon/spaces and capture value
+                        value_pattern = rf"{label_pattern}[:\s]*([^\n]+)"
+                        match = re.search(value_pattern, text, re.IGNORECASE)
+                        if match:
+                            value = match.group(1).strip()
+                            # Clean up common trailing garbage
+                            value = re.sub(r"\s{2,}.*$", "", value)  # Stop at multiple spaces
+                            if value and len(value) >= 2:
+                                logger.debug(f"Found {field_def.key} via label_pattern '{label_pattern}': {value}")
+                                return value
+                except re.error as e:
+                    logger.warning(f"Invalid regex in label_pattern '{label_pattern}': {e}")
+                    continue
+
+        # Strategy 3: Look for single label
         if field_def.label:
             label_pattern = rf"{re.escape(field_def.label)}[:\s]*([^\n]+)"
             match = re.search(label_pattern, text, re.IGNORECASE)
             if match:
                 return match.group(1).strip()
 
-        # Strategy 3: Type-specific parsing
+        # Strategy 4: Type-specific parsing
         if field_def.field_type == FieldType.VIN:
             vin_match = re.search(r"\b([A-HJ-NPR-Z0-9]{17})\b", text_upper)
             if vin_match:

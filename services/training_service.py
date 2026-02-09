@@ -55,9 +55,24 @@ class TrainingService:
 
         saved_count = 0
         error_count = 0
+        unmatched_fields = []  # Fields where corrected_value not found in text
 
         for correction in corrections:
             try:
+                # Find context for the corrected value
+                context = self._find_context(extracted_text, correction.corrected_value)
+                preceding_label = self._find_preceding_label(
+                    extracted_text, correction.corrected_value
+                )
+
+                # Track if value was not found in document text
+                if correction.corrected_value and not context:
+                    unmatched_fields.append(correction.field_key)
+                    logger.warning(
+                        f"Correction for {correction.field_key}: value '{correction.corrected_value}' "
+                        f"not found in document text - learning will be limited"
+                    )
+
                 # Create field correction record
                 fc = FieldCorrection(
                     extraction_run_id=run_id,
@@ -67,10 +82,8 @@ class TrainingService:
                     predicted_value=correction.predicted_value,
                     corrected_value=correction.corrected_value,
                     was_correct=correction.was_correct,
-                    context_text=self._find_context(extracted_text, correction.corrected_value),
-                    preceding_label=self._find_preceding_label(
-                        extracted_text, correction.corrected_value
-                    ),
+                    context_text=context,
+                    preceding_label=preceding_label,
                 )
                 self.session.add(fc)
                 saved_count += 1
@@ -101,11 +114,16 @@ class TrainingService:
             "rules_updated": 0,
             "patterns_learned": [],
             "fields_improved": [],
+            "unmatched_fields": unmatched_fields,  # Fields where value not found in text
         }
 
         if saved_count > 0:
             try:
-                learning_summary = self._learn_from_corrections(auction_type_id)
+                learned = self._learn_from_corrections(auction_type_id)
+                learning_summary["rules_created"] = learned.get("rules_created", 0)
+                learning_summary["rules_updated"] = learned.get("rules_updated", 0)
+                learning_summary["patterns_learned"] = learned.get("patterns_learned", [])
+                learning_summary["fields_improved"] = learned.get("fields_improved", [])
             except Exception as e:
                 logger.error(f"Error during learning: {e}")
 
@@ -522,6 +540,7 @@ class TrainingService:
                 "label_patterns": rule.get_label_patterns(),
                 "exclude_patterns": rule.get_exclude_patterns(),
                 "confidence": rule.confidence,
+                "validation_count": rule.validation_count,
             }
 
         return result
