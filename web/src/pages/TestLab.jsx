@@ -573,21 +573,43 @@ function TestLab() {
                     <p className="text-sm font-medium text-gray-700 mb-2">Training Progress</p>
                     {(() => {
                       const at = auctionTypes.find(a => a.id.toString() === selectedAuctionType)
-                      const stats = trainingStats?.by_auction_type?.[at?.code] || { total: 0, validated: 0 }
+                      const stats = trainingStats?.by_auction_type?.[at?.code] || {}
+                      const totalExamples = stats.total_examples || 0
+                      const validatedExamples = stats.validated_examples || 0
+                      const rulesCount = stats.rules_count || 0
+                      const avgConfidence = stats.avg_confidence || 0
                       return (
                         <>
-                          <div className="flex justify-between text-xs text-gray-600">
-                            <span>Examples: {stats.total}</span>
-                            <span>Validated: {stats.validated}</span>
+                          <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                            <div className="flex justify-between">
+                              <span>Examples:</span>
+                              <span className="font-medium">{totalExamples}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Validated:</span>
+                              <span className="font-medium">{validatedExamples}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Rules:</span>
+                              <span className="font-medium">{rulesCount}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Confidence:</span>
+                              <span className="font-medium">{Math.round(avgConfidence * 100)}%</span>
+                            </div>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                          <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                             <div
-                              className="bg-green-500 h-2 rounded-full"
-                              style={{ width: `${Math.min(100, (stats.total / 50) * 100)}%` }}
+                              className="bg-green-500 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (totalExamples / 50) * 100)}%` }}
                             ></div>
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
-                            {stats.total >= 50 ? 'Ready for training' : `${50 - stats.total} more examples needed`}
+                            {totalExamples === 0
+                              ? 'No training data yet - use Review & Train to add examples'
+                              : totalExamples >= 50
+                                ? 'Well trained'
+                                : `${50 - totalExamples} more examples needed`}
                           </p>
                         </>
                       )
@@ -777,7 +799,7 @@ function TestLab() {
                         </td>
                         <td>
                           <div className="flex space-x-2">
-                            <a href={'/review/' + run.id} className="text-sm text-blue-600 hover:text-blue-800">
+                            <a href={'/review/' + run.id + '?mode=training'} className="text-sm text-blue-600 hover:text-blue-800">
                               {run.status === 'failed' ? 'Enter Data' : 'Review & Train'}
                             </a>
                             {run.status !== 'failed' && (

@@ -1221,17 +1221,55 @@ class ListingFieldRegistry:
                     }
                 )
 
-        # CD API Rule: exactly 2 stops required
-        # Note: CD docs require 2 stops but do NOT require different addresses.
-        # Same-address check removed per CD API V2 spec review.
-        # If business logic requires different addresses, make it configurable.
+        # CD API Rule: exactly 2 stops required with all required fields
+        # Stop 1 = Pickup, Stop 2 = Delivery
+        pickup_required = ["pickup_city", "pickup_state", "pickup_zip"]
+        delivery_required = ["delivery_city", "delivery_state", "delivery_zip"]
 
-        # CD API Rule: 1-12 vehicles (we currently support single vehicle, so just check VIN exists)
-        vehicle_vin = effective_data.get("vehicle_vin")
-        if not vehicle_vin:
-            # Already caught by required fields check, but adding for clarity
-            pass
-        # Note: Multi-vehicle support would need vehicle count validation here
+        pickup_complete = all(
+            effective_data.get(f) and effective_data.get(f) not in ("TBD", "")
+            for f in pickup_required
+        )
+        delivery_complete = all(
+            effective_data.get(f) and effective_data.get(f) not in ("TBD", "")
+            for f in delivery_required
+        )
+
+        if mode == "export":
+            if not pickup_complete:
+                missing_pickup = [f for f in pickup_required if not effective_data.get(f)]
+                issues.append(
+                    {
+                        "field": "stops",
+                        "issue": f"Pickup stop incomplete. Missing: {', '.join(missing_pickup)}",
+                    }
+                )
+            if not delivery_complete and not warehouse_selected:
+                issues.append(
+                    {
+                        "field": "stops",
+                        "issue": "Delivery stop incomplete. Please select a warehouse.",
+                    }
+                )
+
+        # CD API Rule: 1-12 vehicles, no duplicate VINs
+        # Currently single-vehicle mode - validate VIN exists and format
+        vehicle_vin = effective_data.get("vehicle_vin", "")
+        if mode == "export":
+            if not vehicle_vin:
+                issues.append(
+                    {
+                        "field": "vehicles",
+                        "issue": "At least 1 vehicle required. VIN is missing.",
+                    }
+                )
+            elif len(vehicle_vin) != 17:
+                issues.append(
+                    {
+                        "field": "vehicle_vin",
+                        "issue": f"VIN must be exactly 17 characters (got {len(vehicle_vin)})",
+                    }
+                )
 
         # CD API Rule: externalId max 50 characters
         external_id = effective_data.get("external_id", "")
@@ -1373,6 +1411,9 @@ class ListingFieldRegistry:
             field_def = self._fields.get(err["field"])
             # In training mode, skip validation errors for export_only fields
             if mode == "training" and field_def and field_def.export_only:
+                continue
+            # Skip delivery fields if warehouse is selected (they come from warehouse)
+            if warehouse_selected and err["field"].startswith("delivery_"):
                 continue
             # Avoid duplicate errors
             existing = [i for i in issues if i["field"] == err["field"]]

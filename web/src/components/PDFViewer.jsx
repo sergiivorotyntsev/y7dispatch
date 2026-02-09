@@ -86,9 +86,23 @@ function PDFViewer({
 
     const fetchZones = async () => {
       try {
-        const template = await api.getZoneTemplate(auctionTypeId)
-        if (template && template.zones) {
-          setZones(template.zones)
+        // First, get the auction type code from the ID
+        const auctionTypes = await api.listAuctionTypes()
+        const auctionType = auctionTypes.items?.find(at => at.id === auctionTypeId)
+
+        if (!auctionType) {
+          console.warn('Auction type not found:', auctionTypeId)
+          setZones([])
+          return
+        }
+
+        // Then get templates filtered by auction type code
+        const templates = await api.listZoneTemplates({ auction_type: auctionType.code })
+        if (templates.items?.length > 0) {
+          // Use the first (active) template for this auction type
+          setZones(templates.items[0].zones || [])
+        } else {
+          setZones([])
         }
       } catch (err) {
         console.error('Failed to fetch zone template:', err)

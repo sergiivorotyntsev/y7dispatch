@@ -249,7 +249,7 @@ class TrainingService:
         corrections = self.session.exec(
             select(FieldCorrection)
             .where(FieldCorrection.auction_type_id == auction_type_id)
-            .where(not FieldCorrection.is_processed)
+            .where(FieldCorrection.is_processed == False)  # SQLModel comparison, not Python bool
             .order_by(FieldCorrection.created_at.desc())
             .limit(100)
         ).all()
