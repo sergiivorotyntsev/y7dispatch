@@ -530,8 +530,11 @@ async def extract_with_zones(request: ZoneExtractionRequest):
     """
     Run zone-based extraction on a document.
 
-    This extracts fields using the template's zone definitions,
+    This extracts fields using the template's zone definitions from DATABASE,
     ensuring correct data is extracted from the right regions.
+
+    IMPORTANT: Uses extract_with_logging() which loads template from DB,
+    not from singleton cache.
     """
     from api.models import DocumentRepository
 
@@ -552,9 +555,9 @@ async def extract_with_zones(request: ZoneExtractionRequest):
     if not auction_type:
         raise HTTPException(status_code=400, detail="Could not determine auction type")
 
-    # Run extraction
+    # Run extraction using extract_with_logging() which loads from DB
     extractor = get_zone_extractor()
-    result = extractor.extract(doc.file_path, auction_type)
+    result = extractor.extract_with_logging(doc.file_path, auction_type)
 
     return ZoneExtractionResponse(
         fields=result.fields,
