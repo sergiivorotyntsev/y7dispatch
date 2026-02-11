@@ -1,0 +1,168 @@
+# Backup Strategy Configuration (Phase 0.6)
+#
+# Defines backup schedule, retention, and recovery procedures.
+# Used by backup_service.py for automated backups.
+#
+# Requirements:
+#   - DigitalOcean Spaces credentials in environment
+#   - Sufficient storage quota
+
+# =============================================================================
+# Schedule
+# =============================================================================
+schedule:
+  # Cron expression for backup frequency
+  # Every 6 hours: "0 */6 * * *"
+  cron: "0 */6 * * *"
+
+  # Timezone for schedule
+  timezone: "UTC"
+
+  # Enable/disable automatic backups
+  enabled: true
+
+# =============================================================================
+# Destination
+# =============================================================================
+destination:
+  # Storage type: s3 (DigitalOcean Spaces is S3-compatible)
+  type: "s3"
+
+  # S3/Spaces configuration
+  s3:
+    endpoint: "${DO_SPACES_ENDPOINT}"  # e.g., nyc3.digitaloceanspaces.com
+    bucket: "${DO_SPACES_BUCKET}"       # e.g., y7dispatch-backups
+    region: "${DO_SPACES_REGION}"       # e.g., nyc3
+
+    # Prefix for backup files
+    prefix: "backups/db/"
+
+    # Credentials from environment
+    access_key_id: "${DO_SPACES_KEY}"
+    secret_access_key: "${DO_SPACES_SECRET}"
+
+  # Local backup path (for testing)
+  local:
+    path: "/var/backups/y7dispatch/"
+    enabled: false
+
+# =============================================================================
+# Retention Policy
+# =============================================================================
+retention:
+  # Keep X number of backups by age
+  daily: 7      # Keep 7 daily backups
+  weekly: 4     # Keep 4 weekly backups (Sundays)
+  monthly: 3    # Keep 3 monthly backups (1st of month)
+
+  # Maximum total backups to keep
+  max_backups: 50
+
+  # Minimum free space before cleanup (MB)
+  min_free_space_mb: 500
+
+# =============================================================================
+# What to Backup
+# =============================================================================
+sources:
+  # SQLite database
+  database:
+    type: "sqlite"
+    path: "${DATABASE_URL:-./dispatch.db}"
+    enabled: true
+
+  # PDF storage (if local)
+  documents:
+    type: "directory"
+    path: "./uploads/"
+    enabled: true
+    # Exclude patterns
+    exclude:
+      - "*.tmp"
+      - "*.log"
+
+  # Configuration files
+  config:
+    type: "directory"
+    path: "./config/"
+    enabled: true
+
+# =============================================================================
+# Recovery Objectives
+# =============================================================================
+recovery:
+  # Recovery Point Objective - max acceptable data loss
+  # 6 hours = backup frequency
+  rpo_hours: 6
+
+  # Recovery Time Objective - max time to restore
+  rto_hours: 1
+
+  # Test restore frequency
+  test_restore:
+    enabled: true
+    frequency: "weekly"  # Run test restore weekly
+    day_of_week: "sunday"
+    hour: 3  # 3 AM UTC
+
+    # Alert if test fails
+    alert_on_failure: true
+
+# =============================================================================
+# Notifications
+# =============================================================================
+notifications:
+  # Notify on backup completion
+  on_success: false
+
+  # Notify on backup failure
+  on_failure: true
+
+  # Notify on restore test failure
+  on_test_failure: true
+
+  # Notification channels
+  channels:
+    email:
+      enabled: true
+      recipients:
+        - "alerts@y7agency.com"
+
+    slack:
+      enabled: false
+      webhook_url: "${SLACK_WEBHOOK_URL}"
+      channel: "#alerts"
+
+# =============================================================================
+# Encryption
+# =============================================================================
+encryption:
+  # Encrypt backups at rest
+  enabled: true
+
+  # Encryption algorithm
+  algorithm: "AES-256-GCM"
+
+  # Key from environment
+  key: "${BACKUP_ENCRYPTION_KEY}"
+
+# =============================================================================
+# Compression
+# =============================================================================
+compression:
+  enabled: true
+  algorithm: "gzip"
+  level: 6  # 1-9, higher = better compression but slower
+
+# =============================================================================
+# Verification
+# =============================================================================
+verification:
+  # Verify backup integrity after creation
+  enabled: true
+
+  # Checksum algorithm
+  checksum_algorithm: "sha256"
+
+  # Verify database can be opened
+  verify_db_open: true

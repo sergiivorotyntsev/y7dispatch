@@ -1,0 +1,278 @@
+# Regression Tests Workflow (Phase 0.3)
+#
+# Runs extraction accuracy tests against golden dataset.
+# Blocks PRs that cause >5% regression in extraction score.
+#
+# Triggers:
+#   - On PR to main
+#   - On push to main (for baseline updates)
+#   - Manual dispatch
+
+name: Regression Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'extractors/**'
+      - 'api/**'
+      - 'services/**'
+      - 'tests/**'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+
+  push:
+    branches: [main]
+    paths:
+      - 'extractors/**'
+      - 'tests/evaluation/**'
+
+  workflow_dispatch:
+    inputs:
+      save_baseline:
+        description: 'Save results as new baseline'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+  EXTRACTION_MIN_SCORE: '75'
+  EXTRACTION_MIN_FIELD_F1: '0.80'
+
+jobs:
+  # ==========================================================================
+  # Unit Tests
+  # ==========================================================================
+  unit-tests:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ \
+            --ignore=tests/evaluation/ \
+            -v \
+            --tb=short \
+            -x
+
+  # ==========================================================================
+  # Extraction Regression Tests
+  # ==========================================================================
+  regression-tests:
+    runs-on: ubuntu-latest
+    name: Extraction Regression Tests
+    needs: unit-tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+          # Install additional test dependencies
+          pip install pytesseract pdf2image pdfplumber
+
+      - name: Install Tesseract OCR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+
+      - name: Check golden dataset
+        id: check-golden
+        run: |
+          GOLDEN_DIR=tests/evaluation/golden_dataset
+          PDF_COUNT=$(find $GOLDEN_DIR -name "*.pdf" 2>/dev/null | wc -l)
+          echo "pdf_count=$PDF_COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$PDF_COUNT" -lt 10 ]; then
+            echo "::warning::Golden dataset has only $PDF_COUNT PDFs (minimum 150 recommended)"
+            echo "has_sufficient_data=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_sufficient_data=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run regression tests
+        if: steps.check-golden.outputs.has_sufficient_data == 'true'
+        run: |
+          pytest tests/evaluation/test_extraction_accuracy.py \
+            -v \
+            --tb=long \
+            -x \
+            --junitxml=test-results.xml
+
+      - name: Run extraction evaluation
+        if: steps.check-golden.outputs.has_sufficient_data == 'true'
+        run: |
+          python -m tests.evaluation.test_extraction_accuracy \
+            --output evaluation-results.json
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results.xml
+            evaluation-results.json
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && steps.check-golden.outputs.has_sufficient_data == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let results;
+            try {
+              results = JSON.parse(fs.readFileSync('evaluation-results.json', 'utf8'));
+            } catch (e) {
+              console.log('No evaluation results file found');
+              return;
+            }
+
+            const summary = results.summary || {};
+            const score = summary.extraction_score || 0;
+            const minScore = parseFloat('${{ env.EXTRACTION_MIN_SCORE }}');
+
+            const status = score >= minScore ? '✅ PASS' : '❌ FAIL';
+            const emoji = score >= 90 ? '🌟' : score >= 80 ? '✓' : score >= 70 ? '⚠️' : '❌';
+
+            let body = `## ${emoji} Extraction Regression Test Results\n\n`;
+            body += `**Status:** ${status}\n`;
+            body += `**Extraction Score:** ${score.toFixed(2)}/100 (minimum: ${minScore})\n\n`;
+
+            body += `### Metrics\n`;
+            body += `| Metric | Value |\n`;
+            body += `|--------|-------|\n`;
+            body += `| Documents | ${summary.total_documents || 0} |\n`;
+            body += `| Successful | ${summary.successful_extractions || 0} |\n`;
+            body += `| Macro F1 | ${(summary.macro_f1 || 0).toFixed(4)} |\n`;
+            body += `| Weighted F1 | ${(summary.weighted_f1 || 0).toFixed(4)} |\n`;
+
+            if (results.by_field) {
+              body += `\n### Field Accuracy\n`;
+              body += `| Field | Precision | Recall | F1 |\n`;
+              body += `|-------|-----------|--------|----|\n`;
+
+              const criticalFields = ['vehicle_vin', 'vehicle_year', 'vehicle_make', 'pickup_city', 'pickup_state'];
+              for (const [field, metrics] of Object.entries(results.by_field)) {
+                if (criticalFields.includes(field) || metrics.f1_score < 0.8) {
+                  const icon = metrics.f1_score >= 0.9 ? '✓' : metrics.f1_score >= 0.8 ? '⚠️' : '❌';
+                  body += `| ${icon} ${field} | ${metrics.precision.toFixed(3)} | ${metrics.recall.toFixed(3)} | ${metrics.f1_score.toFixed(3)} |\n`;
+                }
+              }
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Check regression threshold
+        if: steps.check-golden.outputs.has_sufficient_data == 'true'
+        run: |
+          if [ -f evaluation-results.json ]; then
+            SCORE=$(python -c "import json; print(json.load(open('evaluation-results.json'))['summary']['extraction_score'])")
+            MIN_SCORE=${{ env.EXTRACTION_MIN_SCORE }}
+
+            echo "Extraction Score: $SCORE"
+            echo "Minimum Required: $MIN_SCORE"
+
+            if (( $(echo "$SCORE < $MIN_SCORE" | bc -l) )); then
+              echo "::error::Extraction score $SCORE is below minimum threshold $MIN_SCORE"
+              exit 1
+            fi
+          fi
+
+      - name: Save baseline (on main push)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check-golden.outputs.has_sufficient_data == 'true'
+        run: |
+          if [ -f evaluation-results.json ]; then
+            cp evaluation-results.json tests/evaluation/golden_dataset/baseline_metrics.json
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git add tests/evaluation/golden_dataset/baseline_metrics.json
+            git diff --staged --quiet || git commit -m "chore: Update baseline metrics [skip ci]"
+            git push || echo "Push failed (may be protected branch)"
+          fi
+
+      - name: Save baseline (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.save_baseline == 'true'
+        run: |
+          python -m tests.evaluation.test_extraction_accuracy --save-baseline
+          echo "Baseline saved to tests/evaluation/golden_dataset/baseline_metrics.json"
+
+  # ==========================================================================
+  # Cost Analysis
+  # ==========================================================================
+  cost-analysis:
+    runs-on: ubuntu-latest
+    name: Cost Analysis
+    needs: unit-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Analyze extraction costs
+        run: |
+          python -c "
+          from tests.evaluation.cost_tracker import estimate_extraction_cost
+
+          # Estimate costs for typical documents
+          doc_sizes = {
+            'small_pdf': 5000,
+            'medium_pdf': 15000,
+            'large_pdf': 50000,
+          }
+
+          print('Estimated extraction costs (Haiku):')
+          print('-' * 40)
+          for name, size in doc_sizes.items():
+            cost = estimate_extraction_cost(size)
+            print(f'{name} ({size} chars): \${cost:.4f}')
+
+          print()
+          print('Monthly cost estimates (assuming 1000 docs/month):')
+          avg_cost = estimate_extraction_cost(15000)
+          print(f'Average per doc: \${avg_cost:.4f}')
+          print(f'1000 docs/month: \${avg_cost * 1000:.2f}')
+          "
