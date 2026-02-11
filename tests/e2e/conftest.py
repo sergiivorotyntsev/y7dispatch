@@ -150,14 +150,14 @@ def iaa_ground_truth() -> dict:
 
 @pytest.fixture
 def manheim_pdf() -> bytes:
-    """Manheim sample PDF from existing golden set."""
-    return _load_pdf("12-30-2025_5515588_Vehicle_Sale_Documents.pdf")
+    """Manheim sample PDF from fixture (Bill of Sale)."""
+    return _load_pdf("sample_manheim_invoice.pdf")
 
 
 @pytest.fixture
 def manheim_pdf_path() -> Path:
     """Path to Manheim sample PDF."""
-    files = list(SAMPLE_DOCS.glob("12-30-2025_5515588_Vehicle_Sale_Documents.pdf"))
+    files = list(SAMPLE_DOCS.glob("sample_manheim_invoice.pdf"))
     if not files:
         pytest.skip("No Manheim sample PDF")
     return files[0]
@@ -165,8 +165,8 @@ def manheim_pdf_path() -> Path:
 
 @pytest.fixture
 def manheim_ground_truth() -> dict:
-    """Manheim ground truth from existing golden set."""
-    return _load_ground_truth("12-30-2025_5515588_Vehicle_Sale_Documents_expected.json")
+    """Manheim ground truth from golden set."""
+    return _load_ground_truth("sample_manheim_invoice_expected.json")
 
 
 # =============================================================================

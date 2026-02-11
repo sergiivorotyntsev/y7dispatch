@@ -235,10 +235,12 @@ class TestReviewEndpoint:
         )
         assert response.status_code == 404
 
-    def test_training_examples_returns_200(self, client):
-        """Training examples endpoint should return 200."""
+    def test_training_examples_returns_501_ml_disabled(self, client):
+        """Training examples endpoint returns 501 (ML training disabled in MVP)."""
         response = client.get("/api/review/training-examples/")
-        assert response.status_code == 200
+        assert response.status_code == 501
+        data = response.json()
+        assert data["detail"]["phase"] == "data_collection"
 
 
 class TestExportsEndpoint:
@@ -374,18 +376,19 @@ class TestIntegrationsEndpoint:
 class TestModelsEndpoint:
     """Contract tests for /api/models/ endpoint."""
 
-    def test_list_model_versions_returns_200(self, client):
-        """List model versions should return 200."""
+    def test_list_model_versions_returns_501_ml_disabled(self, client):
+        """List model versions returns 501 (ML training disabled in MVP)."""
         response = client.get("/api/models/versions")
-        assert response.status_code == 200
+        assert response.status_code == 501
+        data = response.json()
+        assert data["detail"]["phase"] == "data_collection"
 
-    def test_list_model_versions_response_schema(self, client):
-        """List model versions should return paginated response."""
+    def test_list_model_versions_disabled_message(self, client):
+        """ML disabled endpoints include roadmap info."""
         response = client.get("/api/models/versions")
         data = response.json()
-        assert "items" in data
-        assert "total" in data
-        assert isinstance(data["items"], list)
+        assert "roadmap" in data["detail"]
+        assert "active_features" in data["detail"]
 
     def test_training_stats_returns_200(self, client):
         """Training stats should return 200."""

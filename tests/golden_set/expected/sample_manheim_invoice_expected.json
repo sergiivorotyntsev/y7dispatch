@@ -1,0 +1,31 @@
+{
+  "source_file": "sample_manheim_invoice.pdf",
+  "auction_type": "MANHEIM",
+  "expected_fields": {
+    "vehicle_vin": "1FTEW1E50KFA12345",
+    "vehicle_year": 2019,
+    "vehicle_make": "FORD",
+    "vehicle_model": "F-150 XLT",
+    "vehicle_color": "BLUE",
+    "vehicle_lot": null,
+    "pickup_name": "Manheim Dallas",
+    "pickup_address": "9001 Auction Lane",
+    "pickup_city": "Dallas",
+    "pickup_state": "TX",
+    "pickup_zip": "75234",
+    "reference_id": "MAN2024011700123",
+    "buyer_id": "DLR789456",
+    "buyer_name": "QUALITY AUTO SALES",
+    "sale_date": "2024-01-17 00:00:00",
+    "total_amount": "24850.00"
+  },
+  "validation": {
+    "min_fields_required": 12,
+    "vin_must_be_17_chars": true,
+    "state_must_be_2_chars": true
+  },
+  "metadata": {
+    "created_for": "Day 3 Directive v3.1 E2E tests",
+    "notes": "Sample Manheim Bill of Sale fixture PDF"
+  }
+}

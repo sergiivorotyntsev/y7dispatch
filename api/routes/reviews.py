@@ -2,8 +2,12 @@
 Review API Routes
 
 Manage review items and submit corrections for training.
+
+NOTE: training-examples endpoints are DISABLED in MVP (data collection phase).
+Use the correction workflow via /api/training/submit-corrections instead.
 """
 
+from functools import wraps
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -20,6 +24,34 @@ from api.models import (
 )
 
 router = APIRouter(prefix="/api/review", tags=["Review"])
+
+
+# =============================================================================
+# ML TRAINING DISABLED - DATA COLLECTION PHASE
+# =============================================================================
+
+ML_DISABLED_MESSAGE = {
+    "message": "ML training examples export is not implemented in MVP",
+    "phase": "data_collection",
+    "roadmap": (
+        "Training examples export will be enabled when sufficient data is collected. "
+        "Currently using rule-based extraction with learning from corrections."
+    ),
+    "active_features": [
+        "Submit corrections via Review UI",
+        "Correction rules learning (POST /api/training/submit-corrections)",
+    ],
+}
+
+
+def ml_training_disabled(func):
+    """Decorator to disable ML training endpoints with 501 response."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        raise HTTPException(status_code=501, detail=ML_DISABLED_MESSAGE)
+
+    return wrapper
 
 
 # =============================================================================
@@ -448,6 +480,7 @@ async def approve_run(run_id: int):
 
 
 @router.get("/training-examples/", response_model=TrainingExamplesListResponse)
+@ml_training_disabled
 async def list_training_examples(
     auction_type_id: Optional[int] = Query(None),
     field_key: Optional[str] = Query(None),
@@ -504,6 +537,7 @@ async def list_training_examples(
 
 
 @router.get("/training-examples/export")
+@ml_training_disabled
 async def export_training_data(
     auction_type_id: Optional[int] = Query(None, description="Filter by auction type"),
     format: str = Query("jsonl", description="Export format: jsonl or csv"),
