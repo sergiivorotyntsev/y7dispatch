@@ -235,10 +235,12 @@ class TestReviewEndpoint:
         )
         assert response.status_code == 404
 
-    def test_training_examples_returns_200(self, client):
-        """Training examples endpoint should return 200."""
+    def test_training_examples_disabled(self, client):
+        """Training examples endpoint disabled per directive v3.1."""
         response = client.get("/api/review/training-examples/")
-        assert response.status_code == 200
+        # Endpoint disabled - route decorator commented out
+        # 422 because /{run_id} catches path but fails int validation
+        assert response.status_code in [404, 405, 422]
 
 
 class TestExportsEndpoint:
@@ -372,18 +374,11 @@ class TestIntegrationsEndpoint:
 class TestModelsEndpoint:
     """Contract tests for /api/models/ endpoint."""
 
-    def test_list_model_versions_returns_200(self, client):
-        """List model versions should return 200."""
+    def test_list_model_versions_disabled(self, client):
+        """List model versions disabled per directive v3.1."""
         response = client.get("/api/models/versions")
-        assert response.status_code == 200
-
-    def test_list_model_versions_response_schema(self, client):
-        """List model versions should return paginated response."""
-        response = client.get("/api/models/versions")
-        data = response.json()
-        assert "items" in data
-        assert "total" in data
-        assert isinstance(data["items"], list)
+        # Endpoint disabled - route decorator commented out
+        assert response.status_code in [404, 405]
 
     def test_training_stats_returns_200(self, client):
         """Training stats should return 200."""

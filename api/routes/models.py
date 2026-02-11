@@ -193,7 +193,8 @@ def run_training_job(job_id: int, auction_type_id: int, config: dict):
 # =============================================================================
 
 
-@router.get("/versions", response_model=ModelVersionListResponse)
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.get("/versions", response_model=ModelVersionListResponse)
 async def list_model_versions(
     auction_type_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -250,7 +251,8 @@ async def list_model_versions(
     return ModelVersionListResponse(items=items, total=total)
 
 
-@router.get("/versions/active/{auction_type_id}", response_model=ModelVersionResponse)
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.get("/versions/active/{auction_type_id}", response_model=ModelVersionResponse)
 async def get_active_model(auction_type_id: int):
     """Get the active model version for an auction type."""
     model = ModelVersionRepository.get_active(auction_type_id)
@@ -275,7 +277,8 @@ async def get_active_model(auction_type_id: int):
     )
 
 
-@router.post("/versions/{model_id}/promote", response_model=ModelVersionResponse)
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.post("/versions/{model_id}/promote", response_model=ModelVersionResponse)
 async def promote_model(model_id: int):
     """
     Promote a model version to active status.
@@ -314,7 +317,8 @@ async def promote_model(model_id: int):
     )
 
 
-@router.delete("/versions/{model_id}")
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.delete("/versions/{model_id}")
 async def archive_model(model_id: int):
     """Archive a model version (soft delete)."""
     model = ModelVersionRepository.get_by_id(model_id)
@@ -336,7 +340,8 @@ async def archive_model(model_id: int):
 # =============================================================================
 
 
-@router.post("/train", status_code=501)
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.post("/train", status_code=501)
 async def start_training(
     data: TrainingJobRequest,
     background_tasks: BackgroundTasks,
@@ -375,7 +380,8 @@ async def start_training(
     )
 
 
-@router.get("/jobs", response_model=TrainingJobListResponse)
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.get("/jobs", response_model=TrainingJobListResponse)
 async def list_training_jobs(
     auction_type_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -437,7 +443,8 @@ async def list_training_jobs(
     return TrainingJobListResponse(items=items, total=total)
 
 
-@router.get("/jobs/{job_id}", response_model=TrainingJobResponse)
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.get("/jobs/{job_id}", response_model=TrainingJobResponse)
 async def get_training_job(job_id: int):
     """Get details of a training job."""
     job = TrainingJobRepository.get_by_id(job_id)
@@ -463,7 +470,8 @@ async def get_training_job(job_id: int):
     )
 
 
-@router.post("/jobs/{job_id}/cancel")
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.post("/jobs/{job_id}/cancel")
 async def cancel_training_job(job_id: int):
     """Cancel a running training job."""
     job = TrainingJobRepository.get_by_id(job_id)

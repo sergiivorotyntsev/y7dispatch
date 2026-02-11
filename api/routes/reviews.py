@@ -378,7 +378,8 @@ async def approve_run(run_id: int):
     return {"run_id": run_id, "status": "reviewed", "message": "Run marked as reviewed"}
 
 
-@router.get("/training-examples/", response_model=TrainingExamplesListResponse)
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.get("/training-examples/", response_model=TrainingExamplesListResponse)
 async def list_training_examples(
     auction_type_id: Optional[int] = Query(None),
     field_key: Optional[str] = Query(None),
@@ -434,7 +435,8 @@ async def list_training_examples(
     return TrainingExamplesListResponse(items=items, total=total)
 
 
-@router.get("/training-examples/export")
+# DISABLED 2026-02-11: ML training disabled per directive v3.1
+# @router.get("/training-examples/export")
 async def export_training_data(
     auction_type_id: Optional[int] = Query(None, description="Filter by auction type"),
     format: str = Query("jsonl", description="Export format: jsonl or csv"),
