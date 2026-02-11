@@ -78,7 +78,6 @@ class TestManheimExtractionPipeline:
         Test: VIN extraction matches ground truth exactly.
 
         This is a Gate 2 test (VIN accuracy >= 99%).
-        Note: Manheim extractor may have issues with VIN extraction from this sample.
         """
         # Run extraction
         extracted = extraction_runner(manheim_pdf_path)
@@ -90,11 +89,8 @@ class TestManheimExtractionPipeline:
         expected_vin = manheim_ground_truth["expected_fields"]["vehicle_vin"]
         extracted_vin = extracted.get("vehicle_vin")
 
-        # VIN comparison - Manheim extraction may have issues with this sample
-        # If VIN not extracted, mark as expected failure for now
-        if extracted_vin is None:
-            pytest.skip("VIN extraction not working for this Manheim sample - known limitation")
-
+        # VIN must be extracted
+        assert extracted_vin is not None, "VIN not extracted"
         assert len(extracted_vin) == 17, f"VIN length is {len(extracted_vin)}, expected 17"
 
         # Exact match required

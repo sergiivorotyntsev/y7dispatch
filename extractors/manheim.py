@@ -344,11 +344,11 @@ class ManheimExtractor(BaseExtractor):
         # YMMT = Year Make Model Trim
         # Model extraction should stop at newline, VIN, Color, Body, or other field markers
         ymmt_patterns = [
-            # Pattern that stops at newline or field markers
-            r"YMMT\s+(\d{4})\s+([A-Za-z\-]+)\s+([A-Za-z0-9\s\-]+?)(?:\n|VIN|Color|Body|Entry|Odo|Mile)",
+            # Pattern with optional colon: "YMMT: 2019 FORD F-150" or "YMMT 2019 FORD F-150"
+            r"YMMT[:\s]+(\d{4})\s+([A-Za-z\-]+)\s+([A-Za-z0-9\s\-]+?)(?:\n|VIN|Color|Body|Entry|Odo|Mile)",
             r"Vehicle\s*Information\s*\n.*?(\d{4})\s+([A-Za-z\-]+)\s+([A-Za-z0-9\s\-]+?)(?:\n|VIN)",
-            # Fallback - take less greedy match
-            r"YMMT\s+(\d{4})\s+([A-Za-z\-]+)\s+([A-Za-z0-9]+(?:\s+[A-Za-z0-9]+)?)",
+            # Fallback - take less greedy match (also with optional colon)
+            r"YMMT[:\s]+(\d{4})\s+([A-Za-z\-]+)\s+([A-Za-z0-9]+(?:\s+[A-Za-z0-9]+)?)",
         ]
 
         year, make, model = None, None, None
@@ -373,7 +373,7 @@ class ManheimExtractor(BaseExtractor):
             return None
 
         color = None
-        color_match = re.search(r"Color\s+([A-Za-z]+)", text)
+        color_match = re.search(r"Color[:\s]+([A-Za-z]+)", text)
         if color_match:
             color = color_match.group(1)
 
