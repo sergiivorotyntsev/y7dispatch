@@ -13,6 +13,7 @@ from services.central_dispatch import APIError, CentralDispatchClient
 # from services.clickup import ClickUpClient
 from services.idempotency import IdempotencyStore
 from services.sheets import PickupRecord, PickupStatus, SheetsClient
+from services.pricing_engine import PricingEngine, PricingInput, PricingResult, Urgency, get_pricing_engine
 from services.warehouse import RoutingResult, Warehouse, WarehouseRouter
 
 __all__ = [
@@ -38,4 +39,10 @@ __all__ = [
     "CDDefaultsLoader",
     "CDPayloadValidator",
     "CDExporter",
+    # Pricing
+    "PricingEngine",
+    "PricingInput",
+    "PricingResult",
+    "Urgency",
+    "get_pricing_engine",
 ]

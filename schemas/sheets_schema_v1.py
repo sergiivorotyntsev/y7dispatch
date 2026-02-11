@@ -527,6 +527,32 @@ COLUMNS: list[ColumnDef] = [
         description="Final price for CD export.",
     ),
     ColumnDef(
+        name="suggested_price",
+        col_type=ColumnType.FLOAT,
+        col_class=ColumnClass.SYSTEM,
+        description="MI-recommended price from PricingEngine.",
+    ),
+    ColumnDef(
+        name="price_source",
+        col_type=ColumnType.STRING,
+        col_class=ColumnClass.SYSTEM,
+        description="Price source (MARKET_INTELLIGENCE or MANUAL_REQUIRED).",
+    ),
+    ColumnDef(
+        name="price_warnings",
+        col_type=ColumnType.JSON,
+        col_class=ColumnClass.SYSTEM,
+        description="Pricing warnings from PricingEngine (JSON array).",
+    ),
+    ColumnDef(
+        name="urgency",
+        col_type=ColumnType.ENUM,
+        col_class=ColumnClass.USER,
+        enum_values=["STANDARD", "PRIORITY", "URGENT"],
+        description="Transport urgency level.",
+        default="STANDARD",
+    ),
+    ColumnDef(
         name="currency",
         col_type=ColumnType.STRING,
         col_class=ColumnClass.SYSTEM,
