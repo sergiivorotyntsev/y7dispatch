@@ -43,24 +43,44 @@ class TokenUsage:
         return self.input_tokens + self.output_tokens
 
     def calculate_cost(self, model: str = "claude-haiku-4-5-20251001") -> float:
-        """Calculate cost in USD based on model pricing."""
+        """
+        Calculate cost in USD based on model pricing.
+
+        Anthropic prompt caching pricing (Phase 1.6):
+        - Cache reads: 90% cheaper than regular input tokens
+        - Cache creation: 25% more expensive than regular input
+        - Regular input: base price
+        """
         # Haiku pricing (as of 2026)
         if "haiku" in model.lower():
             input_price = 0.25 / 1_000_000   # $0.25 per 1M input tokens
             output_price = 1.25 / 1_000_000  # $1.25 per 1M output tokens
-            cache_read_price = 0.03 / 1_000_000  # $0.03 per 1M cache read
+            cache_read_price = 0.025 / 1_000_000  # 90% discount: $0.025 per 1M
+            cache_write_price = 0.3125 / 1_000_000  # 25% premium: $0.3125 per 1M
         else:
             # Sonnet fallback pricing
             input_price = 3.0 / 1_000_000
             output_price = 15.0 / 1_000_000
-            cache_read_price = 0.30 / 1_000_000
+            cache_read_price = 0.30 / 1_000_000  # 90% discount
+            cache_write_price = 3.75 / 1_000_000  # 25% premium
 
+        # Calculate total cost with caching
+        regular_input = self.input_tokens - self.cache_read_tokens - self.cache_creation_tokens
         cost = (
-            self.input_tokens * input_price +
+            max(0, regular_input) * input_price +
             self.output_tokens * output_price +
-            self.cache_read_tokens * cache_read_price
+            self.cache_read_tokens * cache_read_price +
+            self.cache_creation_tokens * cache_write_price
         )
         return round(cost, 6)
+
+    @property
+    def cache_efficiency(self) -> float:
+        """Calculate cache hit ratio (0.0 to 1.0)."""
+        total_input = self.input_tokens
+        if total_input == 0:
+            return 0.0
+        return self.cache_read_tokens / total_input
 
 
 @dataclass
@@ -180,13 +200,37 @@ class HaikuExtractor:
     MODEL = "claude-haiku-4-5-20251001"
     MAX_TEXT_LENGTH = 50000  # Max chars to send to API
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize extractor with API key."""
+    # System prompt for extraction - cached to reduce token costs (Phase 1.6)
+    SYSTEM_PROMPT = """You are an expert at extracting structured data from auction documents.
+Your task is to extract vehicle and transaction information from auction invoices.
+
+You must return ONLY valid JSON with no markdown formatting or explanation.
+Extract all available fields and provide your confidence level for each.
+
+Key identification patterns:
+- COPART: "Copart", "SOLD THROUGH COPART", "copart.com", lot numbers like "12345678"
+- IAA: "Insurance Auto Auctions", "IAA", "iaai.com"
+- MANHEIM: "Manheim", "manheim.com"
+
+VIN validation: 17 alphanumeric characters, no I, O, Q
+State codes: 2-letter US state abbreviations
+Dates: Extract as YYYY-MM-DD format
+Prices: Extract as numbers only (no $ or commas)"""
+
+    def __init__(self, api_key: Optional[str] = None, enable_caching: bool = True):
+        """
+        Initialize extractor with API key.
+
+        Args:
+            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            enable_caching: Enable prompt caching for reduced costs (Phase 1.6)
+        """
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not self.api_key:
             logger.warning("ANTHROPIC_API_KEY not set - extraction will fail")
 
         self._client = None
+        self.enable_caching = enable_caching
 
     @property
     def client(self):
@@ -257,23 +301,50 @@ class HaikuExtractor:
             result.error = "Insufficient text extracted from document"
             return result
 
-        # Call Claude Haiku
+        # Call Claude Haiku with prompt caching (Phase 1.6)
         try:
-            prompt = EXTRACTION_PROMPT.format(document_text=text)
+            # Build user message with document text
+            user_message = EXTRACTION_PROMPT.format(document_text=text)
 
-            response = self.client.messages.create(
-                model=self.MODEL,
-                max_tokens=2000,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            # Build API request with caching support
+            api_kwargs = {
+                "model": self.MODEL,
+                "max_tokens": 2000,
+                "messages": [{"role": "user", "content": user_message}]
+            }
 
-            # Track tokens
+            # Add system prompt with cache_control for prompt caching (Phase 1.6)
+            # This caches the static system prompt across requests
+            if self.enable_caching:
+                api_kwargs["system"] = [
+                    {
+                        "type": "text",
+                        "text": self.SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            else:
+                api_kwargs["system"] = self.SYSTEM_PROMPT
+
+            response = self.client.messages.create(**api_kwargs)
+
+            # Track tokens including cache stats
+            cache_read = getattr(response.usage, 'cache_read_input_tokens', 0)
+            cache_creation = getattr(response.usage, 'cache_creation_input_tokens', 0)
+
             result.tokens_used = TokenUsage(
                 input_tokens=response.usage.input_tokens,
                 output_tokens=response.usage.output_tokens,
-                cache_read_tokens=getattr(response.usage, 'cache_read_input_tokens', 0),
+                cache_read_tokens=cache_read,
+                cache_creation_tokens=cache_creation,
             )
             result.cost_usd = result.tokens_used.calculate_cost(self.MODEL)
+
+            # Log cache efficiency
+            if cache_read > 0:
+                logger.info(f"Prompt caching active: {cache_read} tokens read from cache")
+            elif cache_creation > 0:
+                logger.info(f"Cache created: {cache_creation} tokens cached for future requests")
 
             # Parse response
             response_text = response.content[0].text

@@ -35,11 +35,15 @@ class ReviewItemResponse(BaseModel):
     source_key: str
     internal_key: Optional[str] = None
     cd_key: Optional[str] = None
+    display_name: Optional[str] = None  # Human-readable label for UI
     predicted_value: Optional[str] = None
     corrected_value: Optional[str] = None
     is_match_ok: bool = False
     export_field: bool = True
     confidence: Optional[float] = None
+    section: Optional[str] = None  # UI section (vehicle, pickup, delivery, etc.)
+    field_type: Optional[str] = None  # Input type (text, number, date, etc.)
+    required: bool = False  # Required for CD export
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -191,7 +195,10 @@ async def get_review_for_run(run_id: int):
     Get all review items for an extraction run.
 
     Returns the extraction run info and all review items to be reviewed.
+    Enriches items with field metadata (display_name, section, etc.) from ListingFieldRegistry.
     """
+    from api.listing_fields import get_registry
+
     run = ExtractionRunRepository.get_by_id(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Extraction run not found")
@@ -201,23 +208,35 @@ async def get_review_for_run(run_id: int):
 
     items = ReviewItemRepository.get_by_run(run_id)
 
-    item_responses = [
-        ReviewItemResponse(
-            id=item.id,
-            run_id=item.run_id,
-            source_key=item.source_key,
-            internal_key=item.internal_key,
-            cd_key=item.cd_key,
-            predicted_value=item.predicted_value,
-            corrected_value=item.corrected_value,
-            is_match_ok=item.is_match_ok,
-            export_field=item.export_field,
-            confidence=item.confidence,
-            created_at=item.created_at,
-            updated_at=item.updated_at,
+    # Get field registry for metadata enrichment
+    registry = get_registry()
+
+    item_responses = []
+    for item in items:
+        # Get field definition from registry
+        field_def = registry.get_field(item.source_key)
+
+        # Build response with enriched metadata
+        item_responses.append(
+            ReviewItemResponse(
+                id=item.id,
+                run_id=item.run_id,
+                source_key=item.source_key,
+                internal_key=item.internal_key,
+                cd_key=item.cd_key,
+                display_name=field_def.label if field_def else _format_field_label(item.source_key),
+                predicted_value=item.predicted_value,
+                corrected_value=item.corrected_value,
+                is_match_ok=item.is_match_ok,
+                export_field=item.export_field,
+                confidence=item.confidence,
+                section=field_def.section.value if field_def else None,
+                field_type=field_def.field_type.value if field_def else "text",
+                required=field_def.required if field_def else False,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
         )
-        for item in items
-    ]
 
     reviewed_count = sum(1 for item in items if item.is_match_ok or item.corrected_value)
 
@@ -235,6 +254,12 @@ async def get_review_for_run(run_id: int):
     )
 
 
+def _format_field_label(key: str) -> str:
+    """Format a field key into a human-readable label."""
+    # Convert snake_case to Title Case
+    return key.replace("_", " ").title()
+
+
 @router.put("/{run_id}/item/{item_id}", response_model=ReviewItemResponse)
 async def update_review_item(run_id: int, item_id: int, data: ReviewItemUpdate):
     """
@@ -242,6 +267,8 @@ async def update_review_item(run_id: int, item_id: int, data: ReviewItemUpdate):
 
     Mark as correct (is_match_ok=true) or provide a corrected value.
     """
+    from api.listing_fields import get_registry
+
     run = ExtractionRunRepository.get_by_id(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Extraction run not found")
@@ -261,17 +288,25 @@ async def update_review_item(run_id: int, item_id: int, data: ReviewItemUpdate):
     # Get updated item
     item = ReviewItemRepository.get_by_id(item_id)
 
+    # Get field definition from registry
+    registry = get_registry()
+    field_def = registry.get_field(item.source_key)
+
     return ReviewItemResponse(
         id=item.id,
         run_id=item.run_id,
         source_key=item.source_key,
         internal_key=item.internal_key,
         cd_key=item.cd_key,
+        display_name=field_def.label if field_def else _format_field_label(item.source_key),
         predicted_value=item.predicted_value,
         corrected_value=item.corrected_value,
         is_match_ok=item.is_match_ok,
         export_field=item.export_field,
         confidence=item.confidence,
+        section=field_def.section.value if field_def else None,
+        field_type=field_def.field_type.value if field_def else "text",
+        required=field_def.required if field_def else False,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )

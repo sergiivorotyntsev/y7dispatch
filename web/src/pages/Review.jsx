@@ -5,6 +5,17 @@ import PreflightBanner from '../components/PreflightBanner'
 import PdfZoneViewer from '../components/PdfZoneViewer'
 
 /**
+ * Format a field key into a human-readable label.
+ * Converts snake_case to Title Case.
+ */
+function _formatFieldLabel(key) {
+  if (!key) return ''
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase())
+}
+
+/**
  * Review & Training Page
  *
  * This page allows users to:
@@ -112,19 +123,23 @@ function Review() {
       const itemsData = await api.getReviewItems(runId)
       setItems(itemsData.items || [])
 
-      // Initialize field values
+      // Initialize field values with enriched metadata from API
       const initialFields = {}
       for (const item of (itemsData.items || [])) {
-        initialFields[item.source_key || item.cd_key] = {
+        const fieldKey = item.source_key || item.cd_key
+        initialFields[fieldKey] = {
           id: item.id,
-          key: item.source_key || item.cd_key,
-          label: item.display_name || item.source_key,
+          key: fieldKey,
+          label: item.display_name || _formatFieldLabel(fieldKey),
           predicted: item.predicted_value || '',
           corrected: item.corrected_value || item.predicted_value || '',
           confidence: item.confidence,
           cdKey: item.cd_key,
           status: item.is_match_ok ? 'correct' : 'review', // 'correct', 'corrected', 'review'
           export: item.export_field !== false,
+          section: item.section || 'additional',  // UI section for grouping
+          fieldType: item.field_type || 'text',   // Input type
+          required: item.required || false,        // Required for CD export
         }
       }
       setFields(initialFields)
@@ -809,8 +824,11 @@ function Review() {
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center">
                         <span className="font-medium text-gray-900 text-sm">
-                          {field.label || field.key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          {field.label}
                         </span>
+                        {field.required && (
+                          <span className="ml-1 text-red-500 text-xs" title="Required for CD export">*</span>
+                        )}
                         <span className="ml-2 text-xs text-gray-400 font-mono">{field.key}</span>
                         {/* Evidence indicator (M3.P2.2) */}
                         {showPdf && (
