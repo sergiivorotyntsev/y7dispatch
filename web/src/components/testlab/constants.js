@@ -23,8 +23,8 @@ export const CD_FIELDS = [
   { key: 'delivery_contact', label: 'Delivery Contact', type: 'text', required: false, description: 'Contact person name' },
   { key: 'buyer_id', label: 'Buyer ID', type: 'text', required: false, description: 'Buyer/Member ID from auction' },
   { key: 'buyer_name', label: 'Buyer Name', type: 'text', required: false, description: 'Buyer name' },
-  { key: 'lot_number', label: 'Lot Number', type: 'text', required: false, description: 'Auction lot number' },
-  { key: 'stock_number', label: 'Stock Number', type: 'text', required: false, description: 'Stock/Reference number' },
+  // F2 fix: Unified lot/stock number field
+  { key: 'vehicle_lot', label: 'Lot/Stock Number', type: 'text', required: false, description: 'Auction lot or stock number (unified)' },
   { key: 'sale_date', label: 'Sale Date', type: 'date', required: false, description: 'Date of sale' },
   { key: 'total_amount', label: 'Total Amount', type: 'number', required: false, description: 'Total sale amount' },
   { key: 'notes', label: 'Notes', type: 'textarea', required: false, description: 'Additional notes or special instructions' },

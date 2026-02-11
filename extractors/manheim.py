@@ -130,9 +130,10 @@ class ManheimExtractor(BaseExtractor):
             invoice.release_id = release_match.group(1)
 
         # Extract work order / stock number
+        # F2 fix: Use unified vehicle_lot field
         work_order_match = re.search(r"Work\s*Order\s*#?\s*:?\s*(\d+)", full_text)
         if work_order_match:
-            invoice.stock_number = work_order_match.group(1)
+            invoice.vehicle_lot = work_order_match.group(1)
 
         # Extract pickup location with phone (using universal method)
         pickup_location = self._extract_pickup_location(full_text, pdf_path)

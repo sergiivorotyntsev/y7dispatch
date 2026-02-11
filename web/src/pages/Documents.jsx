@@ -765,6 +765,7 @@ function Documents() {
                 const vehicleYear = outputs.vehicle_year || ''
                 const vehicleMake = outputs.vehicle_make || ''
                 const vehicleModel = outputs.vehicle_model || ''
+                // F2 fix: vehicle_lot is canonical, fallbacks for backward compat with old data
                 const lotNumber = outputs.vehicle_lot || outputs.lot_number || outputs.stock_number || ''
 
                 // Load ID format: "YEAR MAKE MODEL" or fallback to lot number

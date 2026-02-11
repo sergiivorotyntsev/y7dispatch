@@ -8,7 +8,11 @@ export const ZONE_COLORS = {
   pickup_city: { bg: 'rgba(236, 72, 153, 0.3)', border: '#ec4899', name: 'pink' },
   pickup_state: { bg: 'rgba(6, 182, 212, 0.3)', border: '#06b6d4', name: 'cyan' },
   pickup_zip: { bg: 'rgba(132, 204, 22, 0.3)', border: '#84cc16', name: 'lime' },
+  // F2 fix: Unified lot/stock number field
+  vehicle_lot: { bg: 'rgba(251, 146, 60, 0.3)', border: '#fb923c', name: 'orange' },
+  // Backward compat aliases
   lot_number: { bg: 'rgba(251, 146, 60, 0.3)', border: '#fb923c', name: 'orange' },
+  stock_number: { bg: 'rgba(251, 146, 60, 0.3)', border: '#fb923c', name: 'orange' },
   buyer_id: { bg: 'rgba(168, 85, 247, 0.3)', border: '#a855f7', name: 'purple' },
   sale_date: { bg: 'rgba(20, 184, 166, 0.3)', border: '#14b8a6', name: 'teal' },
   total_amount: { bg: 'rgba(34, 197, 94, 0.3)', border: '#22c55e', name: 'emerald' },

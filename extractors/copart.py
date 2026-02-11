@@ -120,7 +120,7 @@ class CopartExtractor(BaseExtractor):
 
         lot_match = re.search(r"LOT#[:\s]+(\d+)", text)
         if lot_match:
-            invoice.lot_number = lot_match.group(1)
+            invoice.vehicle_lot = lot_match.group(1)
 
         date_patterns = [r"Sale[:\s]+(\d{1,2}/\d{1,2}/\d{4})", r"(\d{1,2}/\d{1,2}/\d{4})"]
         for pattern in date_patterns:
@@ -143,7 +143,7 @@ class CopartExtractor(BaseExtractor):
 
         vehicle = self._extract_vehicle(text)
         if vehicle:
-            vehicle.lot_number = invoice.lot_number
+            vehicle.lot_number = invoice.vehicle_lot  # Uses setter for backward compat
             invoice.vehicles.append(vehicle)
 
         total_patterns = [

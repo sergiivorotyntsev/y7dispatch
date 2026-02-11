@@ -158,6 +158,9 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     // Reference info
     buyer_id: { label: 'Buyer ID', category: 'cd_optional', group: 'Reference' },
     buyer_name: { label: 'Buyer Name', category: 'cd_optional', group: 'Reference' },
+    // F2 fix: Unified lot/stock number field
+    vehicle_lot: { label: 'Lot/Stock Number', category: 'cd_optional', group: 'Reference' },
+    // Backward compat aliases
     lot_number: { label: 'Lot Number', category: 'cd_optional', group: 'Reference' },
     stock_number: { label: 'Stock Number', category: 'cd_optional', group: 'Reference' },
 

@@ -842,17 +842,19 @@ LISTING_FIELDS: list[ListingField] = [
         help_text="Total purchase amount (internal use)",
         extraction_hint="TOTAL, AMOUNT DUE, GRAND TOTAL",
     ),
+    # F2 fix: DEPRECATED - Use vehicle_lot instead
+    # Kept for backward compatibility with old data
     ListingField(
         key="stock_number",
-        label="Stock Number",
+        label="Stock Number (Deprecated)",
         section=FieldSection.ADDITIONAL,
-        cd_api_key=None,  # Not sent to CD
+        cd_api_key=None,  # Not sent to CD - use vehicle_lot
         field_type=FieldType.TEXT,
         required=False,
         display_order=9,
         category=FieldCategory.INTERNAL,
         source_type=FieldSourceType.EXTRACTED,
-        help_text="Auction stock number",
+        help_text="DEPRECATED: Use vehicle_lot. Normalized by field_resolver.",
         extraction_hint="STOCK #, STOCK NUMBER",
     ),
     ListingField(

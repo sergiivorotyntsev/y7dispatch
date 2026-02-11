@@ -129,7 +129,8 @@ class IAAExtractor(BaseExtractor):
             invoice.pickup_address = pickup_location
 
         # Extract stock number using learned rules or defaults
-        invoice.stock_number = self._extract_stock_number(text)
+        # F2 fix: Use unified vehicle_lot field
+        invoice.vehicle_lot = self._extract_stock_number(text)
 
         # Extract vehicle
         vehicle = self._extract_vehicle(text)

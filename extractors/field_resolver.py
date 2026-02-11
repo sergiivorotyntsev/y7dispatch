@@ -42,6 +42,10 @@ KEY_ALIASES = {
     "delivery_phone": ["dropoff_phone"],
     # Vehicle fields
     "vehicle_is_inoperable": ["vehicle_condition", "is_inoperable"],
+    # Lot/Stock number unification (F2 fix)
+    # Copart uses lot_number, IAA/Manheim use stock_number
+    # Canonical key is vehicle_lot for CD API compatibility
+    "vehicle_lot": ["lot_number", "stock_number"],
 }
 
 # Build reverse lookup: alias -> canonical
