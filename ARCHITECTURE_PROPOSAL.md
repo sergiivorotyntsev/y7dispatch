@@ -1,8 +1,22 @@
 # Y7Dispatch: Comprehensive System Architecture Proposal
 
-> **Version**: 2.0 | **Date**: 2026-02-11
+> **Version**: 2.1 | **Date**: 2026-02-11
 > **Domain**: dispatch.y7agency.com
 > **Infrastructure**: DigitalOcean
+
+---
+
+## Critical Architecture Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| **Source of Truth** | Database (SQLite/PostgreSQL) | Single SOT avoids conflicts; Sheets API has rate limits |
+| **Sheets Sync** | One-way (DB→Sheets) + webhook override | Polling is unreliable; Apps Script webhook is instant |
+| **Golden Dataset Size** | 150 documents (50 per auction) | 10 docs = 10% error swing; 50 docs = 2% (statistically valid) |
+| **RingCentral SMS** | PAUSED — separate scope | Orthogonal to core pipeline; dilutes focus |
+| **Email Error Handling** | DLQ + deduplication + retry | Production requires no silent failures |
+| **Backup Strategy** | DO Spaces every 6h | RPO=6h, RTO=1h, tested restore |
+| **Claude Model** | claude-haiku-4-5-20251001 | Unified across all docs; verify current pricing |
 
 ---
 
@@ -13,7 +27,7 @@ This document outlines the complete architecture for the Y7Dispatch vehicle tran
 1. **Email → Claude Haiku API → Document Extraction** pipeline
 2. **Template Management System** with field status tracking
 3. **Central Dispatch API V2** compliance and automation
-4. **Google Sheets** as source of truth + export destination
+4. **Database (SQLite/PostgreSQL)** as single source of truth, **Google Sheets** as read-only view + limited override input
 5. **RingCentral Integration** for carrier communication automation
 6. **Management UI** for control and monitoring
 7. **DigitalOcean Deployment** strategy
@@ -108,11 +122,18 @@ This document outlines the complete architecture for the Y7Dispatch vehicle tran
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      GOOGLE SHEETS (Source of Truth)                         │
-│                                                                              │
+│                      DATABASE (Single Source of Truth)                       │
+│                          SQLite / PostgreSQL                                 │
 │  ┌────────────────────────────────────────────────────────────────────┐    │
 │  │  Row: dispatch_id | row_status | vehicle_* | pickup_* | dropoff_* │    │
 │  │       gate_pass  | extraction_score | cd_listing_id | ...         │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │            GOOGLE SHEETS (Read-Only View + Override Input)         │    │
+│  │  • DB → Sheets: Full data sync (one-way display)                  │    │
+│  │  • Sheets → DB: Override columns only via Apps Script webhook     │    │
 │  └────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────┬───────────────────────────────────────────────────┘
                           │
@@ -376,17 +397,17 @@ class HaikuExtractor:
     """
     Claude Haiku-based intelligent extraction service.
 
-    Pricing (2026):
-    - Input: $1.00 / 1M tokens
-    - Output: $5.00 / 1M tokens
-    - With batch API: 50% discount
+    Pricing (2026) — VERIFY CURRENT RATES:
+    - Check https://www.anthropic.com/pricing for latest
+    - Haiku 4.5 pricing may differ from 3.5
+    - With batch API: 50% discount typically available
 
     Estimated cost per document: ~$0.01-0.05
     """
 
     def __init__(self, api_key: str):
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-3-5-haiku-20241022"  # Latest Haiku
+        self.model = "claude-haiku-4-5-20251001"  # Haiku 4.5
 
     async def extract_from_email_body(
         self,
@@ -469,11 +490,92 @@ Return ONLY valid JSON, no explanation:
 3. Send low-confidence fields (< 0.8) to Claude Haiku
 4. Use Claude Haiku for email body extraction (always)
 
+### 5.4 Email Pipeline Error Handling (CRITICAL)
+
+Production reliability requires robust error handling for the email pipeline:
+
+#### 5.4.1 Failure Scenarios
+
+| Scenario | Detection | Action |
+|----------|-----------|--------|
+| Corrupted PDF | pdfplumber exception | Move to DLQ, alert, create MANUAL_REVIEW row |
+| Email without attachment | No PDF detected | Log warning, skip (not an error) |
+| Duplicate email | Hash match in DB | Skip silently, log for audit |
+| Unknown auction format | No template match | Create row with status=MANUAL_REVIEW |
+| Claude API failure | API exception/timeout | Retry with backoff, then DLQ |
+| Extraction below threshold | Confidence < 0.5 | Flag for review, don't auto-export |
+
+#### 5.4.2 Dead Letter Queue (DLQ)
+
+```python
+# models/dlq.py
+
+class DeadLetterEntry(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    email_id: str
+    email_subject: str
+    failure_reason: str  # CORRUPTED_PDF | EXTRACTION_FAILED | API_ERROR | UNKNOWN_FORMAT
+    failure_details: str  # Stack trace or error message
+    attachment_hash: Optional[str]
+    created_at: datetime
+    retry_count: int = 0
+    resolved_at: Optional[datetime] = None
+    resolved_by: Optional[str] = None  # User who manually resolved
+```
+
+#### 5.4.3 Deduplication Strategy
+
+```python
+# Deduplication hash = SHA256(email_message_id + attachment_sha256)
+def get_dedup_hash(email: Email, attachment: bytes) -> str:
+    content = f"{email.message_id}:{hashlib.sha256(attachment).hexdigest()}"
+    return hashlib.sha256(content.encode()).hexdigest()
+
+# Check before processing
+if await db.exists(DocumentHash, hash=dedup_hash):
+    logger.info(f"Duplicate detected: {email.subject}")
+    return  # Skip silently
+```
+
+#### 5.4.4 Retry Strategy
+
+```python
+# Email processing retry with exponential backoff
+RETRY_CONFIG = {
+    "max_attempts": 3,
+    "base_delay": 5,  # seconds
+    "max_delay": 60,
+    "exponential_base": 2
+}
+
+# After max retries: move to DLQ with failure_reason
+```
+
+#### 5.4.5 Alerting
+
+| Event | Channel | Urgency |
+|-------|---------|---------|
+| DLQ entry created | Email + Slack | Medium |
+| DLQ > 5 unresolved entries | Email + SMS | High |
+| Extraction success rate < 80% (1h window) | Slack | Medium |
+| Claude API errors > 10/hour | Email + Slack | High |
+
 ---
 
 ## 6. Google Sheets Integration
 
-### 6.1 Current Schema (V3)
+### 6.1 Architecture: Database as Single Source of Truth
+
+**CRITICAL**: The database (SQLite/PostgreSQL) is the **single source of truth**. Google Sheets is:
+- **Read-only view** for data display and filtering
+- **Limited input layer** for override columns only (via Apps Script webhook, NOT polling)
+
+This architecture avoids:
+- Two sources of truth causing data conflicts
+- Google Sheets API rate limits (~60 req/min)
+- Risk of users accidentally breaking sheet structure
+
+### 6.2 Current Schema (V3)
 
 The existing `sheets_schema_v3.py` is well-designed and matches CD API V2:
 
@@ -482,20 +584,36 @@ The existing `sheets_schema_v3.py` is well-designed and matches CD API V2:
 - **Row status state machine**: NEW → READY → EXPORTED
 - **Override pattern**: `override_{field}` takes precedence
 
-### 6.2 Sync Strategy
+### 6.3 Sync Strategy
 
 ```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│   SQLite DB     │◀────▶│   Sync Worker   │◀────▶│  Google Sheets  │
-│  (Primary)      │      │  (Bidirectional)│      │  (SOT Display)  │
-└─────────────────┘      └─────────────────┘      └─────────────────┘
+┌─────────────────┐                              ┌─────────────────┐
+│   SQLite DB     │                              │  Google Sheets  │
+│  (Single SOT)   │                              │  (View + Input) │
+└────────┬────────┘                              └────────┬────────┘
+         │                                                │
+         │  ┌────────────────────────────────────────┐   │
+         │  │           SYNC DIRECTION               │   │
+         │  │                                        │   │
+         ├──┼──▶ DB → Sheets: ALL data (one-way)    │   │
+         │  │    • Full row sync every N minutes    │   │
+         │  │    • Triggered on document ingestion  │   │
+         │  │                                        │   │
+         │  │    Sheets → DB: OVERRIDE columns ONLY │◀──┤
+         │  │    • Via Apps Script onEdit webhook   │   │
+         │  │    • NOT via polling (no rate limits) │   │
+         │  │    • Immediate, per-cell changes      │   │
+         │  └────────────────────────────────────────┘   │
+         │                                                │
+         ▼                                                ▼
 ```
 
 **Sync rules**:
-1. **Ingestion**: SQLite → Sheets (creates/updates rows)
-2. **User edits**: Sheets → SQLite (OVERRIDE columns only)
-3. **Status changes**: Bidirectional (row_status)
+1. **DB → Sheets**: Full data sync (one-way, display only)
+2. **Sheets → DB**: Override columns ONLY via Apps Script `onEdit` webhook
+3. **No polling**: Apps Script triggers POST to `/api/sheets/override` on edit
 4. **Lock respect**: Never overwrite locked fields
+5. **Reconciliation**: Background job every 5 min to catch any missed webhooks
 
 ### 6.3 Export Features
 
@@ -509,9 +627,14 @@ The existing `sheets_schema_v3.py` is well-designed and matches CD API V2:
 
 ---
 
-## 7. RingCentral Integration (Future)
+## 7. RingCentral Integration (PAUSED — Future Scope)
 
-### 7.1 Architecture Overview
+> **Status**: PAUSED — This feature is orthogonal to the core email→extraction→CD pipeline.
+> **Rationale**: Carrier communication via SMS is a separate product with different requirements.
+> Focus first on Phases 0-3 (core extraction and export pipeline).
+> **Future path**: RingCentral bot can have read-only access to loads database when ready.
+
+### 7.1 Architecture Overview (For Future Reference)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -866,14 +989,29 @@ All operations logged:
 
 ## 11. Open Questions for Clarification
 
-Before proceeding with implementation, please clarify:
+### ⚠️ BLOCKING: Must Resolve Before Phase 1
 
-### 11.1 Business Logic
+These questions MUST be answered before starting implementation:
 
-1. **Pricing Strategy**:
-   - Should we use CD Market Intelligence API for automated pricing?
-   - What's the default markup/discount on market rates?
-   - Floor/ceiling price limits?
+### 11.1 Business Logic (BLOCKING)
+
+1. **Pricing Strategy** ⚠️ BLOCKING:
+   - Who sets the final price? System auto? User always reviews? Hybrid?
+   - If auto: What's the formula? `averagePrice` from CD MI API? With markup?
+   - Floor/ceiling limits? (e.g., never below $200, never above $2000?)
+   - Fallback if CD Market Intelligence unavailable?
+
+   **Decision required**: Define exact pricing algorithm before Phase 1 coding.
+
+   ```
+   Example pricing algorithm (needs approval):
+   1. Fetch CD Market Intelligence averagePrice
+   2. Apply 5% markup for margin
+   3. Round to nearest $25
+   4. Floor: $250, Ceiling: $3000
+   5. Fallback: Use auction profile default + distance calculation
+   6. Final price: ALWAYS require user confirmation before CD export
+   ```
 
 2. **Warehouse Selection**:
    - Current: Manual selection or auto-nearest
@@ -882,6 +1020,7 @@ Before proceeding with implementation, please clarify:
 3. **Gate Pass Handling**:
    - What if Gate Pass is missing from email?
    - Should we block export or use placeholder?
+   - **Current decision**: Flag as NEEDS_REVIEW, don't block export
 
 ### 11.2 Integration Priorities
 

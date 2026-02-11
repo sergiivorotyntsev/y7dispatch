@@ -22,18 +22,23 @@ Phased implementation plan for Y7Dispatch email-to-CD pipeline with Claude Haiku
 
 | # | Deliverable | Description |
 |---|-------------|-------------|
-| 0.1 | **Golden Dataset** | 30 annotated documents (10 Copart, 10 IAA, 10 Manheim) with ground truth for all CD-required fields |
+| 0.1 | **Golden Dataset** | **150 annotated documents** (50 Copart, 50 IAA, 50 Manheim) with ground truth for all CD-required fields. Must include edge cases: missing fields, unusual formats, multi-vehicle lots, various states |
 | 0.2 | **Evaluation Framework** | Automated test harness: precision/recall/F1 per field, overall extraction score |
 | 0.3 | **Regression Suite** | CI integration: any PR that drops metrics below threshold is blocked |
 | 0.4 | **Cost Tracking** | Per-request cost logging (tokens in/out, model used, cached/uncached) |
 | 0.5 | **Baseline Metrics** | Run current extractors against golden set, establish baseline |
+| 0.6 | **Backup Strategy** | Automated DB backups to DigitalOcean Spaces, retention policy, restore testing |
+| 0.7 | **DLQ Infrastructure** | Dead letter queue for failed email processing, alerting, manual resolution UI |
 
 ### Acceptance Criteria
 
-- [ ] `pytest tests/evaluation/` runs against golden set
+- [ ] `pytest tests/evaluation/` runs against 150-document golden set
 - [ ] GitHub Actions workflow blocks PRs with >5% metric drop
 - [ ] Dashboard shows cost per document in real-time
 - [ ] Baseline report generated: current accuracy per field
+- [ ] Automated backups running to DigitalOcean Spaces
+- [ ] Restore procedure tested and documented
+- [ ] DLQ table created with alerting configured
 
 ### Technical Details
 
@@ -41,15 +46,42 @@ Phased implementation plan for Y7Dispatch email-to-CD pipeline with Claude Haiku
 tests/
 ├── evaluation/
 │   ├── golden_dataset/
-│   │   ├── copart/
-│   │   │   ├── doc_001.pdf
-│   │   │   ├── doc_001_ground_truth.json
-│   │   │   └── ...
-│   │   ├── iaa/
-│   │   └── manheim/
+│   │   ├── copart/           # 50 documents
+│   │   │   ├── standard/     # 30 typical documents
+│   │   │   ├── edge_cases/   # 10 unusual formats
+│   │   │   ├── missing_fields/ # 5 docs with missing data
+│   │   │   └── multi_vehicle/  # 5 multi-vehicle lots
+│   │   ├── iaa/              # 50 documents (same structure)
+│   │   └── manheim/          # 50 documents (same structure)
 │   ├── test_extraction_accuracy.py
 │   ├── metrics.py  # precision, recall, F1, extraction_score
 │   └── conftest.py
+```
+
+**Why 150 documents (not 30)?**
+- 10 documents per auction = 10% swing per error (statistically unreliable)
+- 50 documents per auction = 2% swing per error (acceptable variance)
+- Edge cases coverage: different states, old vs new formats, multi-vehicle
+- Minimum for reliable regression testing
+
+### Backup & Recovery (0.6)
+
+```yaml
+# backup_config.yaml
+backup:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  destination: "s3://y7dispatch-backups/db/"
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 3
+  test_restore:
+    frequency: weekly
+    alert_on_failure: true
+
+recovery:
+  rto: 1 hour  # Recovery Time Objective
+  rpo: 6 hours # Recovery Point Objective (max data loss)
 ```
 
 ---
@@ -136,7 +168,7 @@ class ExtractionResult(BaseModel):
 | 2.1 | **Email Processor Upgrade** | Parse email body with Claude Haiku, detect PDF attachments |
 | 2.2 | **Gate Pass Logic** | Extract Gate Pass (Copart/IAA) or Vehicle Release ID (Manheim), flag if missing |
 | 2.3 | **Unified Sheets Schema** | Single spreadsheet for all auctions/customers with filter columns |
-| 2.4 | **Bidirectional Sync** | SQLite ↔ Sheets sync with override respect |
+| 2.4 | **One-Way Sync + Webhook Override** | DB → Sheets (display), Sheets → DB via Apps Script webhook (override columns only) |
 | 2.5 | **Manual Export Script** | Google Apps Script for one-click CD export from Sheets |
 | 2.6 | **Field Status UI** | Visual indicators: green (complete), yellow (needs review), red (missing required) |
 
@@ -145,7 +177,8 @@ class ExtractionResult(BaseModel):
 - [ ] Email arrives → row appears in Sheets within 60 seconds
 - [ ] Gate Pass missing → red indicator, no export block
 - [ ] Vehicle Release ID (Manheim) correctly identified and stored
-- [ ] User edits in Sheets reflect in DB within 30 seconds
+- [ ] User edits override columns → DB updated immediately via Apps Script webhook
+- [ ] Reconciliation job runs every 5 min to catch any missed webhooks
 - [ ] Export script creates CD listing successfully
 
 ### Technical Details
@@ -184,6 +217,51 @@ columns:
 
   # ... remaining CD fields
 ```
+
+### Apps Script Webhook (NOT Polling)
+
+```javascript
+// Google Apps Script: Code.gs
+// Trigger: onEdit (installed trigger, not simple)
+
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet();
+  const range = e.range;
+  const column = range.getColumn();
+
+  // Only send webhook for OVERRIDE columns (columns 50-70)
+  if (column < 50 || column > 70) return;
+
+  const row = range.getRow();
+  const dispatchId = sheet.getRange(row, 1).getValue(); // Column A = dispatch_id
+  const columnName = sheet.getRange(1, column).getValue();
+  const newValue = e.value;
+  const oldValue = e.oldValue;
+
+  // POST to API immediately
+  const payload = {
+    dispatch_id: dispatchId,
+    field: columnName,
+    old_value: oldValue,
+    new_value: newValue,
+    edited_by: Session.getActiveUser().getEmail(),
+    timestamp: new Date().toISOString()
+  };
+
+  UrlFetchApp.fetch('https://dispatch.y7agency.com/api/sheets/override', {
+    method: 'POST',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    headers: { 'X-Sheets-Webhook-Secret': PropertiesService.getScriptProperties().getProperty('WEBHOOK_SECRET') }
+  });
+}
+```
+
+**Why webhooks, not polling?**
+- Polling every 30 seconds would consume ~2,880 API calls/day (just for sync)
+- Google Sheets API rate limit: ~60 requests/minute per project
+- Polling has no change detection — must compare entire sheet each time
+- Webhooks: instant, per-cell, includes who made the change
 
 ---
 
@@ -257,7 +335,11 @@ class CDExporter:
 
 ---
 
-## Phase 4: RingCentral SMS Automation
+## Phase 4: RingCentral SMS Automation (PAUSED — Future Scope)
+
+> **Status**: PAUSED — This phase is orthogonal to the core email→extraction→CD pipeline.
+> **Reason**: Carrier communication is a separate product. Including it dilutes focus.
+> **Future consideration**: RingCentral bot can have read access to DB for load info.
 
 **Goal**: Carrier communication automation with business hours logic.
 
@@ -307,13 +389,15 @@ templates:
 
 ## Milestone Summary
 
-| Phase | Name | Key Outcome | Dependencies |
-|-------|------|-------------|--------------|
-| **0** | Foundation | Evaluation harness, golden dataset | None |
-| **1** | Claude Haiku | Grounded extraction with evidence | Phase 0 |
-| **2** | Email→Sheets | Automated ingestion pipeline | Phase 1 |
-| **3** | CD Export | Market pricing, automated export | Phase 2 |
-| **4** | SMS Automation | Carrier communication | Phase 3 |
+| Phase | Name | Key Outcome | Dependencies | Status |
+|-------|------|-------------|--------------|--------|
+| **0** | Foundation | Evaluation harness, golden dataset (150 docs), backup strategy | None | Active |
+| **1** | Claude Haiku | Grounded extraction with evidence | Phase 0 | Active |
+| **2** | Email→Sheets | Automated ingestion pipeline, webhook-based sync | Phase 1 | Active |
+| **3** | CD Export | Market pricing, automated export | Phase 2 | Active |
+| **4** | SMS Automation | Carrier communication | Phase 3 | **PAUSED** |
+
+**Note**: Phases 0-3 form the core pipeline. Phase 4 is orthogonal and paused until core is stable.
 
 ---
 
@@ -325,7 +409,11 @@ templates:
 | Extraction accuracy regression | CI gate on evaluation metrics |
 | CD API changes | Abstract client, version headers, regression tests |
 | Gate Pass missing | Non-blocking with visual indicator, manual override |
-| Email format variations | Expand golden dataset, add failing cases |
+| Email format variations | Expand golden dataset (150 docs), add failing cases |
+| **Data loss (DB failure)** | Automated backups to Spaces every 6h, tested restore procedure |
+| **Silent email failures** | DLQ with alerting, reconciliation monitoring |
+| **Sheets API rate limits** | Apps Script webhooks (no polling), 5-min reconciliation fallback |
+| **Google Sheets structure broken** | DB is SOT, Sheets is recoverable from DB |
 
 ---
 
