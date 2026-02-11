@@ -334,7 +334,11 @@ class IAAExtractor(BaseExtractor):
         return ""
 
     def _extract_stock_number(self, text: str) -> str:
-        """Extract stock/lot number using learned rules or defaults."""
+        """Extract stock/lot number using learned rules or defaults.
+
+        IAA stock numbers often come in format "000-12345678" but Central Dispatch
+        expects just the numeric part "12345678".
+        """
         # Check for learned rule (allows training to improve extraction)
         rule = self.get_learned_rule("vehicle_lot")
 
@@ -347,7 +351,7 @@ class IAAExtractor(BaseExtractor):
                     stock = match.group(1).strip()
                     if not rule.should_exclude(stock) and len(stock) >= 3:
                         logger.info(f"Stock number from learned rule: {stock}")
-                        return stock
+                        return self._normalize_lot_number(stock)
 
         # Fallback: try default patterns
         stock_patterns = [
@@ -364,9 +368,25 @@ class IAAExtractor(BaseExtractor):
             if match:
                 stock = match.group(1).strip()
                 if len(stock) >= 3:
-                    return stock
+                    return self._normalize_lot_number(stock)
 
         return ""
+
+    def _normalize_lot_number(self, lot: str) -> str:
+        """Normalize IAA lot number by removing '000-' prefix.
+
+        IAA uses format like "000-43699659" but CD expects "43699659".
+        Also handles other prefix patterns like "BK-123456".
+        """
+        if not lot:
+            return ""
+
+        # Remove "000-" prefix (common IAA format)
+        if lot.startswith("000-"):
+            return lot[4:]
+
+        # Keep other alphanumeric prefixes (like "BK-123456") as-is
+        return lot
 
     def _extract_vehicle(self, text: str) -> Optional[Vehicle]:
         vehicle_pattern = r"(\d{3}-\d+)\s+(?:[A-Z]-\d+\s+)?(\d{4})\s+([A-Z]+)\s+([A-Z0-9\s]+?)\s+(White|Black|Silver|Gray|Grey|Red|Blue|Green|Brown|Gold|Beige|Tan)\s+([\d,]+)\s+([A-HJ-NPR-Z0-9]{17})"

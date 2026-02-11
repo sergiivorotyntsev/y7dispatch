@@ -121,6 +121,13 @@ class AuctionInvoice:
     vehicles: list[Vehicle] = field(default_factory=list)
     total_amount: Optional[float] = None
     notes: Optional[str] = None
+    # Seller information (for Manheim OFFSITE pickup name resolution)
+    seller_name: Optional[str] = None
+    seller_address: Optional[Address] = None
+    # Release availability date (if different from sale date)
+    release_available_date: Optional[datetime] = None
+    # Additional release notes for CD (OFFSITE info, special instructions)
+    release_notes: Optional[str] = None
 
     @property
     def reference_id(self) -> str:
@@ -176,10 +183,17 @@ class TransportListing:
         delivery_stop = self.delivery_address.to_cd_stop(2)
         vehicles = [v.to_cd_vehicle() for v in self.invoice.vehicles]
 
+        # Use release_available_date from invoice if available_date not explicitly set
+        effective_available_date = (
+            self.available_date
+            or self.invoice.release_available_date
+            or datetime.utcnow()
+        )
+
         listing = {
             "trailerType": self.trailer_type.value,
             "hasInOpVehicle": has_inop,
-            "availableDate": (self.available_date or datetime.utcnow()).strftime(
+            "availableDate": effective_available_date.strftime(
                 "%Y-%m-%dT00:00:00Z"
             ),
             "price": {
@@ -224,5 +238,14 @@ class TransportListing:
                 )
             else:
                 listing["transportationReleaseNotes"] = location_info
+
+        # Add release notes from invoice (e.g., OFFSITE release instructions)
+        if self.invoice.release_notes:
+            if "transportationReleaseNotes" in listing:
+                listing["transportationReleaseNotes"] = (
+                    f"{listing['transportationReleaseNotes']} | {self.invoice.release_notes}"
+                )
+            else:
+                listing["transportationReleaseNotes"] = self.invoice.release_notes
 
         return listing

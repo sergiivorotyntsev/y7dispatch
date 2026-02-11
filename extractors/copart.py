@@ -7,6 +7,7 @@ from typing import Optional
 
 from extractors.address_parser import extract_lines_after_label
 from extractors.base import BaseExtractor
+from extractors.location_lookup import get_copart_location_name
 from models.vehicle import (
     Address,
     AuctionInvoice,
@@ -225,8 +226,14 @@ class CopartExtractor(BaseExtractor):
             if is_valid_street(potential_street):
                 # Clean up street
                 potential_street = re.sub(r"\s{2,}", " ", potential_street)
+                location_name = get_copart_location_name(
+                    city=potential_city,
+                    state=potential_state,
+                    zip_code=potential_zip,
+                    street=potential_street,
+                )
                 return Address(
-                    name="Copart",
+                    name=location_name,
                     street=potential_street.title(),
                     city=potential_city.title(),
                     state=potential_state,
@@ -261,8 +268,14 @@ class CopartExtractor(BaseExtractor):
                     flags=re.IGNORECASE,
                 )
 
+                location_name = get_copart_location_name(
+                    city=potential_city,
+                    state=potential_state,
+                    zip_code=potential_zip,
+                    street=potential_street,
+                )
                 return Address(
-                    name="Copart",
+                    name=location_name,
                     street=potential_street.title(),
                     city=potential_city.title(),
                     state=potential_state,
@@ -323,8 +336,14 @@ class CopartExtractor(BaseExtractor):
             street = re.sub(r"\s{2,}", " ", street)
             street = re.sub(rf"\s+{re.escape(city)}.*$", "", street, flags=re.IGNORECASE).strip()
 
+            location_name = get_copart_location_name(
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                street=street,
+            )
             return Address(
-                name="Copart",
+                name=location_name,
                 street=street.title(),
                 city=city.title(),
                 state=state,
@@ -563,8 +582,14 @@ class CopartExtractor(BaseExtractor):
 
         # Build address
         if street or (city and state):
+            location_name = get_copart_location_name(
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                street=street,
+            )
             return Address(
-                name="Copart",
+                name=location_name,
                 street=street or "",
                 city=city or "",
                 state=state or "",
@@ -608,8 +633,14 @@ class CopartExtractor(BaseExtractor):
                 break
 
         if street or (city and state):
+            location_name = get_copart_location_name(
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                street=street,
+            )
             return Address(
-                name="Copart",
+                name=location_name,
                 street=street,
                 city=city,
                 state=state,

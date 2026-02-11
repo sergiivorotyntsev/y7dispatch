@@ -1,0 +1,255 @@
+# Copart Locations Reference Data
+# Maps addresses to official location names
+#
+# Format: Use city or zip as primary key, with optional address refinement
+# When pickup_name cannot be extracted from invoice, lookup by address
+
+locations:
+  # Colorado
+  - city: LITTLETON
+    state: CO
+    zip: "80125"
+    address_pattern: "8300 BLAKELAND"
+    name: Copart Denver
+
+  # Massachusetts
+  - city: AYER
+    state: MA
+    zip: "01432"
+    address_pattern: "77 FITCHBURG"
+    name: Copart North Boston
+
+  # Texas
+  - city: HASLET
+    state: TX
+    zip: "76052"
+    address_pattern: "950 BLUE MOUND"
+    name: Copart Dallas Fort Worth
+
+  # Florida
+  - city: RIVERVIEW
+    state: FL
+    zip: "33578"
+    address_pattern: "12020 US HIGHWAY 301"
+    name: Copart Riverview
+
+  # Oregon
+  - city: PORTLAND
+    state: OR
+    zip: "97218"
+    address_pattern: "6900 NORTHEAST CORNFOOT"
+    name: Copart Portland
+
+  # West Virginia
+  - city: HURRICANE
+    state: WV
+    zip: "25526"
+    name: Copart Hurricane
+
+  # Illinois
+  - city: ELGIN
+    state: IL
+    zip: "60120"
+    address_pattern: "1475 BLUFF CITY"
+    name: Copart Elgin
+
+  # Minnesota
+  - city: FRIDLEY
+    state: MN
+    zip: "55421"
+    address_pattern: "3737 EAST RIVER"
+    name: Copart Minneapolis
+
+  # Nevada
+  - city: LAS VEGAS
+    state: NV
+    zip: "89115"
+    address_pattern: "4810 N. LAMB"
+    name: Copart Las Vegas
+
+  # California
+  - city: WILMINGTON
+    state: CA
+    zip: "90744"
+    name: Copart Los Angeles South
+
+  - city: HAYWARD
+    state: CA
+    zip: "94544"
+    name: Copart Hayward
+
+  - city: RANCHO CUCAMONGA
+    state: CA
+    zip: "91739"
+    name: Copart Rancho Cucamonga
+
+  - city: SACRAMENTO
+    state: CA
+    zip: "95828"
+    name: Copart Sacramento
+
+  - city: SAN DIEGO
+    state: CA
+    zip: "92154"
+    name: Copart San Diego
+
+  # Georgia
+  - city: LOGANVILLE
+    state: GA
+    zip: "30052"
+    name: Copart Atlanta East
+
+  - city: AUSTELL
+    state: GA
+    zip: "30168"
+    name: Copart Atlanta South
+
+  # New York
+  - city: BROOKHAVEN
+    state: NY
+    zip: "11719"
+    name: Copart Long Island
+
+  # New Jersey
+  - city: SOMERVILLE
+    state: NJ
+    zip: "08876"
+    name: Copart Somerville
+
+  # Pennsylvania
+  - city: CHALFONT
+    state: PA
+    zip: "18914"
+    name: Copart Philadelphia
+
+  # Arizona
+  - city: PHOENIX
+    state: AZ
+    zip: "85043"
+    name: Copart Phoenix
+
+  - city: TUCSON
+    state: AZ
+    zip: "85706"
+    name: Copart Tucson
+
+  # Washington
+  - city: PUYALLUP
+    state: WA
+    zip: "98374"
+    name: Copart North Seattle
+
+  - city: SPOKANE
+    state: WA
+    zip: "99216"
+    name: Copart Spokane
+
+  # North Carolina
+  - city: CONCORD
+    state: NC
+    zip: "28027"
+    name: Copart Concord
+
+  - city: RALEIGH
+    state: NC
+    zip: "27603"
+    name: Copart Raleigh
+
+  # Ohio
+  - city: COLUMBUS
+    state: OH
+    zip: "43207"
+    name: Copart Columbus
+
+  - city: CLEVELAND
+    state: OH
+    zip: "44125"
+    name: Copart Cleveland
+
+  # Michigan
+  - city: IONIA
+    state: MI
+    zip: "48846"
+    name: Copart Ionia
+
+  - city: WOODHAVEN
+    state: MI
+    zip: "48183"
+    name: Copart Detroit
+
+  # Tennessee
+  - city: NASHVILLE
+    state: TN
+    zip: "37209"
+    name: Copart Nashville
+
+  - city: MEMPHIS
+    state: TN
+    zip: "38118"
+    name: Copart Memphis
+
+  # Missouri
+  - city: ST LOUIS
+    state: MO
+    zip: "63134"
+    name: Copart St Louis
+
+  # Indiana
+  - city: INDIANAPOLIS
+    state: IN
+    zip: "46241"
+    name: Copart Indianapolis
+
+  # Louisiana
+  - city: NEW ORLEANS
+    state: LA
+    zip: "70129"
+    name: Copart New Orleans
+
+  # Oklahoma
+  - city: OKLAHOMA CITY
+    state: OK
+    zip: "73129"
+    name: Copart Oklahoma City
+
+  # Maryland
+  - city: BRANDYWINE
+    state: MD
+    zip: "20613"
+    name: Copart DC
+
+  # Connecticut
+  - city: EAST WINDSOR
+    state: CT
+    zip: "06088"
+    name: Copart Hartford
+
+  # Virginia
+  - city: FREDERICKSBURG
+    state: VA
+    zip: "22408"
+    name: Copart Fredericksburg
+
+  # Kentucky
+  - city: WALTON
+    state: KY
+    zip: "41094"
+    name: Copart Louisville
+
+  # South Carolina
+  - city: COLUMBIA
+    state: SC
+    zip: "29203"
+    name: Copart Columbia
+
+  # Alabama
+  - city: BIRMINGHAM
+    state: AL
+    zip: "35224"
+    name: Copart Birmingham
+
+  # Wisconsin
+  - city: MILWAUKEE
+    state: WI
+    zip: "53224"
+    name: Copart Milwaukee
