@@ -520,6 +520,12 @@ class BatchJobProcessor:
             result.status = BatchItemStatus.FAILED
             result.error_message = error_msg
 
+            try:
+                from services.alerting import alert_export_failure
+                alert_export_failure(run_id, error_msg)
+            except Exception:
+                pass  # Alerting must never break the pipeline
+
         return result
 
 

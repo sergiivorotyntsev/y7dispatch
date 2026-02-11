@@ -825,6 +825,13 @@ class ZoneExtractor:
 
         logger.info(f"Zone extraction complete: {len(fields)} fields, confidence={confidence:.2f}")
 
+        if confidence < 0.90:
+            try:
+                from services.alerting import alert_accuracy_drop
+                alert_accuracy_drop(0, confidence, threshold=0.90)
+            except Exception:
+                pass
+
         return ExtractionResult(
             fields=fields,
             zone_texts=zone_texts,

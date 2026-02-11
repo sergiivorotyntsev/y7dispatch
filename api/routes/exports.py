@@ -915,6 +915,11 @@ async def send_to_cd_with_retry(
                     cd_listing_id=cd_listing_id,
                     request_id=request_id,
                 )
+                try:
+                    from services.alerting import alert_export_failure
+                    alert_export_failure(run_id, response.get("error", "Unknown error"))
+                except Exception:
+                    pass
             return False, response, None
 
     # All retries exhausted
@@ -927,6 +932,11 @@ async def send_to_cd_with_retry(
             cd_listing_id=cd_listing_id,
             request_id=request_id,
         )
+        try:
+            from services.alerting import alert_export_failure
+            alert_export_failure(run_id, "Max retries exceeded")
+        except Exception:
+            pass
     return False, last_error or {"error": "Max retries exceeded"}, None
 
 

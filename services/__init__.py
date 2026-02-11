@@ -1,5 +1,6 @@
 """Services for Vehicle Transport Automation."""
 
+from services.alerting import Severity, alert_accuracy_drop, alert_batch_item_failed, alert_daily_cost, alert_export_failure, send_alert
 from services.cd_exporter import (
     CDDefaults,
     CDDefaultsLoader,
@@ -45,4 +46,11 @@ __all__ = [
     "PricingResult",
     "Urgency",
     "get_pricing_engine",
+    # Alerting
+    "Severity",
+    "send_alert",
+    "alert_export_failure",
+    "alert_batch_item_failed",
+    "alert_accuracy_drop",
+    "alert_daily_cost",
 ]

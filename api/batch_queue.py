@@ -149,10 +149,20 @@ class BatchQueue:
                 item.status = "completed" if result.get("success") else "failed"
                 if not result.get("success"):
                     item.error = result.get("error", "Unknown error")
+                    try:
+                        from services.alerting import alert_batch_item_failed
+                        alert_batch_item_failed(job_id, item.run_id, item.error)
+                    except Exception:
+                        pass  # Alerting must never break the pipeline
             except Exception as e:
                 item.status = "failed"
                 item.error = str(e)
                 logger.error(f"Job {job_id} item {i} failed: {e}")
+                try:
+                    from services.alerting import alert_batch_item_failed
+                    alert_batch_item_failed(job_id, item.run_id, str(e))
+                except Exception:
+                    pass
 
             item.completed_at = datetime.now().isoformat()
 
