@@ -112,6 +112,20 @@ DELETE  services/training_service.py
 #     ...
 ```
 
+> **⚠️ ВАЖНО: Training Endpoints (Day 3 follow-up)**
+>
+> Audit показал 17 endpoints в категории "Models/training". После переименования
+> `training_service.py` → `correction_rules_service.py` эти endpoints остались живыми.
+> Если в Day 1 они не были отключены — добавить в Day 3:
+>
+> ```bash
+> # Найти training-related endpoints
+> grep -r "train\|model\|weights\|epochs" api/routes/ --include="*.py"
+>
+> # Отключить те, которые НЕ обслуживают correction_rules_service
+> # Оставить только: GET/POST /api/corrections/rules (если есть)
+> ```
+
 #### Финал дня 1:
 
 ```bash
@@ -133,25 +147,124 @@ pytest tests/ -v --tb=short
 
 ### A2. E2E Tests (Дни 2–4)
 
+> **ВАЖНО**: Не создавать параллельную структуру fixtures. Использовать существующие
+> `tests/sample_docs/` (22 PDF) и `tests/golden_set/expected/` (6 ground truth JSON).
+> Дублирование данных → через месяц два набора которые расходятся.
+
 #### Структура:
 
 ```
 tests/
-├── e2e/
-│   ├── conftest.py          # Shared fixtures, test DB, mock CD API
-│   ├── fixtures/
-│   │   ├── copart_sample.pdf
-│   │   ├── copart_ground_truth.json
-│   │   ├── iaa_sample.pdf
-│   │   ├── iaa_ground_truth.json
-│   │   ├── manheim_sample.pdf
-│   │   ├── manheim_ground_truth.json
-│   │   └── corrupted.pdf
+├── sample_docs/             # СУЩЕСТВУЮЩИЕ (22 PDF) — НЕ КОПИРОВАТЬ
+│   ├── copart_*.pdf
+│   ├── iaa_*.pdf
+│   └── manheim_*.pdf
+├── golden_set/
+│   └── expected/            # СУЩЕСТВУЮЩИЕ (6 JSON) — НЕ КОПИРОВАТЬ
+│       ├── copart_*.json
+│       ├── iaa_*.json
+│       └── manheim_*.json
+├── e2e/                     # НОВОЕ — только тестовые файлы
+│   ├── conftest.py          # Fixtures ССЫЛАЮТСЯ на sample_docs/golden_set
 │   ├── test_copart_pipeline.py
 │   ├── test_iaa_pipeline.py
 │   ├── test_manheim_pipeline.py
 │   ├── test_cd_export.py
 │   └── test_error_handling.py
+```
+
+#### Day 2 Prompt (строго Track A)
+
+> **Перед началом**: прочитать этот документ (v3.1), секция A2 — там полный код тестов.
+> Реализовать по этому шаблону.
+>
+> **Шаг 0** (30 мин): Quick audit pipeline routes
+> - Проследить call chain: email_worker → extraction → DB → sheets_exporter → cd_exporter
+> - Записать конкретные endpoints каждого шага (POST /api/documents/process, GET /api/extractions/{id}, и т.д.)
+> - Это твой "map" для E2E тестов
+>
+> **Шаг 1**: Создать `tests/e2e/conftest.py`
+> - Fixtures для test DB (изолированная SQLite, tmp_path)
+> - Mock CD API client (из v3.1, класс mock_cd_api)
+> - Fixtures ссылаются на `tests/sample_docs/` и `tests/golden_set/expected/` — **не копировать файлы**
+>
+> **Шаг 2**: Написать `tests/e2e/test_copart_pipeline.py` по шаблону ниже
+> - `test_extraction_creates_db_row` — DB row exists, status=NEW, auction_type=COPART
+> - `test_vin_accuracy` — VIN matches ground_truth exactly
+> - `test_address_extraction` — city, state, zip match
+> - `test_gate_pass_from_email_body` — gate pass PIN extracted
+> - `test_confidence_scores_present` — every field has 0.0-1.0 confidence
+>
+> **Шаг 3**: Написать `tests/e2e/test_iaa_pipeline.py` — те же 5 assertions, IAA fixtures
+>
+> **Шаг 4**: Запустить, убедиться что green
+> ```bash
+> pytest tests/e2e/ -v --tb=short
+> # Ожидаемый output: 10 passed (5 per auction)
+> ```
+>
+> **Если тест fails**: исправить extraction code, не тест. Тест — это specification,
+> он правильный по определению (данные из ground truth).
+>
+> **НЕ делать сегодня**: frontend, evidence overlay, backend polish, refactoring, новые endpoints, UI
+> **Track B начинается Day 4-5. Сегодня только Track A.**
+>
+> **Коммит**: `test: add E2E pipeline tests for Copart and IAA`
+
+#### Test conftest.py (правильный подход)
+
+```python
+# tests/e2e/conftest.py
+
+import pytest
+import json
+from pathlib import Path
+
+# ИСПОЛЬЗОВАТЬ СУЩЕСТВУЮЩИЕ ДИРЕКТОРИИ — НЕ КОПИРОВАТЬ ФАЙЛЫ
+SAMPLE_DOCS = Path("tests/sample_docs")
+GOLDEN_SET = Path("tests/golden_set/expected")
+
+@pytest.fixture
+def copart_pdf():
+    """Copart sample PDF из существующего golden set"""
+    files = list(SAMPLE_DOCS.glob("*copart*"))
+    assert len(files) > 0, "No Copart sample in tests/sample_docs/"
+    return files[0].read_bytes()
+
+@pytest.fixture
+def copart_ground_truth():
+    """Copart ground truth из существующего golden set"""
+    files = list(GOLDEN_SET.glob("*copart*"))
+    assert len(files) > 0, "No Copart ground truth in tests/golden_set/expected/"
+    return json.loads(files[0].read_text())
+
+@pytest.fixture
+def iaa_pdf():
+    """IAA sample PDF"""
+    files = list(SAMPLE_DOCS.glob("*iaa*"))
+    assert len(files) > 0, "No IAA sample in tests/sample_docs/"
+    return files[0].read_bytes()
+
+@pytest.fixture
+def iaa_ground_truth():
+    """IAA ground truth"""
+    files = list(GOLDEN_SET.glob("*iaa*"))
+    assert len(files) > 0, "No IAA ground truth"
+    return json.loads(files[0].read_text())
+
+@pytest.fixture
+def manheim_pdf():
+    """Manheim sample PDF"""
+    files = list(SAMPLE_DOCS.glob("*manheim*"))
+    assert len(files) > 0, "No Manheim sample in tests/sample_docs/"
+    return files[0].read_bytes()
+
+@pytest.fixture
+def manheim_ground_truth():
+    """Manheim ground truth"""
+    files = list(GOLDEN_SET.glob("*manheim*"))
+    assert len(files) > 0, "No Manheim ground truth"
+    return json.loads(files[0].read_text())
 ```
 
 #### Test 1-3: Auction Pipelines (шаблон одинаковый)
@@ -166,17 +279,8 @@ class TestCopartPipeline:
     """
     Full pipeline: PDF file → extraction → DB row → field validation
     Uses real Copart PDF from golden dataset.
+    Fixtures ссылаются на tests/sample_docs/ и tests/golden_set/expected/
     """
-
-    @pytest.fixture
-    def sample_pdf(self):
-        return Path("tests/e2e/fixtures/copart_sample.pdf").read_bytes()
-
-    @pytest.fixture
-    def ground_truth(self):
-        return json.loads(
-            Path("tests/e2e/fixtures/copart_ground_truth.json").read_text()
-        )
 
     async def test_extraction_creates_db_row(self, sample_pdf, ground_truth):
         """PDF → extraction → DB row exists with correct status"""
@@ -666,62 +770,84 @@ if accuracy < 0.90:
 
 ## 5. Финальный Timeline
 
+> **Tracking Table — один разработчик**
+> | День | Track A | Track B | Метрика |
+> |------|---------|---------|---------|
+> | Day 1 ✅ | Dead code removal | — | 385 tests passed |
+> | **Day 2** | **2 E2E теста (Copart, IAA)** | **—** | `pytest tests/e2e/ -v` → 10 passed |
+> | Day 3 | E2E тест 3 (Manheim) + disable training endpoints | — | 15 passed + endpoint list |
+> | Day 4 | E2E тесты 4-5 (Export, Errors) + webhook verify | Evidence Overlay fix | 25+ passed |
+> | Day 5 | Week 1 checkpoint | UI 4 pages check | All gates for Week 1 |
+>
+> Track B сдвинут на Day 4-5 — это реалистичнее для одного разработчика чем параллельная работа с Day 1.
+
 ```
 НЕДЕЛЯ 1: Clean + Stabilize
 ═══════════════════════════════════════════════════
 
-День 1 (Пн) ──────────────────────────────────────
+День 1 (Пн) ✅ COMPLETE ──────────────────────────
   TRACK A: Dead code removal (A1)
-    ✂ Delete sheets v1/v2, rename v3
-    ✂ Delete ClickUp
-    ✂ Refactor training_service → correction_rules_service
-    ✂ Endpoint audit: disable unused
-    ✓ Run full test suite
-    ✓ Commit
-    
-  TRACK B: Evidence Overlay (B1)
-    🔧 Fix coordinate transform formula
-    🧪 Test with 5 documents
+    ✅ Delete sheets v1/v2, rename v3
+    ✅ Delete ClickUp
+    ✅ Refactor training_service → correction_rules_service
+    ✅ Endpoint audit: disable unused
+    ✅ Run full test suite (385 passed)
+    ✅ Commit: "chore(cleanup): Day 1 dead code removal"
 
-День 2 (Вт) ──────────────────────────────────────
+  TRACK B: — (отложен)
+
+День 2 (Вт) — СТРОГО TRACK A ─────────────────────
   TRACK A: E2E tests — Copart + IAA (A2)
-    ✍ test_copart_pipeline.py (5 assertions)
-    ✍ test_iaa_pipeline.py (5 assertions)
-    
-  TRACK B: Evidence Overlay continued
-    🧪 Test remaining documents
-    📝 If broken → fallback to text evidence
+    📋 Шаг 0: Quick audit pipeline routes (30 мин)
+       - Проследить call chain: email_worker → extraction → DB → sheets → cd_export
+       - Записать конкретные endpoints каждого шага
+    ✍ Шаг 1: tests/e2e/conftest.py (fixtures → sample_docs/, golden_set/)
+    ✍ Шаг 2: test_copart_pipeline.py (5 assertions)
+    ✍ Шаг 3: test_iaa_pipeline.py (5 assertions)
+    ✓ Шаг 4: pytest tests/e2e/ -v → 10 passed
+
+  TRACK B: — (НЕ делать сегодня)
+
+  📝 Если тест fails → исправить extraction code, не тест
 
 День 3 (Ср) ──────────────────────────────────────
-  TRACK A: E2E test — Manheim (A2)
-    ✍ test_manheim_pipeline.py
-    
-  TRACK B: Documents page stabilization (B2)
-    🔧 Status badges, filters, sort
+  TRACK A: E2E test — Manheim + disable training endpoints
+    ✍ test_manheim_pipeline.py (5 assertions)
+    ⚠️ Disable 17 training-related endpoints (пропущено в Day 1)
+       - Отключить endpoints которые обслуживали training_service
+       - Оставить только те что обслуживают correction_rules_service
+
+  TRACK B: — (отложен до Day 4)
 
 День 4 (Чт) ──────────────────────────────────────
   TRACK A: Sheets consolidation (A3) + E2E tests 4-5
     🔧 Verify webhook override
     🔧 Add reconciliation job
-    ✍ test_cd_export.py
-    ✍ test_error_handling.py
-    
-  TRACK B: Review page stabilization (B2)
-    🔧 Field list, confidence colors, inline edit
+    ✍ test_cd_export.py (6 assertions)
+    ✍ test_error_handling.py (5 assertions)
+
+  TRACK B: Evidence Overlay (B1) — НАЧАЛО
+    🔧 Fix coordinate transform formula
+    🧪 Test with 5 documents
+    📝 If broken → fallback to text evidence
 
 День 5 (Пт) ──────────────────────────────────────
   TRACK A: All 5 E2E tests must pass
+    ✓ pytest tests/e2e/ -v → 25+ passed
     ✓ Green CI pipeline
-    
-  TRACK B: TestLab + Settings pages (B2)
-    🔧 Upload + extract flow
-    🔧 Connection status indicators
+
+  TRACK B: UI pages quick check (B2)
+    🧪 Documents page: table loads, status badges work
+    🧪 Review page: fields display, inline edit works
+    🧪 TestLab page: upload + extract flow
+    🧪 Settings page: connection indicators
 
   ┌──────────────────────────────────────────────┐
   │ WEEK 1 EXIT GATE:                            │
-  │ ☐ 5 E2E tests passing                       │
+  │ ☐ 5 E2E test files (25+ assertions) passing │
   │ ☐ Zero dead code                             │
   │ ☐ One sheets exporter                        │
+  │ ☐ Training endpoints disabled (17 routes)    │
   │ ☐ 4 UI pages functional (may have rough UX)  │
   └──────────────────────────────────────────────┘
 
