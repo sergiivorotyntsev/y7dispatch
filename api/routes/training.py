@@ -18,7 +18,7 @@ from models.training import (
     ExtractionRule,
     FieldCorrectionCreate,
 )
-from services.training_service import TrainingService
+from services.correction_rules_service import CorrectionRulesService
 
 
 def init_training_schema():
@@ -96,7 +96,7 @@ def submit_corrections(request: SubmitCorrectionsRequest, session: Session = Dep
     3. Triggers learning to update extraction rules
     4. Returns updated training stats
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
 
     # Convert request corrections to model format
     corrections = [
@@ -157,7 +157,7 @@ def get_training_stats(
     """
     Get training statistics for all auction types or a specific one.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     stats = service.get_training_stats(auction_type_id)
     return TrainingStatsResponse(**stats)
 
@@ -169,7 +169,7 @@ def get_extraction_rules(
     """
     Get extraction rules for an auction type.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     rules = service.get_extraction_rules(auction_type_id, field_key)
 
     return [
@@ -192,7 +192,7 @@ def get_rules_for_extractor(auction_type_code: str, session: Session = Depends(g
     """
     Get extraction rules in format suitable for extractors.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     return service.get_rules_for_extractor(auction_type_code)
 
 
@@ -219,7 +219,7 @@ def get_field_confidence(auction_type_id: int, session: Session = Depends(get_se
 
     Returns dict of field_key -> confidence info for UI display.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     rules = service.get_extraction_rules(auction_type_id)
 
     result = {}
@@ -249,7 +249,7 @@ def get_learning_progress(session: Session = Depends(get_session)):
 
     Shows how much the system has learned across all auction types.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     stats = service.get_training_stats()
 
     total_rules = 0

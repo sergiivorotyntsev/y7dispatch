@@ -319,14 +319,14 @@ class TestPayloadBuilder:
 
     def test_row_to_cd_payload_structure(self):
         """Test payload has correct CD V2 structure."""
-        from services.cd_sheet_exporter_v2 import CDSheetExporterV2
+        from services.cd_sheet_exporter import CDSheetExporter
 
         # Create exporter with mock configs
         mock_sheets_config = Mock()
         mock_cd_config = Mock()
         mock_cd_config.enabled = False
 
-        exporter = CDSheetExporterV2(mock_sheets_config, mock_cd_config)
+        exporter = CDSheetExporter(mock_sheets_config, mock_cd_config)
 
         row = {
             "dispatch_id": "DC-20260130-COPART-ABC12345",
@@ -425,13 +425,13 @@ class TestPayloadBuilder:
 
     def test_override_applied_in_payload(self):
         """Test that overrides are applied in payload."""
-        from services.cd_sheet_exporter_v2 import CDSheetExporterV2
+        from services.cd_sheet_exporter import CDSheetExporter
 
         mock_sheets_config = Mock()
         mock_cd_config = Mock()
         mock_cd_config.enabled = False
 
-        exporter = CDSheetExporterV2(mock_sheets_config, mock_cd_config)
+        exporter = CDSheetExporter(mock_sheets_config, mock_cd_config)
 
         row = {
             "dispatch_id": "DC-20260130-COPART-ABC12345",

@@ -362,14 +362,14 @@ class TestTrainingModels:
 
 
 @pytest.mark.skipif(True, reason="Requires sqlmodel which may not be installed in test env")
-class TestTrainingServiceMocked:
-    """Tests for TrainingService with mocked database."""
+class TestCorrectionRulesServiceMocked:
+    """Tests for CorrectionRulesService with mocked database."""
 
     def test_save_corrections(self):
         """Test saving corrections creates training records."""
         pytest.importorskip("sqlmodel")
         from models.training import FieldCorrectionCreate
-        from services.training_service import TrainingService
+        from services.correction_rules_service import CorrectionRulesService
 
         mock_session = MagicMock()
 
@@ -380,7 +380,7 @@ class TestTrainingServiceMocked:
         mock_run.extracted_text = "Sample text"
         mock_session.get.return_value = mock_run
 
-        service = TrainingService(mock_session)
+        service = CorrectionRulesService(mock_session)
 
         corrections = [
             FieldCorrectionCreate(
@@ -614,11 +614,11 @@ class TestUnmatchedFieldsDetection:
 
     def test_find_context_returns_none_for_missing_value(self):
         """Test that _find_context returns None when value not in text."""
-        from services.training_service import TrainingService
+        from services.correction_rules_service import CorrectionRulesService
         from unittest.mock import MagicMock
 
         session = MagicMock()
-        service = TrainingService(session)
+        service = CorrectionRulesService(session)
 
         text = "Some document text here"
         value = "VALUE_NOT_IN_TEXT"
@@ -628,11 +628,11 @@ class TestUnmatchedFieldsDetection:
 
     def test_find_context_returns_context_when_found(self):
         """Test that _find_context returns context when value found."""
-        from services.training_service import TrainingService
+        from services.correction_rules_service import CorrectionRulesService
         from unittest.mock import MagicMock
 
         session = MagicMock()
-        service = TrainingService(session)
+        service = CorrectionRulesService(session)
 
         text = "Some prefix text THE VALUE IS HERE more text after"
         value = "THE VALUE IS HERE"

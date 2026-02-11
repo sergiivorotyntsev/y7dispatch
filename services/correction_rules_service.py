@@ -1,11 +1,14 @@
 """
-Training Service for Extraction Learning System
+Correction Rules Service - Extraction Pattern Learning
 
 This service handles:
-1. Saving user corrections from review
-2. Analyzing corrections to learn extraction patterns
+1. Saving user corrections from review UI
+2. Analyzing corrections to learn extraction patterns (rule-based, not ML)
 3. Generating and updating extraction rules
 4. Providing learned rules to extractors
+
+Note: This is rule-based pattern learning, not ML/PEFT.
+At scale (100+ docs/day), accumulated rules provide +3-5% accuracy improvement.
 """
 
 import json
@@ -26,8 +29,8 @@ from models.training import (
 logger = logging.getLogger(__name__)
 
 
-class TrainingService:
-    """Service for managing extraction training and learning."""
+class CorrectionRulesService:
+    """Service for managing extraction rules learned from user corrections."""
 
     def __init__(self, session: Session):
         self.session = session

@@ -65,7 +65,7 @@ class SessionContext:
 
     Example:
         with SessionContext() as session:
-            service = TrainingService(session)
+            service = CorrectionRulesService(session)
             ...
     """
 

@@ -2125,7 +2125,7 @@ async def apply_production_corrections_to_training(
     """
     from api.database import get_connection
     from api.training_db import get_session
-    from services.training_service import TrainingService
+    from services.correction_rules_service import CorrectionRulesService
 
     if not correction_ids and not apply_all_pending:
         raise HTTPException(
@@ -2168,7 +2168,7 @@ async def apply_production_corrections_to_training(
         # Apply to training service
         session = next(get_session())
         try:
-            service = TrainingService(session)
+            service = CorrectionRulesService(session)
 
             for _at_code, corrections in by_auction.items():
                 for corr in corrections:

@@ -757,12 +757,12 @@ def run_extraction(
                 # Training rules can provide additional patterns for extraction
                 # =================================================================
                 try:
-                    from services.training_service import TrainingService
+                    from services.correction_rules_service import CorrectionRulesService
                     from api.training_db import SessionContext
 
                     with SessionContext() as session:
-                        training_service = TrainingService(session)
-                        learned_rules = training_service.get_rules_for_extractor(auction_type.code)
+                        rules_service = CorrectionRulesService(session)
+                        learned_rules = rules_service.get_rules_for_extractor(auction_type.code)
 
                         if learned_rules:
                             metrics["training_rules_applied"] = len(learned_rules)

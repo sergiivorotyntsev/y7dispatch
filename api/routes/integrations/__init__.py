@@ -2,7 +2,6 @@
 Integrations Module
 
 Aggregates all integration routers:
-- ClickUp
 - Google Sheets
 - Central Dispatch
 - Email
@@ -13,7 +12,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Query
 
-from api.routes.integrations import cd, clickup, csv_export, email, oauth, sheets, webhook
+# DISABLED 2026-02-11: ClickUp integration removed
+from api.routes.integrations import cd, csv_export, email, oauth, sheets, webhook
 from api.routes.integrations.utils import (
     AuditLogEntry,
     decrypt_secret,
@@ -27,7 +27,8 @@ from api.routes.integrations.utils import (
 router = APIRouter(prefix="/api/integrations", tags=["Integrations"])
 
 # Include all integration routers
-router.include_router(clickup.router)
+# DISABLED 2026-02-11: ClickUp integration removed
+# router.include_router(clickup.router)
 router.include_router(sheets.router)
 router.include_router(cd.router)
 router.include_router(email.router)

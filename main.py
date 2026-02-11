@@ -550,7 +550,8 @@ def cmd_validate(args):
     """Validate all credentials."""
     from core.config import load_config_from_env
     from ingest.email_reader import create_email_reader
-    from services.clickup import ClickUpClient
+    # DISABLED 2026-02-11: ClickUp integration removed
+    # from services.clickup import ClickUpClient
 
     print("Validating credentials...")
     print("-" * 50)
@@ -582,28 +583,24 @@ def cmd_validate(args):
         if not args.skip_email:
             all_ok = False
 
-    # Validate ClickUp
-    print("\n[ClickUp]")
-    if config.clickup.token and config.clickup.list_id:
-        print(f"  List ID: {config.clickup.list_id}")
-
-        try:
-            client = ClickUpClient(
-                token=config.clickup.token,
-                list_id=config.clickup.list_id,
-            )
-            if client.validate_credentials():
-                print("  Status: OK")
-            else:
-                print("  Status: FAILED - Invalid credentials")
-                all_ok = False
-        except Exception as e:
-            print(f"  Status: ERROR - {e}")
-            all_ok = False
-    else:
-        print("  Status: NOT CONFIGURED")
-        if not args.skip_clickup:
-            all_ok = False
+    # DISABLED 2026-02-11: ClickUp integration removed
+    # print("\n[ClickUp]")
+    # if config.clickup.token and config.clickup.list_id:
+    #     print(f"  List ID: {config.clickup.list_id}")
+    #     try:
+    #         client = ClickUpClient(token=config.clickup.token, list_id=config.clickup.list_id)
+    #         if client.validate_credentials():
+    #             print("  Status: OK")
+    #         else:
+    #             print("  Status: FAILED - Invalid credentials")
+    #             all_ok = False
+    #     except Exception as e:
+    #         print(f"  Status: ERROR - {e}")
+    #         all_ok = False
+    # else:
+    #     print("  Status: NOT CONFIGURED")
+    #     if not args.skip_clickup:
+    #         all_ok = False
 
     # Validate Central Dispatch (optional)
     print("\n[Central Dispatch]")
@@ -839,9 +836,9 @@ def cmd_sheets_upsert(args):
 
     # Upsert to sheets
     try:
-        from services.sheets_exporter_v2 import SheetsExporterV2
+        from services.sheets_exporter import SheetsExporter
 
-        exporter = SheetsExporterV2(config.sheets, sheet_name=args.sheet or "Pickups")
+        exporter = SheetsExporter(config.sheets, sheet_name=args.sheet or "Pickups")
         result = exporter.upsert_record(record)
 
         print()
