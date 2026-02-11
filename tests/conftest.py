@@ -65,10 +65,13 @@ def setup_test_environment():
             )
 
     yield
-    # Cleanup
+    # Cleanup — tolerate Windows file locks on SQLite DBs
     for p in (TEST_DB_PATH, TEST_TRAINING_DB_PATH):
-        if os.path.exists(p):
-            os.remove(p)
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except PermissionError:
+            pass  # Windows: SQLAlchemy may still hold a file lock
 
 
 @pytest.fixture(scope="session")

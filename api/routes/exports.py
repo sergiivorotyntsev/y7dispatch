@@ -1164,7 +1164,7 @@ async def list_export_jobs(
             ExportJobResponse(
                 id=data["id"],
                 status=data["status"],
-                target=data["target"],
+                target=data.get("target", "central_dispatch"),
                 payload_json=data.get("payload_json"),
                 response_json=data.get("response_json"),
                 error_message=data.get("error_message"),

@@ -1282,6 +1282,12 @@ class ExtractionRunRepository:
                 data = dict(row)
                 if data.get("outputs_json"):
                     data["outputs_json"] = json.loads(data["outputs_json"])
+                if data.get("errors_json"):
+                    data["errors_json"] = json.loads(data["errors_json"])
+                if data.get("metrics_json"):
+                    data["metrics_json"] = json.loads(data["metrics_json"])
+                if data.get("field_sources_json"):
+                    data["field_sources_json"] = json.loads(data["field_sources_json"])
                 result.append(ExtractionRun(**data))
             return result
 
