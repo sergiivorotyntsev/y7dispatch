@@ -9,14 +9,15 @@ from services.cd_exporter import (
     CDPayloadValidator,
 )
 from services.central_dispatch import APIError, CentralDispatchClient
-from services.clickup import ClickUpClient
+# DISABLED 2026-02-11: ClickUp removed per directive v3.1
+# from services.clickup import ClickUpClient
 from services.idempotency import IdempotencyStore
 from services.sheets import PickupRecord, PickupStatus, SheetsClient
 from services.warehouse import RoutingResult, Warehouse, WarehouseRouter
 
 __all__ = [
-    # ClickUp
-    "ClickUpClient",
+    # DISABLED 2026-02-11: ClickUp removed per directive v3.1
+    # "ClickUpClient",
     # Central Dispatch
     "CentralDispatchClient",
     "APIError",

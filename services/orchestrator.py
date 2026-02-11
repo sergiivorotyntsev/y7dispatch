@@ -23,7 +23,8 @@ from extractors import extract_from_pdf
 from extractors.gate_pass import GatePassExtractor
 from ingest.email_reader import Attachment, EmailMessage, create_email_reader
 from models.vehicle import AuctionInvoice
-from services.clickup import ClickUpClient, ClickUpTask
+# DISABLED 2026-02-11: ClickUp removed per directive v3.1
+# from services.clickup import ClickUpClient, ClickUpTask
 from services.idempotency import IdempotencyStore
 
 logger = get_logger(__name__)

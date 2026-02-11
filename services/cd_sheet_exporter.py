@@ -25,7 +25,7 @@ from schemas.sheets_schema_v2 import (
     get_column_index,
     get_final_value,
 )
-from services.sheets_exporter_v2 import SheetsExporterV2
+from services.sheets_exporter import SheetsExporter
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class CDSheetExporter:
         self.sheets_config = sheets_config
         self.cd_config = cd_config
         self.sheet_name = sheet_name
-        self.exporter = SheetsExporterV2(sheets_config, sheet_name)
+        self.exporter = SheetsExporter(sheets_config, sheet_name)
         self._cd_client = None
 
     def _get_cd_client(self):

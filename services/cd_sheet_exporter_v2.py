@@ -26,7 +26,7 @@ from schemas.sheets_schema_v3 import (
     apply_all_overrides,
     validate_row_for_ready,
 )
-from services.sheets_exporter_v3 import SheetsExporterV3
+from services.sheets_exporter import SheetsExporter
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +64,10 @@ class CDSheetExporterV2:
         self._cd_client = None
 
     @property
-    def sheets_exporter(self) -> SheetsExporterV3:
+    def sheets_exporter(self) -> SheetsExporter:
         """Get or create sheets exporter."""
         if self._sheets_exporter is None:
-            self._sheets_exporter = SheetsExporterV3(
+            self._sheets_exporter = SheetsExporter(
                 self.sheets_config,
                 sheet_name=self.sheet_name,
             )

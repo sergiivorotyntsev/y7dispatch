@@ -550,7 +550,8 @@ def cmd_validate(args):
     """Validate all credentials."""
     from core.config import load_config_from_env
     from ingest.email_reader import create_email_reader
-    from services.clickup import ClickUpClient
+    # DISABLED 2026-02-11: ClickUp removed per directive v3.1
+    # from services.clickup import ClickUpClient
 
     print("Validating credentials...")
     print("-" * 50)
@@ -839,9 +840,9 @@ def cmd_sheets_upsert(args):
 
     # Upsert to sheets
     try:
-        from services.sheets_exporter_v2 import SheetsExporterV2
+        from services.sheets_exporter import SheetsExporter
 
-        exporter = SheetsExporterV2(config.sheets, sheet_name=args.sheet or "Pickups")
+        exporter = SheetsExporter(config.sheets)
         result = exporter.upsert_record(record)
 
         print()
