@@ -1,0 +1,1919 @@
+{
+  "generated_at": "2026-02-11T07:05:16.172868",
+  "model": "claude-haiku-4-5-20251001",
+  "docs_count": 23,
+  "success_count": 23,
+  "total_cost_usd": 0.0164,
+  "total_tokens": 41747,
+  "results": [
+    {
+      "file": "12-17-2025_5515588_Vehicle_Sale_Documents.pdf",
+      "status": "success",
+      "auction_type": "MANHEIM",
+      "confidence": 1.0,
+      "cost_usd": 0.000969,
+      "tokens": 2811,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "YV4A22PMXG1037898",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2016",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "Volvo",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "XC90",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Silver",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "2025-51-94-275",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Manheim Portland",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "3000 N Hayden Island Dr",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Portland",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "OR",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "97217",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(503) 286-3000",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "5515588",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "CARVANA, LLC",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-15",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "6832.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "12-19-2025_5515588_Vehicle_Sale_Documents.pdf",
+      "status": "success",
+      "auction_type": "MANHEIM",
+      "confidence": 1.0,
+      "cost_usd": 0.000977,
+      "tokens": 2857,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "WA15AAFY3N2026748",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2022",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "Audi",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "Q5",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Gray",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "2025-51-94-158",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Manheim Riverside",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "6446 Fremont St",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Riverside",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "CA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "92504",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(951) 689-6000",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "5515588",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "VW CREDIT",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-17",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "20215.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "12-22-2025_5515588_Vehicle_Sale_Documents.pdf",
+      "status": "success",
+      "auction_type": "MANHEIM",
+      "confidence": 1.0,
+      "cost_usd": 0.000978,
+      "tokens": 2830,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "2C4RC1GG7KR574756",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2019",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "Chrysler",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "Pacifica",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Black",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "VAN",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "2025-49-94-1151",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Manheim NY Metro Skyline",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "100 Us Highway 46",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Fairfield",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "NJ",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "07004",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(973) 227-0100",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "5515588",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "CARVANA, LLC",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-02",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "7676.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "12-30-2025_5515588_Vehicle_Sale_Documents.pdf",
+      "status": "success",
+      "auction_type": "MANHEIM",
+      "confidence": 1.0,
+      "cost_usd": 0.000983,
+      "tokens": 2862,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "2FMPK3K96KBC02618",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2019",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "Ford",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "Edge",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Gray",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "2025-52-94-2",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Manheim Fort Lauderdale",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "5353 S STATE ROAD 7",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "DAVIE",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "FL",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "33314",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(954) 791-3520",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "5515588",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "MERIDIAN REMARKETING",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-22",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "7300.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "12-31-2025_5515588_Vehicle_Sale_Documents.pdf",
+      "status": "success",
+      "auction_type": "MANHEIM",
+      "confidence": 1.0,
+      "cost_usd": 0.000958,
+      "tokens": 2767,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "WA1VAAF74HD045051",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2017",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "Audi",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "Q7",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Black",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "2025-53-92-36",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Manheim NY Metro Skyline",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "12 Barbara Dr",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Syosset",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "NY",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "11791",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(917) 683-4691",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "5515588",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "NY AUTOTRADER INC",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-29",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "12680.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "12-31-2025_5515588_Vehicle_Sale_Documents1.pdf",
+      "status": "success",
+      "auction_type": "MANHEIM",
+      "confidence": 1.0,
+      "cost_usd": 0.000976,
+      "tokens": 2841,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "YV4A22PN5G1003540",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2016",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "Volvo",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "XC90",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Black",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "2025-52-94-1164",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Manheim Framingham",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "63 Western Ave",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Framingham",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "MA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "01702",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(833) 289-3533",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "5515588",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "CARVANA, LLC",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-23",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "8576.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport (1)1.pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000583,
+      "tokens": 1300,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "YV4M12RC3S1068682",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2025",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "VOLVO",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "XC60",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Blue",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43699659",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Los Angeles South",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "1903 N Blinn Ave",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Wilmington",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "CA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "90744",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(562) 378-0330",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-11",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "16932.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport (2).pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000594,
+      "tokens": 1315,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "YV1902AH4D1171979",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2013",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "VOLVO",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "S80",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Gray",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43896533",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "IAA Branch 640 - Taunton",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "580 Myricks Street",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "East Taunton",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "MA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "02718",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(508) 823-7440",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-31",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "1090.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport (4).pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000596,
+      "tokens": 1359,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "WBA73AK06L7F98003",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2020",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "BMW",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "228I GRAN",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Gray",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43597865",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Boston - Shirley",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "2 Going Rd",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Shirley",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "MA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "01464",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(978) 425-0990",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-25",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "10210.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport.pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000584,
+      "tokens": 1310,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "WA1CCAFP4GA133227",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2016",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "AUDI",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "SQ5",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Black",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43666048",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "East Bay",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "2780 Willow Pass Road",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Bay Point",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "CA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "94565",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(925) 458-7610",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-24",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "8955.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport1.pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000588,
+      "tokens": 1333,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "2T3W1RFV4SW396639",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2025",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "TOYOTA",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "RAV4",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Red",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43602559",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "IAA Lafayette",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "425 Highway 93 N",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Scott",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "LA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "70583",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(337) 896-3829",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-29",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "15060.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport3.pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000584,
+      "tokens": 1308,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "WMWWJ5C02L3L40041",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2020",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "MINI",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "CONVERTIBL",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Orange",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43894355",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "York Springs",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "10 Auction Drive",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Latimore Township",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "PA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "17372",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(717) 528-4336",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-24",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "5005.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport41.pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000594,
+      "tokens": 1323,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "1C4SDJCT7MC520550",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2021",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "DODGE",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "DURANGO",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "White",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43871598",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "IAA Puyallup",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "15801 110th Ave E",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Puyallup",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "WA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "98374",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(253) 604-2300",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-24",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "9765.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "ShowReport6.pdf",
+      "status": "success",
+      "auction_type": "IAA",
+      "confidence": 1.0,
+      "cost_usd": 0.000593,
+      "tokens": 1319,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "5UX53GP06S9Y20172",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2025",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "BMW",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "X3",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "Champagne",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "000-43724097",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Branch 817 - Dream Rides",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "14149 Brandywine Road",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "Brandywine",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "MD",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "20613",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "(301) 372-8876",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "593509",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "Broadway Motoring Inc",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "Insurance Auto Auctions Corp",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-22",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "31772.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice (1).pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000632,
+      "tokens": 1498,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "2FMPK4K9XNBA29051",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2022",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "FORD",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "EDGE",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "TITAN GRAY",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "90758145",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart Littleton",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "8300 BLAKELAND DRIVE",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "LITTLETON",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "CO",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "80125",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "STATE FARM",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-29",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "7475.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice (12).pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000651,
+      "tokens": 1585,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "WVWLF7AU9FW245472",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2015",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "VOLKSWAGEN",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "GOLF R",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "GRAY",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "92835005",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "77 FITCHBURG ROAD",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "AYER",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "MA",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "01432",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "STATE FARM-FLORIDA",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-29",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "10375.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice (13).pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000649,
+      "tokens": 1579,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "1C6SRFJT6MN789197",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2021",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "RAM",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "1500",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "GRAY",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "TRUCK",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "90793555",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "950 BLUE MOUND ROAD WEST",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "HASLET",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "TX",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "76052",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "LIBERTY MUTUAL COMM",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-26",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "15345.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice.pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000635,
+      "tokens": 1505,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "JTDKAMFU6N3164401",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2022",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "TOYOTA",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "PRIUS",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "RED",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "95541835",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart Riverview",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "12020 US HIGHWAY 301 SOUTH",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "RIVERVIEW",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "FL",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "33578",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "GEICO - HOME OFFICE",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-30",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "7275.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice2.pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000633,
+      "tokens": 1502,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "1FA6P8AM8F5342934",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2015",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "FORD",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "MUSTANG",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "RED",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "81774455",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart Portland",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "6900 NORTHEAST CORNFOOT ROAD",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "PORTLAND",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "OR",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "97218",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "911591234",
+          "confidence": 1.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "ALLSTATE-RAPID SETTLEMENT",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-29",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "3895.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice21.pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000621,
+      "tokens": 1491,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "1C4RDJEGXFC177587",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2015",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "DODGE",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "DURANGO",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "BLACK",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "92495695",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart Hurricane",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "77 FITCHBURG ROAD",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "HURRICANE",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "WV",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "25526",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "PROGRESSIVE",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-12",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "3835.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice3.pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000645,
+      "tokens": 1568,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "55SWF4KB4FU033087",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2015",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "MERCEDES-BENZ",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "C 300",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "BLACK",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "94118105",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "8300 BLAKELAND DRIVE",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "LITTLETON",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "CO",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "80125",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "STATE FARM",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-24",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "5005.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice4.pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000709,
+      "tokens": 1767,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "55SWF4KB8FU087590",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2015",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "MERCEDES-BENZ",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "C 300",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "BLACK",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "CAR",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "94181345",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart Elgin",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "1475 BLUFF CITY BLVD",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "ELGIN",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "IL",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "60120",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING INC",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "COUNTRY - TOTAL LOSS UNIT 1",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-23",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "5567.0",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "file": "invoice5.pdf",
+      "status": "success",
+      "auction_type": "COPART",
+      "confidence": 1.0,
+      "cost_usd": 0.000691,
+      "tokens": 1717,
+      "error": "",
+      "fields": {
+        "vehicle_vin": {
+          "value": "WA1EAAFY2N2134844",
+          "confidence": 1.0
+        },
+        "vehicle_year": {
+          "value": "2022",
+          "confidence": 1.0
+        },
+        "vehicle_make": {
+          "value": "AUDI",
+          "confidence": 1.0
+        },
+        "vehicle_model": {
+          "value": "Q5",
+          "confidence": 1.0
+        },
+        "vehicle_color": {
+          "value": "GRAY",
+          "confidence": 1.0
+        },
+        "vehicle_type": {
+          "value": "SUV",
+          "confidence": 1.0
+        },
+        "vehicle_lot": {
+          "value": "82515875",
+          "confidence": 1.0
+        },
+        "pickup_name": {
+          "value": "Copart",
+          "confidence": 1.0
+        },
+        "pickup_address": {
+          "value": "3737 EAST RIVER ROAD",
+          "confidence": 1.0
+        },
+        "pickup_city": {
+          "value": "FRIDLEY",
+          "confidence": 1.0
+        },
+        "pickup_state": {
+          "value": "MN",
+          "confidence": 1.0
+        },
+        "pickup_zip": {
+          "value": "55421",
+          "confidence": 1.0
+        },
+        "pickup_phone": {
+          "value": "",
+          "confidence": 0.0
+        },
+        "buyer_id": {
+          "value": "535527",
+          "confidence": 1.0
+        },
+        "buyer_name": {
+          "value": "BROADWAY MOTORING",
+          "confidence": 1.0
+        },
+        "seller_name": {
+          "value": "AFMIC-AM FAM MUTUAL INS CO, INC",
+          "confidence": 1.0
+        },
+        "sale_date": {
+          "value": "2025-12-23",
+          "confidence": 1.0
+        },
+        "total_amount": {
+          "value": "18839.0",
+          "confidence": 1.0
+        }
+      }
+    }
+  ]
+}

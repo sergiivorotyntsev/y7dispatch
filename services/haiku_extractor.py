@@ -111,64 +111,62 @@ class ExtractionResult:
         }
 
 
-# Extraction prompt template (will be refined iteratively)
-EXTRACTION_PROMPT = """You are an expert document extractor for vehicle auction invoices.
+# Extraction prompt template (will be refined iteratively based on user feedback)
+EXTRACTION_PROMPT = """Extract auction invoice fields from this document. Return ONLY valid JSON.
 
-Extract the following fields from this auction document. For each field, provide the exact value as found in the document.
-
-## Required Fields:
-- vehicle_vin: 17-character Vehicle Identification Number
-- vehicle_year: 4-digit year (e.g., 2024)
-- vehicle_make: Manufacturer (e.g., Honda, Toyota, Ford)
-- vehicle_model: Model name (e.g., Accord, Camry, F-150)
-- vehicle_color: Color if mentioned
-- vehicle_type: CAR, SUV, TRUCK, VAN, or MOTORCYCLE
-- vehicle_lot: Lot number or Stock number
-
-- pickup_name: Location/yard name (e.g., "Copart Dallas")
-- pickup_address: Street address of pickup location
-- pickup_city: City
-- pickup_state: 2-letter state code (e.g., TX, CA)
-- pickup_zip: 5-digit ZIP code
-- pickup_phone: Phone number if available
-
+Fields to extract:
+- auction_type: "COPART" | "IAA" | "MANHEIM" | "UNKNOWN"
+- vehicle_vin: 17-character VIN
+- vehicle_year: 4-digit year (integer)
+- vehicle_make: Manufacturer name
+- vehicle_model: Model name
+- vehicle_color: Color if mentioned, else null
+- vehicle_type: "CAR" | "SUV" | "TRUCK" | "VAN" | "MOTORCYCLE"
+- vehicle_lot: Lot/Stock number
+- pickup_name: Location name (e.g., "Copart Dallas")
+- pickup_address: Street address
+- pickup_city: City name
+- pickup_state: 2-letter state code
+- pickup_zip: 5-digit ZIP
+- pickup_phone: Phone number if available, else null
 - buyer_id: Buyer/Member ID number
-- buyer_name: Buyer company or person name
-- seller_name: Seller/Insurance company name
-- sale_date: Date of sale (YYYY-MM-DD format)
-- total_amount: Total sale amount in USD (number only, no $)
+- buyer_name: Buyer name/company
+- seller_name: Seller/Insurance company
+- sale_date: Date in YYYY-MM-DD format
+- total_amount: Total in USD (number only)
 
-## Auction Type Detection:
-Identify the auction type based on document content:
-- COPART: Look for "Copart", "SOLD THROUGH COPART", "copart.com"
-- IAA: Look for "Insurance Auto Auctions", "IAA", "iaai.com"
-- MANHEIM: Look for "Manheim", "manheim.com"
+Auction detection:
+- COPART: "Copart", "SOLD THROUGH COPART", "copart.com"
+- IAA: "Insurance Auto Auctions", "IAA", "iaai.com"
+- MANHEIM: "Manheim", "manheim.com"
 
-## Output Format:
-Return a JSON object with exactly this structure:
-{
-  "auction_type": "COPART" | "IAA" | "MANHEIM" | "UNKNOWN",
-  "fields": {
-    "vehicle_vin": {"value": "...", "confidence": 0.0-1.0, "evidence": "quoted text from document"},
-    "vehicle_year": {"value": ..., "confidence": 0.0-1.0, "evidence": "..."},
-    ...
-  }
-}
+Return JSON only, no markdown, no explanation:
+{{
+  "auction_type": "...",
+  "vehicle_vin": "...",
+  "vehicle_year": 2024,
+  "vehicle_make": "...",
+  "vehicle_model": "...",
+  "vehicle_color": "...",
+  "vehicle_type": "...",
+  "vehicle_lot": "...",
+  "pickup_name": "...",
+  "pickup_address": "...",
+  "pickup_city": "...",
+  "pickup_state": "XX",
+  "pickup_zip": "12345",
+  "pickup_phone": null,
+  "buyer_id": "...",
+  "buyer_name": "...",
+  "seller_name": "...",
+  "sale_date": "YYYY-MM-DD",
+  "total_amount": 0.00
+}}
 
-Rules:
-- If a field is not found, set value to null and confidence to 0.0
-- confidence should reflect how certain you are (1.0 = found exact match, 0.5 = inferred)
-- evidence should be the exact text snippet where you found the value
-- For VIN: must be exactly 17 characters, no I, O, or Q
-- For dates: convert to YYYY-MM-DD format
-- For amounts: extract number only, no currency symbols or commas
-
-Document text follows:
+Document:
 ---
 {document_text}
----
-
-Return only the JSON object, no additional text."""
+---"""
 
 
 class HaikuExtractor:
@@ -287,11 +285,23 @@ class HaikuExtractor:
             if parsed:
                 result.auction_type = parsed.get("auction_type", "UNKNOWN")
 
-                for field_name, field_data in parsed.get("fields", {}).items():
-                    if isinstance(field_data, dict):
-                        value = field_data.get("value")
-                        confidence = field_data.get("confidence", 1.0)
-                        evidence_text = field_data.get("evidence", "")
+                # Handle both formats:
+                # 1. Flat: {"auction_type": "COPART", "vehicle_vin": "..."}
+                # 2. Nested: {"auction_type": "COPART", "fields": {"vehicle_vin": {"value": "..."}}}
+
+                fields_data = parsed.get("fields", {})
+
+                if fields_data:
+                    # Nested format with fields object
+                    for field_name, field_data in fields_data.items():
+                        if isinstance(field_data, dict):
+                            value = field_data.get("value")
+                            confidence = field_data.get("confidence", 1.0)
+                            evidence_text = field_data.get("evidence", "")
+                        else:
+                            value = field_data
+                            confidence = 1.0
+                            evidence_text = ""
 
                         if value is not None:
                             result.fields[field_name] = ExtractedField(
@@ -299,13 +309,29 @@ class HaikuExtractor:
                                 confidence=confidence,
                                 source=FieldSource.EXTRACTED
                             )
-
                             if evidence_text:
                                 result.evidence[field_name] = Citation(
                                     field_name=field_name,
-                                    page_number=1,  # TODO: detect actual page
-                                    text_span=evidence_text[:200]  # Truncate long evidence
+                                    page_number=1,
+                                    text_span=str(evidence_text)[:200]
                                 )
+                else:
+                    # Flat format - all fields at top level
+                    field_names = [
+                        "vehicle_vin", "vehicle_year", "vehicle_make", "vehicle_model",
+                        "vehicle_color", "vehicle_type", "vehicle_lot",
+                        "pickup_name", "pickup_address", "pickup_city", "pickup_state",
+                        "pickup_zip", "pickup_phone",
+                        "buyer_id", "buyer_name", "seller_name", "sale_date", "total_amount"
+                    ]
+                    for field_name in field_names:
+                        value = parsed.get(field_name)
+                        if value is not None:
+                            result.fields[field_name] = ExtractedField(
+                                value=value,
+                                confidence=1.0,
+                                source=FieldSource.EXTRACTED
+                            )
 
                 # Calculate overall confidence
                 if result.fields:
@@ -319,23 +345,34 @@ class HaikuExtractor:
         return result
 
     def _parse_response(self, response_text: str) -> Optional[dict]:
-        """Parse JSON from Claude response."""
+        """Parse JSON from Claude response, handling markdown code blocks."""
+        import re
+
+        # Remove markdown code blocks if present
+        # Handle ```json ... ``` or ``` ... ```
+        cleaned = response_text.strip()
+        if cleaned.startswith("```"):
+            # Remove opening ```json or ```
+            cleaned = re.sub(r'^```(?:json)?\s*\n?', '', cleaned)
+            # Remove closing ```
+            cleaned = re.sub(r'\n?```\s*$', '', cleaned)
+
         try:
             # Try direct JSON parse
-            return json.loads(response_text)
+            return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
 
-        # Try to find JSON in response
+        # Try to find JSON object in response
         try:
-            start = response_text.find("{")
-            end = response_text.rfind("}") + 1
+            start = cleaned.find("{")
+            end = cleaned.rfind("}") + 1
             if start >= 0 and end > start:
-                return json.loads(response_text[start:end])
+                return json.loads(cleaned[start:end])
         except json.JSONDecodeError:
             pass
 
-        logger.warning("Could not parse JSON from response")
+        logger.warning(f"Could not parse JSON from response: {response_text[:100]}...")
         return None
 
     def extract_batch(
