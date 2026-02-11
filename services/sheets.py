@@ -76,6 +76,16 @@ class PickupRecord:
     clickup_task_url: str = ""
     cd_listing_id: str = ""
 
+    # Pricing (hybrid: system suggests, user confirms)
+    suggested_price: str = ""  # System-calculated price from CD Market Intelligence
+    price_source: str = ""  # CD_MARKET_INTELLIGENCE / MANUAL_REQUIRED / USER_OVERRIDE
+    final_price: str = ""  # User override (empty = accept suggested_price)
+    price_status: str = ""  # PENDING_REVIEW / ACCEPTED / ADJUSTED / MANUAL
+    price_warnings: str = ""  # Comma-separated warnings
+    price_floor: str = ""  # Calculated floor
+    price_ceiling: str = ""  # Calculated ceiling
+    avg_market_price: str = ""  # Average dispatch price from market data
+
     # Status tracking
     status: str = PickupStatus.RECEIVED.value
     error_message: str = ""
@@ -121,6 +131,16 @@ class PickupRecord:
             self.clickup_task_id,
             self.clickup_task_url,
             self.cd_listing_id,
+            # Pricing fields
+            self.suggested_price,
+            self.price_source,
+            self.final_price,
+            self.price_status,
+            self.price_warnings,
+            self.price_floor,
+            self.price_ceiling,
+            self.avg_market_price,
+            # Status and metadata
             self.status,
             self.error_message,
             self.attachment_hash,
@@ -132,8 +152,8 @@ class PickupRecord:
     @classmethod
     def from_row(cls, row: list[str]) -> "PickupRecord":
         """Create from sheet row."""
-        # Pad row if needed
-        while len(row) < 33:
+        # Pad row if needed (41 columns with pricing fields)
+        while len(row) < 41:
             row.append("")
 
         return cls(
@@ -164,12 +184,22 @@ class PickupRecord:
             clickup_task_id=row[24],
             clickup_task_url=row[25],
             cd_listing_id=row[26],
-            status=row[27],
-            error_message=row[28],
-            attachment_hash=row[29],
-            attachment_name=row[30],
-            created_at=row[31],
-            updated_at=row[32],
+            # Pricing fields
+            suggested_price=row[27],
+            price_source=row[28],
+            final_price=row[29],
+            price_status=row[30],
+            price_warnings=row[31],
+            price_floor=row[32],
+            price_ceiling=row[33],
+            avg_market_price=row[34],
+            # Status and metadata
+            status=row[35],
+            error_message=row[36],
+            attachment_hash=row[37],
+            attachment_name=row[38],
+            created_at=row[39],
+            updated_at=row[40],
         )
 
     @classmethod
@@ -203,6 +233,16 @@ class PickupRecord:
             "clickup_task_id",
             "clickup_task_url",
             "cd_listing_id",
+            # Pricing fields
+            "suggested_price",
+            "price_source",
+            "final_price",
+            "price_status",
+            "price_warnings",
+            "price_floor",
+            "price_ceiling",
+            "avg_market_price",
+            # Status and metadata
             "status",
             "error_message",
             "attachment_hash",
@@ -279,7 +319,7 @@ class SheetsClient:
             .values()
             .get(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range("A1:AG1"),
+                range=self._get_range("A1:AO1"),
             )
             .execute()
         )
@@ -310,7 +350,7 @@ class SheetsClient:
             .values()
             .append(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range("A:AG"),
+                range=self._get_range("A:AO"),
                 valueInputOption="RAW",
                 insertDataOption="INSERT_ROWS",
                 body={"values": [record.to_row()]},
@@ -320,7 +360,7 @@ class SheetsClient:
 
         # Parse the updated range to get row number
         updated_range = result.get("updates", {}).get("updatedRange", "")
-        # Format: 'Sheet'!A5:AG5
+        # Format: 'Sheet'!A5:AO5
         if "!" in updated_range:
             range_part = updated_range.split("!")[-1]
             row_num = int("".join(filter(str.isdigit, range_part.split(":")[0])))
@@ -339,7 +379,7 @@ class SheetsClient:
 
         service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
-            range=self._get_range(f"A{row_number}:AG{row_number}"),
+            range=self._get_range(f"A{row_number}:AO{row_number}"),
             valueInputOption="RAW",
             body={"values": [record.to_row()]},
         ).execute()
@@ -356,7 +396,8 @@ class SheetsClient:
         # Search in sheet
         service = self._get_service()
 
-        # Get all idempotency keys (columns E and AD)
+        # Get all idempotency keys (columns E and AL)
+        # E = thread_root_id (column 5), AL = attachment_hash (column 38)
         result = (
             service.spreadsheets()
             .values()
@@ -374,7 +415,7 @@ class SheetsClient:
             .values()
             .get(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range("AD:AD"),  # attachment_hash column
+                range=self._get_range("AL:AL"),  # attachment_hash column
             )
             .execute()
         )
@@ -411,7 +452,7 @@ class SheetsClient:
             .values()
             .get(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range("A:AG"),
+                range=self._get_range("A:AO"),
             )
             .execute()
         )
@@ -445,7 +486,7 @@ class SheetsClient:
             .values()
             .get(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range(f"A{row_number}:AG{row_number}"),
+                range=self._get_range(f"A{row_number}:AO{row_number}"),
             )
             .execute()
         )

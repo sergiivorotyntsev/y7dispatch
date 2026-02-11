@@ -1,0 +1,54 @@
+# Pricing Engine Configuration
+# See services/pricing_engine.py for implementation
+
+# Urgency multipliers applied to base price
+# STANDARD: Normal pickup (5-7 days)
+# PRIORITY: Faster pickup (2-4 days)
+# URGENT: Same-day or next-day (24-48h)
+urgency:
+  standard: 1.0
+  priority: 1.12
+  urgent: 1.25
+
+# Floor constraints (minimum price)
+floor:
+  # Minimum price per mile (no carrier will take less)
+  per_mile_minimum: 0.40
+
+  # Absolute minimum price (even for very short distances)
+  absolute_minimum: 100.0
+
+  # Minimum as percentage of market average
+  # E.g., 0.85 = don't list below 85% of avg dispatch price
+  market_floor_multiplier: 0.85
+
+# Ceiling constraints (maximum price)
+ceiling:
+  # Maximum per-mile for open trailer
+  per_mile_maximum_open: 3.00
+
+  # Maximum per-mile for enclosed trailer
+  per_mile_maximum_enclosed: 4.00
+
+  # Maximum as percentage of market average
+  # E.g., 1.50 = don't list above 150% of avg dispatch price
+  market_ceiling_multiplier: 1.50
+
+# Warning thresholds (yellow zone - alerts but doesn't block)
+warnings:
+  # Warn if price is below this % of market
+  # E.g., 0.90 = warn if < 90% of avg dispatch price
+  low_price_threshold: 0.90
+
+  # Warn if price is above this % of market
+  # E.g., 1.30 = warn if > 130% of avg dispatch price
+  high_price_threshold: 1.30
+
+# Fallback settings when Market Intelligence API is unavailable
+fallback:
+  # If true, show empty field with MANUAL_REQUIRED status
+  # If false, calculate estimate based on distance
+  require_manual_on_api_failure: true
+
+  # Default per-mile rate for fallback estimates (if require_manual_on_api_failure: false)
+  fallback_per_mile_rate: 0.75

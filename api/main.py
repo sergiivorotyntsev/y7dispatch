@@ -45,6 +45,7 @@ from api.routes import (
     integrations,
     metrics,
     models,
+    pricing,
     reviews,
     runs,
     settings,
@@ -129,6 +130,7 @@ app.include_router(training.router, prefix="/api")
 app.include_router(metrics.router)  # M3.P1.5: Metrics endpoints
 app.include_router(cd_listings.router)  # CD Listings API v2 preview + push
 app.include_router(templates.router)  # Zone-based extraction templates
+app.include_router(pricing.router)  # Pricing recommendations via CD Market Intelligence
 
 
 # =============================================================================
