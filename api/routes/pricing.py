@@ -292,6 +292,140 @@ def record_price_override(request: OverrideRequest) -> OverrideResponse:
     )
 
 
+class RunPricingResponse(BaseModel):
+    """Full pricing response for a run ID with all market data."""
+
+    run_id: int
+    suggested_price: Optional[float] = None
+    source: str = "MANUAL_REQUIRED"
+    floor: Optional[float] = None
+    ceiling: Optional[float] = None
+    avg_dispatch: Optional[float] = None
+    avg_listing: Optional[float] = None
+    spread: Optional[float] = None
+    warnings: list[str] = Field(default_factory=list)
+    urgency: str = "STANDARD"
+    urgency_multiplier: float = 1.0
+    data_points: int = 0
+    cached: bool = False
+    distance_miles: Optional[float] = None
+    pickup_location: Optional[str] = None
+    delivery_location: Optional[str] = None
+
+
+@router.get("/recommend/{run_id}", response_model=RunPricingResponse)
+def get_run_pricing(run_id: int, urgency: str = "STANDARD") -> RunPricingResponse:
+    """
+    Get full pricing recommendation for an extraction run.
+
+    Reads extraction data from DB and returns full market data
+    including floor/ceiling, avg dispatch/listing, spread, and warnings.
+    Accepts urgency query param to adjust recommendation.
+    """
+    import json
+
+    from api.models import ExtractionRunRepository, ReviewItemRepository
+
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Extraction run not found")
+
+    # Collect field values from review items + outputs
+    items = ReviewItemRepository.get_by_run(run_id)
+    data = {}
+    for item in items:
+        value = item.corrected_value if item.corrected_value else item.predicted_value
+        data[item.source_key] = value
+
+    if run.outputs_json:
+        outputs = run.outputs_json if isinstance(run.outputs_json, dict) else json.loads(run.outputs_json)
+        for key, value in outputs.items():
+            if key not in data:
+                data[key] = value
+
+    # Extract locations
+    pickup_city = data.get("pickup_city")
+    pickup_state = data.get("pickup_state")
+    delivery_city = data.get("delivery_city") or data.get("dropoff_city")
+    delivery_state = data.get("delivery_state") or data.get("dropoff_state")
+
+    pickup_location = f"{pickup_city}, {pickup_state}" if pickup_city and pickup_state else None
+    delivery_location = f"{delivery_city}, {delivery_state}" if delivery_city and delivery_state else None
+
+    # Need both locations for pricing
+    if not pickup_city or not pickup_state or not delivery_city or not delivery_state:
+        return RunPricingResponse(
+            run_id=run_id,
+            source="MANUAL_REQUIRED",
+            warnings=["Missing pickup or delivery location"],
+            pickup_location=pickup_location,
+            delivery_location=delivery_location,
+        )
+
+    # Parse urgency
+    try:
+        urg = Urgency(urgency.upper())
+    except ValueError:
+        urg = Urgency.STANDARD
+
+    # Build domain objects
+    origin = Address(
+        city=pickup_city,
+        state=pickup_state,
+        postal_code=data.get("pickup_zip"),
+    )
+    destination = Address(
+        city=delivery_city,
+        state=delivery_state,
+        postal_code=data.get("delivery_zip") or data.get("dropoff_zip"),
+    )
+    vehicle = Vehicle(
+        vin=data.get("vehicle_vin"),
+        year=int(data["vehicle_year"]) if data.get("vehicle_year") else None,
+        make=data.get("vehicle_make"),
+        model=data.get("vehicle_model"),
+        vehicle_type=data.get("vehicle_type", "SEDAN"),
+        is_operable=str(data.get("vehicle_is_inoperable", "false")).lower() not in ("true", "yes", "1"),
+    )
+
+    try:
+        engine = get_pricing_engine()
+        rec = engine.calculate_recommended_price(
+            origin=origin,
+            destination=destination,
+            vehicle=vehicle,
+            urgency=urg,
+        )
+
+        return RunPricingResponse(
+            run_id=run_id,
+            suggested_price=rec.price,
+            source=rec.source.value,
+            floor=rec.floor,
+            ceiling=rec.ceiling,
+            avg_dispatch=rec.avg_dispatch_price,
+            avg_listing=rec.avg_listing_price,
+            spread=rec.spread,
+            warnings=rec.warnings,
+            urgency=rec.urgency.value,
+            urgency_multiplier=rec.urgency_multiplier,
+            data_points=rec.market_data_count,
+            cached=rec.cached,
+            distance_miles=rec.distance_miles,
+            pickup_location=pickup_location,
+            delivery_location=delivery_location,
+        )
+    except Exception as e:
+        logger.error(f"Pricing engine error for run {run_id}: {e}", exc_info=True)
+        return RunPricingResponse(
+            run_id=run_id,
+            source="MANUAL_REQUIRED",
+            warnings=[f"Pricing calculation failed: {str(e)}"],
+            pickup_location=pickup_location,
+            delivery_location=delivery_location,
+        )
+
+
 @router.get("/config")
 def get_pricing_config() -> dict:
     """

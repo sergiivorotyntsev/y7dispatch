@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api'
 import PreflightBanner from '../components/PreflightBanner'
 import PdfZoneViewer from '../components/PdfZoneViewer'
+import ExportPreviewModal from '../components/ExportPreviewModal'
 
 /**
  * Format a field key into a human-readable label.
@@ -61,24 +62,39 @@ function Review() {
   // Market Intelligence Pricing
   const [pricing, setPricing] = useState(null)
   const [pricingLoading, setPricingLoading] = useState(false)
+  const [urgency, setUrgency] = useState('STANDARD')
+  const [finalPrice, setFinalPrice] = useState('')
+
+  // Export flow state
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportResult, setExportResult] = useState(null) // {cd_listing_id, status}
+  const [exportError, setExportError] = useState(null)
 
   // Production mode fields
   const [loadSpecificTerms, setLoadSpecificTerms] = useState('')
   const [transportSpecialInstructions, setTransportSpecialInstructions] = useState('')
 
   // Load pricing recommendation
-  const loadPricing = useCallback(async () => {
+  const loadPricing = useCallback(async (urg) => {
     if (!runId) return
     setPricingLoading(true)
     try {
-      const data = await api.getPricingRecommendation(runId)
+      const data = await api.getFullPricing(runId, urg || urgency)
       setPricing(data)
     } catch (err) {
-      console.error('Failed to load pricing:', err)
+      console.error('Failed to load full pricing, falling back:', err)
+      // Fallback to existing endpoint
+      try {
+        const fallback = await api.getPricingRecommendation(runId)
+        setPricing(fallback)
+      } catch (err2) {
+        console.error('Pricing fallback also failed:', err2)
+      }
     } finally {
       setPricingLoading(false)
     }
-  }, [runId])
+  }, [runId, urgency])
 
   // Generate Load-Specific Terms template based on auction and warehouse
   const generateLoadSpecificTerms = useCallback((auctionType, warehouseName) => {
@@ -442,6 +458,25 @@ function Review() {
     setFields(updated)
   }
 
+  // Handle urgency change
+  function handleUrgencyChange(newUrgency) {
+    setUrgency(newUrgency)
+    loadPricing(newUrgency)
+  }
+
+  // Handle CD export execution
+  async function handleExport(result) {
+    if (result?.exported_count > 0 || result?.posted > 0) {
+      const listingId = result?.previews?.[0]?.cd_listing_id || result?.cd_listing_id || 'unknown'
+      setExportResult({ cd_listing_id: listingId, status: 'exported' })
+      setSuccess(`Exported! Listing ID: ${listingId}`)
+      setShowExportModal(false)
+    } else if (result?.status === 'preview') {
+      // Dry run succeeded
+      setShowExportModal(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-screen">
@@ -741,50 +776,200 @@ function Review() {
             )}
 
             {/* Market Intelligence Pricing */}
-            {pricing && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-700">Recommended Price</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {pricing.pickup_location && pricing.delivery_location
-                        ? `${pricing.pickup_location} → ${pricing.delivery_location}`
-                        : 'Based on route and vehicle'}
-                    </p>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    pricing.price_source === 'market_intelligence' ? 'bg-green-100 text-green-800' :
-                    pricing.price_source === 'user_override' ? 'bg-blue-100 text-blue-800' :
-                    'bg-gray-100 text-gray-600'
-                  }`}>
-                    {pricing.price_source === 'market_intelligence' ? 'MI API' :
-                     pricing.price_source === 'user_override' ? 'Custom' :
-                     'Default'}
-                  </span>
-                </div>
-                <div className="flex items-baseline space-x-4">
-                  <span className="text-2xl font-bold text-gray-900">
-                    ${pricing.suggested_price?.toFixed(2) || '---'}
-                  </span>
-                  {pricing.low_price && pricing.high_price && (
-                    <span className="text-sm text-gray-500">
-                      Range: ${pricing.low_price?.toFixed(0)} - ${pricing.high_price?.toFixed(0)}
-                    </span>
-                  )}
-                </div>
-                {pricing.confidence < 0.5 && (
-                  <p className="text-xs text-yellow-600 mt-2">
-                    Low confidence - consider adjusting based on vehicle condition
-                  </p>
-                )}
-              </div>
-            )}
             {pricingLoading && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
                 <div className="flex items-center text-gray-500">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600 mr-2"></div>
                   <span className="text-sm">Loading pricing recommendation...</span>
                 </div>
+              </div>
+            )}
+            {pricing && !pricingLoading && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+                {/* Header with source badge */}
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700">Pricing</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {pricing.pickup_location && pricing.delivery_location
+                        ? `${pricing.pickup_location} → ${pricing.delivery_location}`
+                        : 'Based on route and vehicle'}
+                      {pricing.distance_miles > 0 && ` (${Math.round(pricing.distance_miles)} mi)`}
+                    </p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    pricing.source === 'CD_MARKET_INTELLIGENCE' ? 'bg-green-100 text-green-800' :
+                    pricing.source === 'USER_OVERRIDE' ? 'bg-blue-100 text-blue-800' :
+                    pricing.price_source === 'market_intelligence' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {pricing.source === 'CD_MARKET_INTELLIGENCE' || pricing.price_source === 'market_intelligence'
+                      ? `CD Market Intelligence (${pricing.data_points || 0} data points)`
+                      : pricing.source === 'MANUAL_REQUIRED' || pricing.price_source === 'manual_required'
+                        ? 'Manual Required'
+                        : pricing.source || pricing.price_source || 'Default'}
+                  </span>
+                </div>
+
+                {/* Source is CD_MARKET_INTELLIGENCE — show full market data */}
+                {(pricing.source === 'CD_MARKET_INTELLIGENCE' || pricing.price_source === 'market_intelligence') && (
+                  <>
+                    {/* Market Range */}
+                    {(pricing.avg_dispatch || pricing.avg_listing) && (
+                      <div className="grid grid-cols-3 gap-3 mb-3">
+                        <div className="text-center p-2 bg-gray-50 rounded">
+                          <div className="text-xs text-gray-500">Avg Dispatch</div>
+                          <div className="text-sm font-bold text-gray-900">${pricing.avg_dispatch?.toFixed(0) || '---'}</div>
+                        </div>
+                        <div className="text-center p-2 bg-gray-50 rounded">
+                          <div className="text-xs text-gray-500">Avg Listing</div>
+                          <div className="text-sm font-bold text-gray-900">${pricing.avg_listing?.toFixed(0) || '---'}</div>
+                        </div>
+                        <div className="text-center p-2 bg-gray-50 rounded">
+                          <div className="text-xs text-gray-500">Spread</div>
+                          <div className="text-sm font-bold text-gray-900">${pricing.spread?.toFixed(0) || '---'}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Visual Price Bar */}
+                    {pricing.floor != null && pricing.ceiling != null && pricing.suggested_price != null && (
+                      <div className="mb-3">
+                        <div className="relative h-8 bg-gray-100 rounded-full overflow-hidden">
+                          {/* Floor to Ceiling range bar */}
+                          <div className="absolute inset-0 flex items-center px-2">
+                            <div className="w-full relative">
+                              {/* Bar background */}
+                              <div className="h-2 bg-gradient-to-r from-red-200 via-green-200 to-red-200 rounded-full"></div>
+                              {/* Avg dispatch marker */}
+                              {pricing.avg_dispatch != null && pricing.ceiling > pricing.floor && (
+                                <div
+                                  className="absolute top-1/2 -translate-y-1/2 w-1 h-4 bg-blue-500 rounded"
+                                  style={{ left: `${Math.min(100, Math.max(0, ((pricing.avg_dispatch - pricing.floor) / (pricing.ceiling - pricing.floor)) * 100))}%` }}
+                                  title={`Avg Dispatch: $${pricing.avg_dispatch.toFixed(0)}`}
+                                />
+                              )}
+                              {/* Recommended price marker (star) */}
+                              {pricing.ceiling > pricing.floor && (
+                                <div
+                                  className="absolute -top-1 text-yellow-500 text-sm"
+                                  style={{ left: `${Math.min(100, Math.max(0, ((pricing.suggested_price - pricing.floor) / (pricing.ceiling - pricing.floor)) * 100))}%`, transform: 'translateX(-50%)' }}
+                                  title={`Recommended: $${pricing.suggested_price.toFixed(0)}`}
+                                >
+                                  &#9733;
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-400 mt-1 px-1">
+                          <span>${pricing.floor?.toFixed(0)}</span>
+                          <span>${pricing.ceiling?.toFixed(0)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* MANUAL_REQUIRED — highlight that price is needed */}
+                {(pricing.source === 'MANUAL_REQUIRED' || pricing.price_source === 'manual_required') && (
+                  <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                    <p className="text-sm text-yellow-800">
+                      Market data unavailable. Enter a price below.
+                    </p>
+                    {pricing.warnings?.length > 0 && (
+                      <p className="text-xs text-yellow-600 mt-1">{pricing.warnings[0]}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Recommended Price + Urgency */}
+                <div className="flex items-end gap-4 mb-3">
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-500 mb-1">Recommended</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      ${pricing.suggested_price?.toFixed(2) || '---'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Urgency</label>
+                    <select
+                      value={urgency}
+                      onChange={e => handleUrgencyChange(e.target.value)}
+                      className="form-select text-sm"
+                    >
+                      <option value="STANDARD">Standard (1.0x)</option>
+                      <option value="PRIORITY">Priority (1.12x)</option>
+                      <option value="URGENT">Urgent (1.25x)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Final Price Override */}
+                <div className="mb-3">
+                  <label className="text-xs text-gray-500 block mb-1">Final Price</label>
+                  <input
+                    type="number"
+                    value={finalPrice}
+                    onChange={e => setFinalPrice(e.target.value)}
+                    placeholder={pricing.suggested_price ? `Leave empty to use recommended $${pricing.suggested_price.toFixed(0)}` : 'Enter price'}
+                    className={`form-input w-full text-sm ${
+                      (pricing.source === 'MANUAL_REQUIRED' || pricing.price_source === 'manual_required') && !finalPrice
+                        ? 'border-red-300 bg-red-50' : ''
+                    }`}
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+
+                {/* Warnings */}
+                {pricing.warnings?.length > 0 && (pricing.source !== 'MANUAL_REQUIRED' && pricing.price_source !== 'manual_required') && (
+                  <div className="space-y-1">
+                    {pricing.warnings.map((w, i) => (
+                      <p key={i} className="text-xs text-yellow-600">{w}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Export Flow Section (Production mode only) */}
+            {!isTrainingMode && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+                {exportResult ? (
+                  /* Post-export state */
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                        Exported
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        CD Listing ID: <span className="font-mono font-medium">{exportResult.cd_listing_id}</span>
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  /* Pre-export state */
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">Export to Central Dispatch</h3>
+                    {exportError && (
+                      <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                        <p className="font-medium">Export failed</p>
+                        <p>{exportError}</p>
+                        <p className="text-xs mt-1 text-red-500">Check that all required fields are filled and CD API credentials are configured in Settings.</p>
+                      </div>
+                    )}
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={() => setShowExportModal(true)}
+                        disabled={exporting}
+                        className="btn btn-primary bg-green-600 hover:bg-green-700"
+                      >
+                        {exporting ? 'Exporting...' : 'Export to CD'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -978,6 +1163,16 @@ function Review() {
           </div>
         </div>
       </div>
+
+      {/* Export Preview Modal */}
+      {showExportModal && (
+        <ExportPreviewModal
+          extractionId={parseInt(runId)}
+          documentId={run?.document_id}
+          onClose={() => setShowExportModal(false)}
+          onExport={handleExport}
+        />
+      )}
     </div>
   )
 }

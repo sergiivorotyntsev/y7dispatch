@@ -399,6 +399,7 @@ export const api = {
 
   // Market Intelligence Pricing
   getPricingRecommendation: (runId) => request(`/exports/pricing/${runId}`),
+  getFullPricing: (runId, urgency = 'STANDARD') => request(`/pricing/recommend/${runId}?urgency=${urgency}`),
 
   // CD Listings API v2 — Preview & Push
   getCDPayload: (docId, warehouseCode = null) => {
