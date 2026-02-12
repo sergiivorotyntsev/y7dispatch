@@ -714,3 +714,68 @@ class TestBatchJobs:
     def test_cancel_batch_job_not_found(self, client):
         resp = client.post("/api/exports/batch-jobs/999999/cancel")
         assert resp.status_code == 404
+
+
+# =============================================================================
+# 13. PREFLIGHT PRICE VALIDATION
+# =============================================================================
+
+
+class TestPreflightPriceValidation:
+    """Test price handling in export payload building."""
+
+    def test_no_price_gets_default_450(self, client, sample_pdf_bytes, auction_type_id):
+        """When no price is extracted and MI unavailable, default $450 is used."""
+        doc_id, run_id = _upload_document(client, sample_pdf_bytes, auction_type_id)
+        if not run_id:
+            run_id = _ensure_run(client, doc_id, auction_type_id)
+        if not run_id:
+            pytest.skip("Could not create extraction run")
+
+        resp = client.get(f"/api/exports/central-dispatch/preview/{run_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        payload = data["payload"]
+        # Minimal test PDF has no price — should get $450 default
+        assert "price" in payload
+        assert payload["price"]["total"] == 450.00
+
+    def test_extracted_price_used_when_present(self, client, sample_pdf_bytes, auction_type_id):
+        """When extraction outputs include total_amount, payload uses it."""
+        doc_id, run_id = _upload_document(client, sample_pdf_bytes, auction_type_id)
+        if not run_id:
+            run_id = _ensure_run(client, doc_id, auction_type_id)
+        if not run_id:
+            pytest.skip("Could not create extraction run")
+
+        # Manually set price in extraction outputs
+        from api.models import ExtractionRunRepository
+        run = ExtractionRunRepository.get_by_id(run_id)
+        if run:
+            outputs = run.outputs_json or {}
+            outputs["total_amount"] = "675.00"
+            ExtractionRunRepository.update(run_id, outputs_json=outputs)
+
+            resp = client.get(f"/api/exports/central-dispatch/preview/{run_id}")
+            assert resp.status_code == 200
+            data = resp.json()
+            payload = data["payload"]
+            assert payload["price"]["total"] == 675.00
+
+    def test_payload_price_has_cod_structure(self, client, sample_pdf_bytes, auction_type_id):
+        """Price in payload should include COD payment structure."""
+        doc_id, run_id = _upload_document(client, sample_pdf_bytes, auction_type_id)
+        if not run_id:
+            run_id = _ensure_run(client, doc_id, auction_type_id)
+        if not run_id:
+            pytest.skip("Could not create extraction run")
+
+        resp = client.get(f"/api/exports/central-dispatch/preview/{run_id}")
+        assert resp.status_code == 200
+        payload = resp.json()["payload"]
+        assert "price" in payload
+        price = payload["price"]
+        assert "total" in price
+        assert "cod" in price
+        assert "amount" in price["cod"]
+        assert "paymentMethod" in price["cod"]
