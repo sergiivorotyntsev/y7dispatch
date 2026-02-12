@@ -170,40 +170,40 @@ class DLQService:
 
     def _ensure_table(self):
         """Create DLQ table if not exists."""
-        conn = get_connection()
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS dlq_entries (
-                id TEXT PRIMARY KEY,
-                email_id TEXT NOT NULL,
-                email_subject TEXT,
-                email_from TEXT,
-                email_date TEXT,
-                failure_reason TEXT NOT NULL,
-                failure_details TEXT,
-                attachment_filename TEXT,
-                attachment_hash TEXT,
-                status TEXT NOT NULL DEFAULT 'pending',
-                retry_count INTEGER DEFAULT 0,
-                max_retries INTEGER DEFAULT 3,
-                next_retry_at TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                resolved_at TEXT,
-                resolved_by TEXT,
-                resolution_notes TEXT,
-                metadata TEXT DEFAULT '{}'
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dlq_status ON dlq_entries(status)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dlq_reason ON dlq_entries(failure_reason)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dlq_next_retry ON dlq_entries(next_retry_at)
-        """)
-        conn.commit()
+        with get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS dlq_entries (
+                    id TEXT PRIMARY KEY,
+                    email_id TEXT NOT NULL,
+                    email_subject TEXT,
+                    email_from TEXT,
+                    email_date TEXT,
+                    failure_reason TEXT NOT NULL,
+                    failure_details TEXT,
+                    attachment_filename TEXT,
+                    attachment_hash TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    retry_count INTEGER DEFAULT 0,
+                    max_retries INTEGER DEFAULT 3,
+                    next_retry_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    resolved_by TEXT,
+                    resolution_notes TEXT,
+                    metadata TEXT DEFAULT '{}'
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_dlq_status ON dlq_entries(status)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_dlq_reason ON dlq_entries(failure_reason)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_dlq_next_retry ON dlq_entries(next_retry_at)
+            """)
+            conn.commit()
 
     def add_entry(
         self,
@@ -246,36 +246,36 @@ class DLQService:
             metadata=metadata or {},
         )
 
-        conn = get_connection()
-        conn.execute(
-            """
-            INSERT INTO dlq_entries (
-                id, email_id, email_subject, email_from, email_date,
-                failure_reason, failure_details, attachment_filename,
-                attachment_hash, status, retry_count, max_retries,
-                next_retry_at, created_at, updated_at, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                entry.id,
-                entry.email_id,
-                entry.email_subject,
-                entry.email_from,
-                entry.email_date.isoformat() if entry.email_date else None,
-                entry.failure_reason.value,
-                entry.failure_details,
-                entry.attachment_filename,
-                entry.attachment_hash,
-                entry.status.value,
-                entry.retry_count,
-                entry.max_retries,
-                entry.next_retry_at.isoformat() if entry.next_retry_at else None,
-                entry.created_at.isoformat(),
-                entry.updated_at.isoformat(),
-                json.dumps(entry.metadata),
-            ),
-        )
-        conn.commit()
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO dlq_entries (
+                    id, email_id, email_subject, email_from, email_date,
+                    failure_reason, failure_details, attachment_filename,
+                    attachment_hash, status, retry_count, max_retries,
+                    next_retry_at, created_at, updated_at, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry.id,
+                    entry.email_id,
+                    entry.email_subject,
+                    entry.email_from,
+                    entry.email_date.isoformat() if entry.email_date else None,
+                    entry.failure_reason.value,
+                    entry.failure_details,
+                    entry.attachment_filename,
+                    entry.attachment_hash,
+                    entry.status.value,
+                    entry.retry_count,
+                    entry.max_retries,
+                    entry.next_retry_at.isoformat() if entry.next_retry_at else None,
+                    entry.created_at.isoformat(),
+                    entry.updated_at.isoformat(),
+                    json.dumps(entry.metadata),
+                ),
+            )
+            conn.commit()
 
         logger.warning(
             f"DLQ entry created: {entry.id} - {failure_reason.value} - {email_subject}"
@@ -292,15 +292,15 @@ class DLQService:
 
     def get_entry(self, entry_id: str) -> Optional[DLQEntry]:
         """Get a DLQ entry by ID."""
-        conn = get_connection()
-        row = conn.execute(
-            "SELECT * FROM dlq_entries WHERE id = ?", (entry_id,)
-        ).fetchone()
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM dlq_entries WHERE id = ?", (entry_id,)
+            ).fetchone()
 
-        if not row:
-            return None
+            if not row:
+                return None
 
-        return self._row_to_entry(row)
+            return self._row_to_entry(row)
 
     def list_entries(
         self,
@@ -312,41 +312,40 @@ class DLQService:
         """
         List DLQ entries with optional filters.
         """
-        conn = get_connection()
+        with get_connection() as conn:
+            query = "SELECT * FROM dlq_entries WHERE 1=1"
+            params = []
 
-        query = "SELECT * FROM dlq_entries WHERE 1=1"
-        params = []
+            if status:
+                query += " AND status = ?"
+                params.append(status.value)
 
-        if status:
-            query += " AND status = ?"
-            params.append(status.value)
+            if failure_reason:
+                query += " AND failure_reason = ?"
+                params.append(failure_reason.value)
 
-        if failure_reason:
-            query += " AND failure_reason = ?"
-            params.append(failure_reason.value)
+            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
 
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-
-        rows = conn.execute(query, params).fetchall()
-        return [self._row_to_entry(row) for row in rows]
+            rows = conn.execute(query, params).fetchall()
+            return [self._row_to_entry(row) for row in rows]
 
     def get_pending_entries(self) -> list[DLQEntry]:
         """Get entries that are pending and ready for retry."""
-        conn = get_connection()
-        now = datetime.utcnow().isoformat()
+        with get_connection() as conn:
+            now = datetime.utcnow().isoformat()
 
-        rows = conn.execute(
-            """
-            SELECT * FROM dlq_entries
-            WHERE status = 'pending'
-            AND (next_retry_at IS NULL OR next_retry_at <= ?)
-            ORDER BY created_at ASC
-            """,
-            (now,),
-        ).fetchall()
+            rows = conn.execute(
+                """
+                SELECT * FROM dlq_entries
+                WHERE status = 'pending'
+                AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                ORDER BY created_at ASC
+                """,
+                (now,),
+            ).fetchall()
 
-        return [self._row_to_entry(row) for row in rows]
+            return [self._row_to_entry(row) for row in rows]
 
     def retry_entry(
         self,
@@ -373,16 +372,16 @@ class DLQService:
             return False
 
         # Update status to retrying
-        conn = get_connection()
-        conn.execute(
-            """
-            UPDATE dlq_entries
-            SET status = 'retrying', updated_at = ?
-            WHERE id = ?
-            """,
-            (datetime.utcnow().isoformat(), entry_id),
-        )
-        conn.commit()
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE dlq_entries
+                SET status = 'retrying', updated_at = ?
+                WHERE id = ?
+                """,
+                (datetime.utcnow().isoformat(), entry_id),
+            )
+            conn.commit()
 
         # Try to process
         success = False
@@ -405,21 +404,22 @@ class DLQService:
                 else DLQStatus.PENDING
             )
 
-            conn.execute(
-                """
-                UPDATE dlq_entries
-                SET status = ?, retry_count = ?, next_retry_at = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    new_status.value,
-                    new_retry_count,
-                    calculate_next_retry(new_retry_count).isoformat(),
-                    datetime.utcnow().isoformat(),
-                    entry_id,
-                ),
-            )
-            conn.commit()
+            with get_connection() as conn:
+                conn.execute(
+                    """
+                    UPDATE dlq_entries
+                    SET status = ?, retry_count = ?, next_retry_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        new_status.value,
+                        new_retry_count,
+                        calculate_next_retry(new_retry_count).isoformat(),
+                        datetime.utcnow().isoformat(),
+                        entry_id,
+                    ),
+                )
+                conn.commit()
 
         return success
 
@@ -440,80 +440,79 @@ class DLQService:
         Returns:
             True if resolved successfully
         """
-        conn = get_connection()
-        now = datetime.utcnow().isoformat()
+        with get_connection() as conn:
+            now = datetime.utcnow().isoformat()
 
-        result = conn.execute(
-            """
-            UPDATE dlq_entries
-            SET status = 'resolved',
-                resolved_at = ?,
-                resolved_by = ?,
-                resolution_notes = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (now, resolved_by, resolution_notes, now, entry_id),
-        )
-        conn.commit()
+            result = conn.execute(
+                """
+                UPDATE dlq_entries
+                SET status = 'resolved',
+                    resolved_at = ?,
+                    resolved_by = ?,
+                    resolution_notes = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, resolved_by, resolution_notes, now, entry_id),
+            )
+            conn.commit()
 
-        if result.rowcount > 0:
-            logger.info(f"DLQ entry resolved: {entry_id} by {resolved_by}")
-            return True
+            if result.rowcount > 0:
+                logger.info(f"DLQ entry resolved: {entry_id} by {resolved_by}")
+                return True
 
-        return False
+            return False
 
     def get_summary(self) -> DLQSummary:
         """Get summary statistics for the DLQ."""
-        conn = get_connection()
+        with get_connection() as conn:
+            summary = DLQSummary()
 
-        summary = DLQSummary()
+            # Total count
+            row = conn.execute("SELECT COUNT(*) FROM dlq_entries").fetchone()
+            summary.total_entries = row[0]
 
-        # Total count
-        row = conn.execute("SELECT COUNT(*) FROM dlq_entries").fetchone()
-        summary.total_entries = row[0]
+            # Count by status
+            rows = conn.execute(
+                "SELECT status, COUNT(*) FROM dlq_entries GROUP BY status"
+            ).fetchall()
 
-        # Count by status
-        rows = conn.execute(
-            "SELECT status, COUNT(*) FROM dlq_entries GROUP BY status"
-        ).fetchall()
+            for row in rows:
+                status = row[0]
+                count = row[1]
+                if status == "pending":
+                    summary.pending_count = count
+                elif status == "retrying":
+                    summary.retrying_count = count
+                elif status == "resolved":
+                    summary.resolved_count = count
+                elif status == "exhausted":
+                    summary.exhausted_count = count
 
-        for row in rows:
-            status = row[0]
-            count = row[1]
-            if status == "pending":
-                summary.pending_count = count
-            elif status == "retrying":
-                summary.retrying_count = count
-            elif status == "resolved":
-                summary.resolved_count = count
-            elif status == "exhausted":
-                summary.exhausted_count = count
+            # Count by reason
+            rows = conn.execute(
+                """
+                SELECT failure_reason, COUNT(*)
+                FROM dlq_entries
+                WHERE status IN ('pending', 'exhausted')
+                GROUP BY failure_reason
+                """
+            ).fetchall()
 
-        # Count by reason
-        rows = conn.execute(
-            """
-            SELECT failure_reason, COUNT(*)
-            FROM dlq_entries
-            WHERE status IN ('pending', 'exhausted')
-            GROUP BY failure_reason
-            """
-        ).fetchall()
+            summary.by_reason = {row[0]: row[1] for row in rows}
 
-        summary.by_reason = {row[0]: row[1] for row in rows}
+            # Oldest pending
+            row = conn.execute(
+                """
+                SELECT MIN(created_at) FROM dlq_entries
+                WHERE status = 'pending'
+                """
+            ).fetchone()
 
-        # Oldest pending
-        row = conn.execute(
-            """
-            SELECT MIN(created_at) FROM dlq_entries
-            WHERE status = 'pending'
-            """
-        ).fetchone()
+            if row[0]:
+                summary.oldest_pending_at = datetime.fromisoformat(row[0])
 
-        if row[0]:
-            summary.oldest_pending_at = datetime.fromisoformat(row[0])
-
-        return summary
+            return summary
 
     def register_alert_callback(self, callback: Callable[[DLQEntry], None]):
         """Register a callback to be called when entries are added."""
