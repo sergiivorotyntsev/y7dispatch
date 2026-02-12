@@ -20,7 +20,7 @@ function TestLab() {
   const [recentTests, setRecentTests] = useState([])
   const [loadingTests, setLoadingTests] = useState(true)
 
-  // Tabs - default to unified training tab
+  // Tabs - default to unified testing tab
   const [activeTab, setActiveTab] = useState('training')
 
   // Extracted fields from test result
@@ -455,7 +455,7 @@ function TestLab() {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            Training & Testing
+            Testing & Corrections
           </button>
           <button
             onClick={() => setActiveTab('auction-types')}
@@ -487,14 +487,14 @@ function TestLab() {
         </div>
       )}
 
-      {/* Unified Training & Testing Tab */}
+      {/* Unified Testing & Corrections Tab */}
       {activeTab === 'training' && (
         <div className="space-y-6">
           {/* Info Banner */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-800 mb-2">Training & Testing Environment</h3>
+            <h3 className="font-semibold text-blue-800 mb-2">Testing & Corrections Environment</h3>
             <p className="text-sm text-blue-700">
-              Upload PDF documents to test extraction and build training data. Review extracted fields,
+              Upload PDF documents to test extraction accuracy. Review extracted fields,
               correct any errors, and the system will learn from your corrections to improve accuracy for each auction type.
             </p>
           </div>
@@ -567,10 +567,10 @@ function TestLab() {
                   {processing ? 'Processing...' : 'Extract & Analyze'}
                 </button>
 
-                {/* Training Stats for Selected Auction Type */}
+                {/* Correction Stats for Selected Auction Type */}
                 {selectedAuctionType && trainingStats && (
                   <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Training Progress</p>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Correction Progress</p>
                     {(() => {
                       const at = auctionTypes.find(a => a.id.toString() === selectedAuctionType)
                       const stats = trainingStats?.by_auction_type?.[at?.code] || {}
@@ -606,7 +606,7 @@ function TestLab() {
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
                             {totalExamples === 0
-                              ? 'No training data yet - use Review & Train to add examples'
+                              ? 'No correction data yet - use Review & Correct to add examples'
                               : totalExamples >= 50
                                 ? 'Well trained'
                                 : `${50 - totalExamples} more examples needed`}
@@ -723,8 +723,8 @@ function TestLab() {
                       </div>
 
                       <p className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
-                        <strong>Training tip:</strong> Click "Review & Correct Fields" to fix any extraction errors.
-                        Your corrections help train the system for better accuracy on similar documents.
+                        <strong>Tip:</strong> Click "Review & Correct Fields" to fix any extraction errors.
+                        Your corrections help the system improve accuracy on similar documents.
                       </p>
                     </div>
                   ) : (
@@ -827,10 +827,10 @@ function TestLab() {
             </div>
           </div>
 
-          {/* Training Stats by Auction Type */}
+          {/* Correction Stats by Auction Type */}
           <div className="card">
             <div className="card-header">
-              <h2 className="font-semibold">Training Data by Auction Type</h2>
+              <h2 className="font-semibold">Corrections by Auction Type</h2>
             </div>
             <div className="card-body">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -867,7 +867,7 @@ function TestLab() {
             </div>
           </div>
 
-          {/* Production Corrections (Second Training Channel) */}
+          {/* Production Corrections */}
           <ProductionCorrectionsPanel />
         </div>
       )}

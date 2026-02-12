@@ -64,11 +64,6 @@ export const api = {
     body: JSON.stringify(config),
   }),
   testSheets: () => request('/settings/test-sheets', { method: 'POST' }),
-  getClickUpConfig: () => request('/settings/clickup'),
-  updateClickUpConfig: (config) => request('/settings/clickup', {
-    method: 'PUT',
-    body: JSON.stringify(config),
-  }),
   getCDConfig: () => request('/settings/cd'),
   updateCDConfig: (config) => request('/settings/cd', {
     method: 'PUT',
@@ -242,20 +237,17 @@ export const api = {
 
   // Integration Management
   getAllSettings: async () => {
-    const [email, clickup, sheets, cd, warehouses, exportTargets] = await Promise.all([
+    const [email, sheets, cd, warehouses, exportTargets] = await Promise.all([
       request('/settings/email').catch(() => ({})),
-      request('/settings/clickup').catch(() => ({})),
       request('/settings/sheets').catch(() => ({})),
       request('/settings/cd').catch(() => ({})),
       request('/settings/warehouses').catch(() => ({ warehouses: [] })),
       request('/settings/export-targets').catch(() => ({ targets: [] })),
     ])
-    return { email, clickup, sheets, cd, warehouses: warehouses.warehouses || [], exportTargets: exportTargets.targets || [] }
+    return { email, sheets, cd, warehouses: warehouses.warehouses || [], exportTargets: exportTargets.targets || [] }
   },
 
   // Integration Testing
-  testClickUpConnection: () => request('/integrations/clickup/test', { method: 'POST' }),
-  getClickUpCustomFields: (listId) => request(`/integrations/clickup/custom-fields/${listId}`),
   testSheetsConnection: () => request('/integrations/sheets/test', { method: 'POST' }),
   testCDConnection: () => request('/integrations/cd/test', { method: 'POST' }),
   cdDryRun: (runId) => request('/integrations/cd/dry-run', {

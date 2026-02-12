@@ -123,7 +123,6 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     vehicle_color: { label: 'Color', category: 'cd_optional', group: 'Vehicle' },
     vehicle_condition: { label: 'Condition', category: 'cd_optional', group: 'Vehicle' },
     is_operable: { label: 'Operable', category: 'cd_optional', group: 'Vehicle' },
-    vehicle_lot: { label: 'Lot Number', category: 'cd_optional', group: 'Vehicle' },
 
     // Pickup fields (required)
     pickup_city: { label: 'Pickup City', category: 'cd_required', group: 'Pickup' },

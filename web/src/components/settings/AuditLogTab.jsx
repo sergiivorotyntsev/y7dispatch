@@ -39,7 +39,6 @@ export default function AuditLogTab() {
           >
             <option value="">All Integrations</option>
             <option value="cd">Central Dispatch</option>
-            <option value="clickup">ClickUp</option>
             <option value="sheets">Google Sheets</option>
             <option value="email">Email</option>
             <option value="warehouses">Warehouses</option>
