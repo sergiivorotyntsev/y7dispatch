@@ -1,83 +1,153 @@
-"""
-PricingEngine — Recommended transport pricing with formula, modifiers, and guardrails.
+"""Pricing Engine for Vehicle Transport.
 
-Consumes MIPriceQuote from api/mi_client.py and applies:
-  1. Base formula: avg_dispatch + (spread × 0.5)
-  2. Urgency modifiers (STANDARD ×1.0, PRIORITY ×1.12, URGENT ×1.25)
-  3. Floor / Ceiling guardrails
-  4. Low / High warnings
-  5. 24-hour TTL cache
-  6. Fallback to MANUAL_REQUIRED when MI API unavailable
+Implements hybrid pricing strategy:
+- System suggests price based on CD Market Intelligence
+- User confirms/adjusts via Google Sheets
+
+Pricing Formula (adaptive):
+1. Fetch historical data from CD API (dispatch + listing prices)
+2. Calculate avg_dispatch_price (actual transactions)
+3. Apply urgency modifier (STANDARD/PRIORITY/URGENT)
+4. Apply floor/ceiling constraints
+5. Generate warnings for edge cases
+6. 24-hour TTL cache for repeated route lookups
+
+Floor/Ceiling Rules:
+- Per-mile minimum: $0.40/mile
+- Absolute minimum: $150
+- Operational floor: avg_dispatch * 0.85
+- Per-mile maximum: $2.00/mile (open), $3.00/mile (enclosed)
+- Multiplier ceiling: avg_dispatch * 1.50
 """
 
 import hashlib
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from api.mi_client import (
+    MarketIntelligenceClient,
+    MIClientConfig,
+    MIPriceQuote,
+    MIStop,
+    MIVehicle,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class Urgency(Enum):
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+
+class Urgency(str, Enum):
+    """Pickup urgency level."""
+
     STANDARD = "STANDARD"
     PRIORITY = "PRIORITY"
     URGENT = "URGENT"
 
 
-class PriceSource(Enum):
-    MARKET_INTELLIGENCE = "MARKET_INTELLIGENCE"
+class PriceSource(str, Enum):
+    """Source of the price recommendation."""
+
+    CD_MARKET_INTELLIGENCE = "CD_MARKET_INTELLIGENCE"
+    MARKET_INTELLIGENCE = "MARKET_INTELLIGENCE"  # alias
     MANUAL_REQUIRED = "MANUAL_REQUIRED"
+    FALLBACK_ESTIMATE = "FALLBACK_ESTIMATE"
+    USER_OVERRIDE = "USER_OVERRIDE"
 
 
-# Urgency multipliers
-URGENCY_MULTIPLIERS: dict[Urgency, float] = {
-    Urgency.STANDARD: 1.0,
-    Urgency.PRIORITY: 1.12,
-    Urgency.URGENT: 1.25,
-}
+class PriceStatus(str, Enum):
+    """Status of price in the workflow."""
 
-# Floor constants
-FLOOR_ABSOLUTE = 150.0        # $150 minimum
-FLOOR_PER_MILE = 0.40         # $0.40/mile minimum
-FLOOR_AVG_FACTOR = 0.85       # 85% of avg_dispatch minimum
+    PENDING_REVIEW = "PENDING_REVIEW"
+    ACCEPTED = "ACCEPTED"
+    ADJUSTED = "ADJUSTED"
+    MANUAL = "MANUAL"
 
-# Ceiling constants
-CEILING_PER_MILE_OPEN = 2.00      # $2.00/mile max for open
-CEILING_PER_MILE_ENCLOSED = 3.00  # $3.00/mile max for enclosed
-CEILING_AVG_FACTOR = 1.50         # 150% of avg_dispatch max
 
-# Warning thresholds
-WARNING_LOW_FACTOR = 0.90    # below 90% of avg_dispatch
-WARNING_HIGH_FACTOR = 1.30   # above 130% of avg_dispatch
-
-# Cache TTL
-CACHE_TTL_SECONDS = 86400  # 24 hours
+# =============================================================================
+# DATA CLASSES
+# =============================================================================
 
 
 @dataclass
-class PricingResult:
-    """Result from PricingEngine.calculate()."""
+class Address:
+    """Location for pricing calculation."""
 
-    recommended_price: Optional[float] = None
-    base_price: Optional[float] = None
+    city: str
+    state: str
+    postal_code: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+    def to_mi_stop(self, stop_number: int) -> MIStop:
+        return MIStop(
+            stop_number=stop_number,
+            city=self.city,
+            state=self.state,
+            postal_code=self.postal_code,
+            latitude=self.latitude,
+            longitude=self.longitude,
+        )
+
+
+@dataclass
+class Vehicle:
+    """Vehicle info for pricing."""
+
+    vin: Optional[str] = None
+    year: Optional[int] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    vehicle_type: str = "SEDAN"
+    is_operable: bool = True
+
+    def to_mi_vehicle(self) -> MIVehicle:
+        return MIVehicle(
+            vin=self.vin,
+            year=self.year,
+            make=self.make,
+            model=self.model,
+            vehicle_type=self.vehicle_type,
+            is_operable=self.is_operable,
+        )
+
+
+@dataclass
+class PriceRecommendation:
+    """Result of price calculation."""
+
+    price: Optional[float] = None
+    source: PriceSource = PriceSource.MANUAL_REQUIRED
+    status: PriceStatus = PriceStatus.PENDING_REVIEW
+    reason: Optional[str] = None
     avg_dispatch_price: Optional[float] = None
+    avg_listing_price: Optional[float] = None
     spread: Optional[float] = None
+    market_data_count: int = 0
+    floor: Optional[float] = None
+    ceiling: Optional[float] = None
+    distance_miles: Optional[float] = None
     urgency: Urgency = Urgency.STANDARD
     urgency_multiplier: float = 1.0
-    floor_applied: Optional[float] = None
-    ceiling_applied: Optional[float] = None
-    source: PriceSource = PriceSource.MANUAL_REQUIRED
     warnings: list[str] = field(default_factory=list)
-    is_enclosed: bool = False
-    distance_miles: Optional[float] = None
+    raw_quote: Optional[MIPriceQuote] = None
     cached: bool = False
+
+
+# Backward-compatible aliases for tests
+PricingResult = PriceRecommendation
 
 
 @dataclass
 class PricingInput:
-    """Input for PricingEngine.calculate()."""
+    """Backward-compatible input (maps to Address + Vehicle)."""
 
     pickup_city: str = ""
     pickup_state: str = ""
@@ -95,13 +165,109 @@ class PricingInput:
     urgency: Urgency = Urgency.STANDARD
     distance_miles: Optional[float] = None
 
+    def to_address_vehicle(self) -> tuple[Address, Address, Vehicle]:
+        origin = Address(
+            city=self.pickup_city,
+            state=self.pickup_state,
+            postal_code=self.pickup_zip,
+        )
+        destination = Address(
+            city=self.delivery_city,
+            state=self.delivery_state,
+            postal_code=self.delivery_zip,
+        )
+        vehicle = Vehicle(
+            vin=self.vehicle_vin,
+            year=self.vehicle_year,
+            make=self.vehicle_make,
+            model=self.vehicle_model,
+            vehicle_type=self.vehicle_type,
+            is_operable=self.is_operable,
+        )
+        return origin, destination, vehicle
+
+
+# =============================================================================
+# CONFIG
+# =============================================================================
+
+
+@dataclass
+class PricingConfig:
+    """Configuration for pricing engine."""
+
+    urgency_standard: float = 1.0
+    urgency_priority: float = 1.12
+    urgency_urgent: float = 1.25
+    per_mile_floor: float = 0.40
+    absolute_floor: float = 150.0
+    market_floor_multiplier: float = 0.85
+    per_mile_ceiling_open: float = 2.00
+    per_mile_ceiling_enclosed: float = 3.00
+    market_ceiling_multiplier: float = 1.50
+    low_price_warning_threshold: float = 0.90
+    high_price_warning_threshold: float = 1.30
+
+    @classmethod
+    def from_yaml(cls, config_path: str = "pricing_config.yaml") -> "PricingConfig":
+        from pathlib import Path
+
+        import yaml
+
+        path = Path(config_path)
+        if not path.exists():
+            return cls()
+
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+
+            return cls(
+                urgency_standard=data.get("urgency", {}).get("standard", 1.0),
+                urgency_priority=data.get("urgency", {}).get("priority", 1.12),
+                urgency_urgent=data.get("urgency", {}).get("urgent", 1.25),
+                per_mile_floor=data.get("floor", {}).get("per_mile_minimum", 0.40),
+                absolute_floor=data.get("floor", {}).get("absolute_minimum", 150.0),
+                market_floor_multiplier=data.get("floor", {}).get("market_floor_multiplier", 0.85),
+                per_mile_ceiling_open=data.get("ceiling", {}).get("per_mile_maximum_open", 2.00),
+                per_mile_ceiling_enclosed=data.get("ceiling", {}).get("per_mile_maximum_enclosed", 3.00),
+                market_ceiling_multiplier=data.get("ceiling", {}).get("market_ceiling_multiplier", 1.50),
+                low_price_warning_threshold=data.get("warnings", {}).get("low_price_threshold", 0.90),
+                high_price_warning_threshold=data.get("warnings", {}).get("high_price_threshold", 1.30),
+            )
+        except Exception as e:
+            logger.error(f"Failed to load pricing config: {e}")
+            return cls()
+
+
+# Backward-compatible constants (match Day 6 tests)
+FLOOR_ABSOLUTE = 150.0
+FLOOR_PER_MILE = 0.40
+FLOOR_AVG_FACTOR = 0.85
+CEILING_PER_MILE_OPEN = 2.00
+CEILING_PER_MILE_ENCLOSED = 3.00
+CEILING_AVG_FACTOR = 1.50
+WARNING_LOW_FACTOR = 0.90
+WARNING_HIGH_FACTOR = 1.30
+URGENCY_MULTIPLIERS = {
+    Urgency.STANDARD: 1.0,
+    Urgency.PRIORITY: 1.12,
+    Urgency.URGENT: 1.25,
+}
+CACHE_TTL_SECONDS = 86400  # 24 hours
+
+
+# =============================================================================
+# CACHE
+# =============================================================================
+
 
 class _CacheEntry:
     """Internal cache entry with TTL."""
 
     __slots__ = ("result", "expires_at")
 
-    def __init__(self, result: PricingResult, ttl: int = CACHE_TTL_SECONDS):
+    def __init__(self, result: PriceRecommendation, ttl: int = CACHE_TTL_SECONDS):
         self.result = result
         self.expires_at = time.time() + ttl
 
@@ -110,234 +276,283 @@ class _CacheEntry:
         return time.time() >= self.expires_at
 
 
+# =============================================================================
+# ENGINE
+# =============================================================================
+
+
 class PricingEngine:
     """
-    Calculates recommended transport price using CD Market Intelligence data.
+    Calculates recommended transport prices using CD Market Intelligence.
 
-    Usage:
-        from api.mi_client import PricingService
-        engine = PricingEngine(pricing_service=PricingService())
-        result = engine.calculate(PricingInput(
-            pickup_city="MANHEIM", pickup_state="PA",
-            delivery_city="AYER", delivery_state="MA",
-            urgency=Urgency.STANDARD,
-        ))
+    Features:
+    - Hybrid workflow (system suggests, user confirms/adjusts)
+    - Floor/ceiling guardrails
+    - Urgency modifiers
+    - 24h TTL cache
+    - Haversine distance estimation
     """
 
-    def __init__(self, pricing_service=None, cache_ttl: int = CACHE_TTL_SECONDS):
+    def __init__(
+        self,
+        mi_client: Optional[MarketIntelligenceClient] = None,
+        config: Optional[PricingConfig] = None,
+        pricing_service=None,
+        cache_ttl: int = CACHE_TTL_SECONDS,
+    ):
+        self.mi_client = mi_client or MarketIntelligenceClient()
+        self.config = config or PricingConfig()
         self._pricing_service = pricing_service
         self._cache: dict[str, _CacheEntry] = {}
         self._cache_ttl = cache_ttl
 
-    @property
-    def pricing_service(self):
-        if self._pricing_service is None:
-            from api.mi_client import get_pricing_service
+        self._urgency_multipliers = {
+            Urgency.STANDARD: self.config.urgency_standard,
+            Urgency.PRIORITY: self.config.urgency_priority,
+            Urgency.URGENT: self.config.urgency_urgent,
+        }
 
-            self._pricing_service = get_pricing_service()
-        return self._pricing_service
+    # -----------------------------------------------------------------
+    # Main API (used by api/routes/pricing.py)
+    # -----------------------------------------------------------------
 
-    def calculate(self, inp: PricingInput) -> PricingResult:
-        """
-        Calculate recommended transport price.
-
-        Returns PricingResult with recommended_price and metadata.
-        Falls back to source=MANUAL_REQUIRED when MI data unavailable.
-        """
-        result = PricingResult(
-            urgency=inp.urgency,
-            urgency_multiplier=URGENCY_MULTIPLIERS[inp.urgency],
-            is_enclosed=inp.is_enclosed,
-            distance_miles=inp.distance_miles,
-        )
+    def calculate_recommended_price(
+        self,
+        origin: Address,
+        destination: Address,
+        vehicle: Vehicle,
+        urgency: Urgency = Urgency.STANDARD,
+        is_enclosed: bool = False,
+    ) -> PriceRecommendation:
+        """Calculate recommended listing price."""
+        distance_miles = self._calculate_distance(origin, destination)
 
         # Check cache
-        cache_key = self._cache_key(inp)
+        cache_key = self._make_cache_key(origin, destination, vehicle, is_enclosed)
         cached = self._cache_get(cache_key)
         if cached is not None:
-            # Re-apply urgency in case it changed
-            return self._apply_urgency_to_cached(cached, inp.urgency)
+            return self._reapply_urgency(cached, urgency)
 
-        # Fetch MI quote
-        quote = self._fetch_quote(inp)
+        quote = self._fetch_market_data(origin, destination, vehicle, is_enclosed)
 
         if quote is None:
-            result.source = PriceSource.MANUAL_REQUIRED
-            result.warnings.append("MI API unavailable — manual price required")
-            logger.warning("PricingEngine: MI API returned None, source=MANUAL_REQUIRED")
-            return result
+            return PriceRecommendation(
+                price=None,
+                source=PriceSource.MANUAL_REQUIRED,
+                status=PriceStatus.MANUAL,
+                reason="Market data unavailable — enter price manually",
+                distance_miles=distance_miles,
+                urgency=urgency,
+                warnings=["MI API unavailable — manual price required"],
+            )
 
-        # Extract raw prices from MI quote
         avg_dispatch = quote.suggested_price
-        low_price = quote.low_price
-        high_price = quote.high_price
+        if not avg_dispatch or avg_dispatch <= 0:
+            return PriceRecommendation(
+                price=None,
+                source=PriceSource.MANUAL_REQUIRED,
+                status=PriceStatus.MANUAL,
+                reason="MI API returned invalid price",
+                warnings=["MI API returned invalid price — manual price required"],
+            )
 
-        if avg_dispatch is None or avg_dispatch <= 0:
-            result.source = PriceSource.MANUAL_REQUIRED
-            result.warnings.append("MI API returned invalid price — manual price required")
-            return result
+        avg_listing = quote.high_price or (avg_dispatch * 1.1)
+        spread = avg_listing - avg_dispatch
 
-        result.avg_dispatch_price = avg_dispatch
-        result.source = PriceSource.MARKET_INTELLIGENCE
+        # Base price with spread factor
+        base_price = avg_dispatch + (spread * 0.5)
 
-        # Calculate spread
-        if low_price is not None and high_price is not None:
-            avg_listing = (low_price + high_price) / 2.0
-            spread = avg_listing - avg_dispatch
-        else:
-            spread = 0.0
+        # Urgency modifier
+        urgency_multiplier = self._urgency_multipliers[urgency]
+        recommended = base_price * urgency_multiplier
 
-        result.spread = spread
+        # Floor/ceiling
+        floor = self._calculate_floor(distance_miles, avg_dispatch)
+        ceiling = self._calculate_ceiling(distance_miles, avg_dispatch, is_enclosed)
+        final_price = max(floor, min(ceiling, recommended))
 
-        # Base formula: avg_dispatch + (spread × 0.5)
-        base = avg_dispatch + (spread * 0.5)
-        result.base_price = round(base, 2)
+        # Warnings
+        warnings = self._generate_warnings(final_price, avg_dispatch)
 
-        # Apply urgency modifier
-        modified = base * URGENCY_MULTIPLIERS[inp.urgency]
-
-        # Apply floor
-        modified = self._apply_floor(
-            modified, avg_dispatch, inp.distance_miles, result
+        result = PriceRecommendation(
+            price=round(final_price, 2),
+            source=PriceSource.CD_MARKET_INTELLIGENCE,
+            status=PriceStatus.PENDING_REVIEW,
+            avg_dispatch_price=avg_dispatch,
+            avg_listing_price=avg_listing,
+            spread=spread,
+            floor=round(floor, 2),
+            ceiling=round(ceiling, 2),
+            distance_miles=round(distance_miles, 1) if distance_miles else None,
+            urgency=urgency,
+            urgency_multiplier=urgency_multiplier,
+            market_data_count=1,
+            warnings=warnings,
+            raw_quote=quote,
         )
 
-        # Apply ceiling
-        modified = self._apply_ceiling(
-            modified, avg_dispatch, inp.distance_miles, inp.is_enclosed, result
-        )
-
-        # Round to nearest dollar
-        result.recommended_price = round(modified, 2)
-
-        # Check warnings
-        self._check_warnings(result.recommended_price, avg_dispatch, result)
-
-        # Cache the result (before urgency, so we can re-apply)
         self._cache_put(cache_key, result)
-
         return result
 
-    def _fetch_quote(self, inp: PricingInput):
-        """Fetch MIPriceQuote from PricingService."""
-        from api.mi_client import PricingRequest
+    # -----------------------------------------------------------------
+    # Backward-compatible API (used by Day 6 tests)
+    # -----------------------------------------------------------------
 
-        if not inp.pickup_city or not inp.pickup_state:
-            return None
-        if not inp.delivery_city or not inp.delivery_state:
-            return None
-
-        req = PricingRequest(
-            pickup_city=inp.pickup_city,
-            pickup_state=inp.pickup_state,
-            pickup_postal_code=inp.pickup_zip,
-            delivery_city=inp.delivery_city,
-            delivery_state=inp.delivery_state,
-            delivery_postal_code=inp.delivery_zip,
-            vehicle_vin=inp.vehicle_vin,
-            vehicle_year=inp.vehicle_year,
-            vehicle_make=inp.vehicle_make,
-            vehicle_model=inp.vehicle_model,
-            vehicle_type=inp.vehicle_type,
-            is_operable=inp.is_operable,
+    def calculate(self, inp: PricingInput) -> PriceRecommendation:
+        """Backward-compatible calculate from PricingInput."""
+        origin, destination, vehicle = inp.to_address_vehicle()
+        return self.calculate_recommended_price(
+            origin=origin,
+            destination=destination,
+            vehicle=vehicle,
+            urgency=inp.urgency,
             is_enclosed=inp.is_enclosed,
         )
 
+    # -----------------------------------------------------------------
+    # Market data
+    # -----------------------------------------------------------------
+
+    def _fetch_market_data(
+        self,
+        origin: Address,
+        destination: Address,
+        vehicle: Vehicle,
+        is_enclosed: bool,
+    ) -> Optional[MIPriceQuote]:
         try:
-            return self.pricing_service.get_recommended_price(req)
+            pickup_stop = origin.to_mi_stop(1)
+            dropoff_stop = destination.to_mi_stop(2)
+            mi_vehicle = vehicle.to_mi_vehicle()
+
+            return self.mi_client.get_list_prices(
+                stops=[pickup_stop, dropoff_stop],
+                vehicles=[mi_vehicle],
+                is_enclosed=is_enclosed,
+            )
         except Exception as e:
-            logger.error(f"PricingEngine: MI fetch failed: {e}")
+            logger.error(f"Market Intelligence API error: {e}")
             return None
 
-    # -------------------------------------------------------------------------
-    # Floor / Ceiling
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Distance
+    # -----------------------------------------------------------------
 
-    @staticmethod
-    def _apply_floor(
-        price: float,
-        avg_dispatch: float,
-        distance_miles: Optional[float],
-        result: PricingResult,
-    ) -> float:
-        """Apply floor: max($150, $0.40/mile, avg_dispatch × 0.85)."""
-        floors = [FLOOR_ABSOLUTE, avg_dispatch * FLOOR_AVG_FACTOR]
-        if distance_miles and distance_miles > 0:
-            floors.append(distance_miles * FLOOR_PER_MILE)
-
-        floor_val = max(floors)
-        if price < floor_val:
-            result.floor_applied = round(floor_val, 2)
-            result.warnings.append(
-                f"Price ${price:.2f} raised to floor ${floor_val:.2f}"
+    def _calculate_distance(self, origin: Address, destination: Address) -> Optional[float]:
+        if all([origin.latitude, origin.longitude, destination.latitude, destination.longitude]):
+            return self._haversine_distance(
+                (origin.latitude, origin.longitude),
+                (destination.latitude, destination.longitude),
             )
-            return floor_val
-        return price
+        return self._estimate_distance_from_states(origin.state, destination.state)
 
     @staticmethod
-    def _apply_ceiling(
-        price: float,
-        avg_dispatch: float,
-        distance_miles: Optional[float],
-        is_enclosed: bool,
-        result: PricingResult,
-    ) -> float:
-        """Apply ceiling: min($X/mile, avg_dispatch × 1.50)."""
-        ceilings = [avg_dispatch * CEILING_AVG_FACTOR]
+    def _haversine_distance(origin: tuple[float, float], dest: tuple[float, float]) -> float:
+        lat1, lon1 = math.radians(origin[0]), math.radians(origin[1])
+        lat2, lon2 = math.radians(dest[0]), math.radians(dest[1])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+        c = 2 * math.asin(math.sqrt(a))
+        return c * 3956  # Earth radius in miles
 
+    def _estimate_distance_from_states(self, origin_state: str, dest_state: str) -> Optional[float]:
+        state_coords = {
+            "AL": (32.8, -86.8), "AZ": (34.2, -111.6), "AR": (34.8, -92.2),
+            "CA": (37.2, -119.4), "CO": (39.0, -105.5), "CT": (41.6, -72.7),
+            "DE": (39.0, -75.5), "FL": (28.6, -82.4), "GA": (32.6, -83.4),
+            "ID": (44.4, -114.6), "IL": (40.0, -89.2), "IN": (39.9, -86.3),
+            "IA": (42.0, -93.5), "KS": (38.5, -98.4), "KY": (37.8, -85.7),
+            "LA": (31.0, -92.0), "ME": (45.4, -69.2), "MD": (39.0, -76.8),
+            "MA": (42.2, -71.5), "MI": (44.3, -85.4), "MN": (46.3, -94.3),
+            "MS": (32.7, -89.7), "MO": (38.4, -92.5), "MT": (47.0, -109.6),
+            "NE": (41.5, -99.8), "NV": (39.3, -116.6), "NH": (43.7, -71.6),
+            "NJ": (40.2, -74.7), "NM": (34.4, -106.1), "NY": (42.9, -75.5),
+            "NC": (35.5, -79.4), "ND": (47.4, -100.5), "OH": (40.4, -82.8),
+            "OK": (35.6, -97.5), "OR": (44.0, -120.5), "PA": (40.9, -77.8),
+            "RI": (41.7, -71.5), "SC": (33.9, -80.9), "SD": (44.4, -100.2),
+            "TN": (35.8, -86.3), "TX": (31.5, -99.4), "UT": (39.3, -111.7),
+            "VT": (44.0, -72.7), "VA": (37.5, -78.8), "WA": (47.4, -120.5),
+            "WV": (38.9, -80.5), "WI": (44.6, -90.0), "WY": (43.0, -107.5),
+        }
+        o = state_coords.get(origin_state.upper())
+        d = state_coords.get(dest_state.upper())
+        if o and d:
+            return self._haversine_distance(o, d)
+        return None
+
+    # -----------------------------------------------------------------
+    # Floor / Ceiling
+    # -----------------------------------------------------------------
+
+    def _calculate_floor(self, distance_miles: Optional[float], avg_dispatch: float) -> float:
+        floors = [self.config.absolute_floor]
+        if distance_miles and distance_miles > 0:
+            floors.append(distance_miles * self.config.per_mile_floor)
+        floors.append(avg_dispatch * self.config.market_floor_multiplier)
+        return max(floors)
+
+    def _calculate_ceiling(
+        self, distance_miles: Optional[float], avg_dispatch: float, is_enclosed: bool
+    ) -> float:
+        ceilings = [avg_dispatch * self.config.market_ceiling_multiplier]
         if distance_miles and distance_miles > 0:
             per_mile = (
-                CEILING_PER_MILE_ENCLOSED if is_enclosed else CEILING_PER_MILE_OPEN
+                self.config.per_mile_ceiling_enclosed if is_enclosed
+                else self.config.per_mile_ceiling_open
             )
             ceilings.append(distance_miles * per_mile)
+        return min(ceilings)
 
-        ceiling_val = min(ceilings)
-        if price > ceiling_val:
-            result.ceiling_applied = round(ceiling_val, 2)
-            result.warnings.append(
-                f"Price ${price:.2f} capped to ceiling ${ceiling_val:.2f}"
+    def _generate_warnings(self, price: float, avg_dispatch: float) -> list[str]:
+        warnings = []
+        if avg_dispatch <= 0:
+            return warnings
+        ratio = price / avg_dispatch
+        if ratio < self.config.low_price_warning_threshold:
+            warnings.append(
+                f"Price ${price:.2f} is below 90% of avg dispatch (${avg_dispatch * self.config.low_price_warning_threshold:.2f})"
             )
-            return ceiling_val
-        return price
-
-    @staticmethod
-    def _check_warnings(
-        price: float, avg_dispatch: float, result: PricingResult
-    ) -> None:
-        """Add low/high warnings if price is outside normal range."""
-        low_threshold = avg_dispatch * WARNING_LOW_FACTOR
-        high_threshold = avg_dispatch * WARNING_HIGH_FACTOR
-
-        if price < low_threshold:
-            result.warnings.append(
-                f"Price ${price:.2f} is below 90% of avg dispatch (${low_threshold:.2f})"
+        elif ratio > self.config.high_price_warning_threshold:
+            warnings.append(
+                f"Price ${price:.2f} is above 130% of avg dispatch (${avg_dispatch * self.config.high_price_warning_threshold:.2f})"
             )
-        elif price > high_threshold:
-            result.warnings.append(
-                f"Price ${price:.2f} is above 130% of avg dispatch (${high_threshold:.2f})"
+        return warnings
+
+    # -----------------------------------------------------------------
+    # User override
+    # -----------------------------------------------------------------
+
+    def apply_user_override(
+        self, recommendation: PriceRecommendation, user_price: Optional[float]
+    ) -> PriceRecommendation:
+        if user_price is None:
+            recommendation.status = PriceStatus.ACCEPTED
+            return recommendation
+        recommendation.price = user_price
+        recommendation.source = PriceSource.USER_OVERRIDE
+        recommendation.status = PriceStatus.ADJUSTED
+        if recommendation.avg_dispatch_price:
+            recommendation.warnings = self._generate_warnings(
+                user_price, recommendation.avg_dispatch_price
             )
+        return recommendation
 
-    # -------------------------------------------------------------------------
-    # Cache
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Cache (24h TTL)
+    # -----------------------------------------------------------------
 
-    def _cache_key(self, inp: PricingInput) -> str:
-        """Build a cache key from route + vehicle info."""
+    def _make_cache_key(
+        self, origin: Address, destination: Address, vehicle: Vehicle, is_enclosed: bool
+    ) -> str:
         parts = [
-            inp.pickup_city.upper(),
-            inp.pickup_state.upper(),
-            inp.pickup_zip or "",
-            inp.delivery_city.upper(),
-            inp.delivery_state.upper(),
-            inp.delivery_zip or "",
-            inp.vehicle_type,
-            str(inp.is_enclosed),
-            str(inp.is_operable),
+            origin.city.upper(), origin.state.upper(), origin.postal_code or "",
+            destination.city.upper(), destination.state.upper(), destination.postal_code or "",
+            vehicle.vehicle_type, str(is_enclosed), str(vehicle.is_operable),
         ]
-        raw = "|".join(parts)
-        return hashlib.sha256(raw.encode()).hexdigest()[:24]
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:24]
 
-    def _cache_get(self, key: str) -> Optional[PricingResult]:
-        """Get cached result if not expired."""
+    def _cache_get(self, key: str) -> Optional[PriceRecommendation]:
         entry = self._cache.get(key)
         if entry is None:
             return None
@@ -346,75 +561,81 @@ class PricingEngine:
             return None
         return entry.result
 
-    def _cache_put(self, key: str, result: PricingResult) -> None:
-        """Store result in cache with TTL."""
+    def _cache_put(self, key: str, result: PriceRecommendation) -> None:
         self._cache[key] = _CacheEntry(result, self._cache_ttl)
 
-    def _apply_urgency_to_cached(
-        self, cached: PricingResult, urgency: Urgency
-    ) -> PricingResult:
-        """Return a copy of cached result with updated urgency applied."""
-        if cached.base_price is None:
-            # Fallback result, return as-is
-            result = PricingResult(
-                source=cached.source,
-                warnings=list(cached.warnings),
-                urgency=urgency,
-                urgency_multiplier=URGENCY_MULTIPLIERS[urgency],
+    def _reapply_urgency(
+        self, cached: PriceRecommendation, urgency: Urgency
+    ) -> PriceRecommendation:
+        """Return copy of cached result with updated urgency."""
+        if cached.avg_dispatch_price is None or cached.price is None:
+            result = PriceRecommendation(
+                source=cached.source, status=cached.status,
+                warnings=list(cached.warnings), urgency=urgency,
+                urgency_multiplier=self._urgency_multipliers[urgency],
+                cached=True,
             )
             return result
 
-        result = PricingResult(
-            base_price=cached.base_price,
-            avg_dispatch_price=cached.avg_dispatch_price,
-            spread=cached.spread,
+        avg_dispatch = cached.avg_dispatch_price
+        spread = cached.spread or 0.0
+        base_price = avg_dispatch + (spread * 0.5)
+        modified = base_price * self._urgency_multipliers[urgency]
+        floor = self._calculate_floor(cached.distance_miles, avg_dispatch)
+        ceiling = self._calculate_ceiling(
+            cached.distance_miles, avg_dispatch, False
+        )
+        final = max(floor, min(ceiling, modified))
+        warnings = self._generate_warnings(final, avg_dispatch)
+
+        return PriceRecommendation(
+            price=round(final, 2),
             source=cached.source,
-            is_enclosed=cached.is_enclosed,
+            status=cached.status,
+            avg_dispatch_price=avg_dispatch,
+            avg_listing_price=cached.avg_listing_price,
+            spread=spread,
+            floor=round(floor, 2),
+            ceiling=round(ceiling, 2),
             distance_miles=cached.distance_miles,
             urgency=urgency,
-            urgency_multiplier=URGENCY_MULTIPLIERS[urgency],
+            urgency_multiplier=self._urgency_multipliers[urgency],
+            market_data_count=cached.market_data_count,
+            warnings=warnings,
             cached=True,
         )
 
-        modified = cached.base_price * URGENCY_MULTIPLIERS[urgency]
-
-        # Re-apply floor/ceiling
-        if cached.avg_dispatch_price:
-            modified = PricingEngine._apply_floor(
-                modified, cached.avg_dispatch_price, cached.distance_miles, result
-            )
-            modified = PricingEngine._apply_ceiling(
-                modified,
-                cached.avg_dispatch_price,
-                cached.distance_miles,
-                cached.is_enclosed,
-                result,
-            )
-            PricingEngine._check_warnings(
-                modified, cached.avg_dispatch_price, result
-            )
-
-        result.recommended_price = round(modified, 2)
-        return result
-
     def clear_cache(self) -> int:
-        """Clear all cached entries. Returns number cleared."""
         count = len(self._cache)
         self._cache.clear()
         return count
 
     def cache_size(self) -> int:
-        """Return number of cached entries (including expired)."""
         return len(self._cache)
 
 
+# =============================================================================
 # Module-level singleton
-_engine: Optional[PricingEngine] = None
+# =============================================================================
+
+_pricing_engine: Optional[PricingEngine] = None
 
 
-def get_pricing_engine() -> PricingEngine:
-    """Get the PricingEngine singleton."""
-    global _engine
-    if _engine is None:
-        _engine = PricingEngine()
-    return _engine
+def get_pricing_engine(
+    mi_client: Optional[MarketIntelligenceClient] = None,
+    config: Optional[PricingConfig] = None,
+    config_path: str = "pricing_config.yaml",
+) -> PricingEngine:
+    """Get or create the pricing engine singleton."""
+    global _pricing_engine
+    if _pricing_engine is None:
+        if config is None:
+            config = PricingConfig.from_yaml(config_path)
+        _pricing_engine = PricingEngine(mi_client=mi_client, config=config)
+    return _pricing_engine
+
+
+def reset_pricing_engine():
+    """Reset the singleton (for testing)."""
+    global _pricing_engine
+    _pricing_engine = None
