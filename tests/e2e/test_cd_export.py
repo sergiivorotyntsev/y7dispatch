@@ -183,11 +183,14 @@ class TestPayloadBuilding:
         data = self._get_preview(client, sample_pdf_bytes, auction_type_id)
         assert len(data["payload"]["externalId"]) <= 50
 
-    def test_payload_default_price_when_none_extracted(self, client, sample_pdf_bytes, auction_type_id):
-        """Price should default to 450 when no price is extracted."""
+    def test_payload_blocked_when_no_price(self, client, sample_pdf_bytes, auction_type_id):
+        """Export should report 'Price required' error when no price is available."""
         data = self._get_preview(client, sample_pdf_bytes, auction_type_id)
-        # Minimal PDF has no price, so default should be used
-        assert data["payload"]["price"]["total"] == 450.00
+        # Minimal PDF has no price and no MI data → should have validation error
+        errors = data.get("validation_errors", [])
+        assert any("price" in e.lower() for e in errors), (
+            f"Expected 'Price required' error, got: {errors}"
+        )
 
     def test_preview_nonexistent_run_returns_404(self, client):
         """Preview for nonexistent run should return 404."""
@@ -724,8 +727,8 @@ class TestBatchJobs:
 class TestPreflightPriceValidation:
     """Test price handling in export payload building."""
 
-    def test_no_price_gets_default_450(self, client, sample_pdf_bytes, auction_type_id):
-        """When no price is extracted and MI unavailable, default $450 is used."""
+    def test_no_price_blocks_export(self, client, sample_pdf_bytes, auction_type_id):
+        """When no price is available, export should be blocked with 'Price required' error."""
         doc_id, run_id = _upload_document(client, sample_pdf_bytes, auction_type_id)
         if not run_id:
             run_id = _ensure_run(client, doc_id, auction_type_id)
@@ -735,10 +738,11 @@ class TestPreflightPriceValidation:
         resp = client.get(f"/api/exports/central-dispatch/preview/{run_id}")
         assert resp.status_code == 200
         data = resp.json()
-        payload = data["payload"]
-        # Minimal test PDF has no price — should get $450 default
-        assert "price" in payload
-        assert payload["price"]["total"] == 450.00
+        # No price extracted, no MI data → should report validation error
+        errors = data.get("validation_errors", [])
+        assert any("price" in e.lower() for e in errors), (
+            f"Expected 'Price required' error, got: {errors}"
+        )
 
     def test_extracted_price_used_when_present(self, client, sample_pdf_bytes, auction_type_id):
         """When extraction outputs include total_amount, payload uses it."""

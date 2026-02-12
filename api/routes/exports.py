@@ -407,6 +407,24 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     except (ValueError, TypeError):
         price_total = 0.0
 
+    # Check for user-confirmed final_price or suggested_price from review items
+    final_price = get_field("final_price") or get_field("price_final")
+    suggested_price = get_field("suggested_price")
+
+    if final_price:
+        try:
+            price_total = float(final_price)
+            price_source = "user_override"
+        except (ValueError, TypeError):
+            pass
+
+    if price_total <= 0 and suggested_price:
+        try:
+            price_total = float(suggested_price)
+            price_source = "suggested"
+        except (ValueError, TypeError):
+            pass
+
     if price_total <= 0:
         # Try Market Intelligence API for recommended pricing
         mi_price = _get_mi_recommended_price(
@@ -425,15 +443,15 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
         if mi_price and mi_price > 0:
             price_total = mi_price
             price_source = "market_intelligence"
-        else:
-            # Fallback to auction profile default or system default
-            price_total = 450.00
-            price_source = "default"
+
+    if price_total <= 0:
+        errors.append("Price required: no final_price, suggested_price, or MI price available")
+        price_source = "none"
 
     price = {
-        "total": price_total,
+        "total": price_total if price_total > 0 else 0,
         "cod": {
-            "amount": price_total,
+            "amount": price_total if price_total > 0 else 0,
             "paymentMethod": "CASH",
             "paymentLocation": "DELIVERY",
         },
@@ -1612,12 +1630,12 @@ async def get_pricing_recommendation(run_id: int):
             delivery_location=delivery_location,
         )
 
-    # Fallback to default
+    # No price available — manual entry required
     return PricingRecommendationResponse(
         run_id=run_id,
-        suggested_price=450.00,
-        price_source="default",
-        confidence=0.3,
+        suggested_price=None,
+        price_source="manual_required",
+        confidence=0.0,
         pickup_location=pickup_location,
         delivery_location=delivery_location,
     )
