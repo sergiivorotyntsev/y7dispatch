@@ -3,6 +3,9 @@
 .env.local
 .env.production
 
+# Claude Code local config
+.claude/
+
 # Google API credentials (NEVER commit!)
 credentials.json
 token.json
@@ -11,6 +14,8 @@ token.json
 # Auth secrets (NEVER commit!)
 config/.jwt_secret
 *.jwt_secret
+config/.secret_key
+*.secret_key
 
 # Python
 __pycache__/
