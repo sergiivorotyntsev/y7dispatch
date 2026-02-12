@@ -38,6 +38,7 @@ from api.models import init_schema, seed_base_auction_types, seed_default_field_
 from api.routes import (
     auction_types,
     cd_listings,
+    credentials,
     dlq,
     documents,
     exports,
@@ -136,6 +137,7 @@ app.include_router(templates.router)  # Zone-based extraction templates
 app.include_router(pricing.router)  # Pricing recommendations via CD Market Intelligence
 app.include_router(dlq.router, prefix="/api", tags=["DLQ"])  # Dead Letter Queue (Phase 0.7)
 app.include_router(sheets.router)  # Sheets webhook override endpoint
+app.include_router(credentials.router, prefix="/api/credentials", tags=["Credentials"])
 
 
 # =============================================================================
@@ -225,6 +227,10 @@ async def startup():
     from api.warehouse_constants import init_warehouse_constants_schema
 
     init_warehouse_constants_schema()
+    # Initialize credentials table
+    from services.credential_store import init_credentials_table
+
+    init_credentials_table()
     # Wire DLQ alert callback for failed processing notifications
     from api.dlq import get_dlq_service
     from services.alerting import Severity, send_alert

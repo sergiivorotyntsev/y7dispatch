@@ -1,0 +1,543 @@
+import { useState, useEffect } from 'react'
+import { useSettings } from './SettingsContext'
+import api from '../../api'
+
+const SERVICES = [
+  { id: 'email_imap', label: 'Email (IMAP)', group: 'email' },
+  { id: 'email_forwarding', label: 'Email (Forwarding)', group: 'email' },
+  { id: 'email_oauth', label: 'Email (Microsoft OAuth)', group: 'email' },
+  { id: 'cd_api', label: 'Central Dispatch API', group: 'cd' },
+  { id: 'sheets', label: 'Google Sheets', group: 'sheets' },
+  { id: 'anthropic', label: 'Anthropic (Claude)', group: 'anthropic' },
+]
+
+export default function CredentialsTab() {
+  const { showMessage } = useSettings()
+  const [credentials, setCredentials] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [expandedCard, setExpandedCard] = useState(null)
+  const [emailProvider, setEmailProvider] = useState('email_imap')
+  const [testResults, setTestResults] = useState({})
+  const [testing, setTesting] = useState({})
+
+  useEffect(() => {
+    loadCredentials()
+  }, [])
+
+  async function loadCredentials() {
+    setLoading(true)
+    try {
+      const data = await api.getCredentials()
+      const byService = {}
+      data.forEach(c => { byService[c.service] = c })
+      setCredentials(byService)
+
+      // Set email provider based on what's configured
+      if (byService.email_oauth) setEmailProvider('email_oauth')
+      else if (byService.email_forwarding) setEmailProvider('email_forwarding')
+      else if (byService.email_imap) setEmailProvider('email_imap')
+    } catch (err) {
+      showMessage('error', 'Failed to load credentials: ' + err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSave(service, config, enabled) {
+    try {
+      await api.saveCredential(service, config, enabled)
+      showMessage('success', `${service} credentials saved`)
+      loadCredentials()
+    } catch (err) {
+      showMessage('error', err.message)
+    }
+  }
+
+  async function handleTest(service) {
+    setTesting(prev => ({ ...prev, [service]: true }))
+    setTestResults(prev => ({ ...prev, [service]: null }))
+    try {
+      const result = await api.testCredential(service)
+      setTestResults(prev => ({ ...prev, [service]: result }))
+      if (result.status === 'ok') {
+        showMessage('success', result.message)
+      } else {
+        showMessage('error', result.message)
+      }
+    } catch (err) {
+      setTestResults(prev => ({ ...prev, [service]: { status: 'failed', message: err.message } }))
+      showMessage('error', err.message)
+    } finally {
+      setTesting(prev => ({ ...prev, [service]: false }))
+    }
+  }
+
+  async function handleDelete(service) {
+    if (!confirm(`Delete ${service} credentials?`)) return
+    try {
+      await api.deleteCredential(service)
+      showMessage('success', `${service} credentials deleted`)
+      loadCredentials()
+    } catch (err) {
+      showMessage('error', err.message)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+        <span className="ml-2 text-gray-500">Loading credentials...</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium mb-2">Integration Credentials</h3>
+        <p className="text-sm text-gray-500">Manage encrypted credentials for all integrations. Secrets are stored with Fernet encryption.</p>
+      </div>
+
+      {/* Status Summary */}
+      <StatusSummary credentials={credentials} />
+
+      {/* Email Credentials */}
+      <CredentialCard
+        title="Email Ingestion"
+        expanded={expandedCard === 'email'}
+        onToggle={() => setExpandedCard(expandedCard === 'email' ? null : 'email')}
+        configured={!!(credentials.email_imap || credentials.email_forwarding || credentials.email_oauth)}
+        testStatus={testResults[emailProvider]}
+      >
+        <div className="mb-4">
+          <label className="form-label">Provider</label>
+          <select
+            value={emailProvider}
+            onChange={e => setEmailProvider(e.target.value)}
+            className="form-select w-full max-w-xs"
+          >
+            <option value="email_imap">IMAP (Direct)</option>
+            <option value="email_forwarding">Email Forwarding (Webhook)</option>
+            <option value="email_oauth">Microsoft OAuth</option>
+          </select>
+        </div>
+
+        {emailProvider === 'email_imap' && (
+          <ImapForm
+            initial={credentials.email_imap?.config || {}}
+            enabled={credentials.email_imap?.enabled || false}
+            onSave={(config, enabled) => handleSave('email_imap', config, enabled)}
+            onTest={() => handleTest('email_imap')}
+            onDelete={() => handleDelete('email_imap')}
+            testing={testing.email_imap}
+            testResult={testResults.email_imap}
+            hasCredential={!!credentials.email_imap}
+          />
+        )}
+
+        {emailProvider === 'email_forwarding' && (
+          <ForwardingForm
+            initial={credentials.email_forwarding?.config || {}}
+            enabled={credentials.email_forwarding?.enabled || false}
+            onSave={(config, enabled) => handleSave('email_forwarding', config, enabled)}
+            onTest={() => handleTest('email_forwarding')}
+            onDelete={() => handleDelete('email_forwarding')}
+            testing={testing.email_forwarding}
+            testResult={testResults.email_forwarding}
+            hasCredential={!!credentials.email_forwarding}
+          />
+        )}
+
+        {emailProvider === 'email_oauth' && (
+          <OAuthForm
+            initial={credentials.email_oauth?.config || {}}
+            enabled={credentials.email_oauth?.enabled || false}
+            onSave={(config, enabled) => handleSave('email_oauth', config, enabled)}
+            onTest={() => handleTest('email_oauth')}
+            onDelete={() => handleDelete('email_oauth')}
+            testing={testing.email_oauth}
+            testResult={testResults.email_oauth}
+            hasCredential={!!credentials.email_oauth}
+          />
+        )}
+      </CredentialCard>
+
+      {/* Central Dispatch */}
+      <CredentialCard
+        title="Central Dispatch API"
+        expanded={expandedCard === 'cd'}
+        onToggle={() => setExpandedCard(expandedCard === 'cd' ? null : 'cd')}
+        configured={!!credentials.cd_api}
+        testStatus={testResults.cd_api}
+      >
+        <CdForm
+          initial={credentials.cd_api?.config || {}}
+          enabled={credentials.cd_api?.enabled || false}
+          onSave={(config, enabled) => handleSave('cd_api', config, enabled)}
+          onTest={() => handleTest('cd_api')}
+          onDelete={() => handleDelete('cd_api')}
+          testing={testing.cd_api}
+          testResult={testResults.cd_api}
+          hasCredential={!!credentials.cd_api}
+        />
+      </CredentialCard>
+
+      {/* Google Sheets */}
+      <CredentialCard
+        title="Google Sheets"
+        expanded={expandedCard === 'sheets'}
+        onToggle={() => setExpandedCard(expandedCard === 'sheets' ? null : 'sheets')}
+        configured={!!credentials.sheets}
+        testStatus={testResults.sheets}
+      >
+        <SheetsForm
+          initial={credentials.sheets?.config || {}}
+          enabled={credentials.sheets?.enabled || false}
+          onSave={(config, enabled) => handleSave('sheets', config, enabled)}
+          onTest={() => handleTest('sheets')}
+          onDelete={() => handleDelete('sheets')}
+          testing={testing.sheets}
+          testResult={testResults.sheets}
+          hasCredential={!!credentials.sheets}
+        />
+      </CredentialCard>
+
+      {/* Anthropic */}
+      <CredentialCard
+        title="Anthropic (Claude AI)"
+        expanded={expandedCard === 'anthropic'}
+        onToggle={() => setExpandedCard(expandedCard === 'anthropic' ? null : 'anthropic')}
+        configured={!!credentials.anthropic}
+        testStatus={testResults.anthropic}
+      >
+        <AnthropicForm
+          initial={credentials.anthropic?.config || {}}
+          enabled={credentials.anthropic?.enabled || false}
+          onSave={(config, enabled) => handleSave('anthropic', config, enabled)}
+          onTest={() => handleTest('anthropic')}
+          onDelete={() => handleDelete('anthropic')}
+          testing={testing.anthropic}
+          testResult={testResults.anthropic}
+          hasCredential={!!credentials.anthropic}
+        />
+      </CredentialCard>
+    </div>
+  )
+}
+
+
+// =============================================================================
+// Sub-components
+// =============================================================================
+
+function StatusSummary({ credentials }) {
+  const services = [
+    { key: 'email_imap', label: 'Email IMAP' },
+    { key: 'email_forwarding', label: 'Email Forwarding' },
+    { key: 'email_oauth', label: 'Email OAuth' },
+    { key: 'cd_api', label: 'Central Dispatch' },
+    { key: 'sheets', label: 'Google Sheets' },
+    { key: 'anthropic', label: 'Anthropic' },
+  ]
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {services.map(svc => {
+        const cred = credentials[svc.key]
+        const configured = !!cred
+        const testOk = cred?.last_test_status === 'ok'
+        const testFailed = cred?.last_test_status === 'failed'
+
+        return (
+          <div key={svc.key} className="flex items-center space-x-2 p-2 rounded bg-gray-50">
+            <span className={
+              'w-2 h-2 rounded-full ' +
+              (testOk ? 'bg-green-500' : testFailed ? 'bg-red-500' : configured ? 'bg-yellow-500' : 'bg-gray-300')
+            } />
+            <span className="text-sm text-gray-700">{svc.label}</span>
+            <span className={'text-xs ml-auto ' + (configured ? 'text-green-600' : 'text-gray-400')}>
+              {testOk ? 'OK' : testFailed ? 'Failed' : configured ? 'Saved' : 'Not set'}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function CredentialCard({ title, expanded, onToggle, configured, testStatus, children }) {
+  return (
+    <div className="border rounded-lg">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-4 hover:bg-gray-50"
+      >
+        <div className="flex items-center space-x-3">
+          <span className={
+            'w-3 h-3 rounded-full ' +
+            (testStatus?.status === 'ok' ? 'bg-green-500' :
+             testStatus?.status === 'failed' ? 'bg-red-500' :
+             configured ? 'bg-yellow-500' : 'bg-gray-300')
+          } />
+          <h4 className="font-medium">{title}</h4>
+          <span className={'text-xs px-2 py-0.5 rounded ' + (configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+            {configured ? 'Configured' : 'Not configured'}
+          </span>
+        </div>
+        <span className="text-gray-400">{expanded ? '\u25B2' : '\u25BC'}</span>
+      </button>
+      {expanded && <div className="p-4 pt-0 border-t">{children}</div>}
+    </div>
+  )
+}
+
+function FormButtons({ onSave, onTest, onDelete, testing, hasCredential }) {
+  return (
+    <div className="flex space-x-3 mt-4">
+      <button onClick={onSave} className="btn btn-primary">Save</button>
+      {hasCredential && (
+        <>
+          <button onClick={onTest} disabled={testing} className="btn btn-secondary">
+            {testing ? 'Testing...' : 'Test Connection'}
+          </button>
+          <button onClick={onDelete} className="btn btn-secondary text-red-600 hover:text-red-800">
+            Delete
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function TestResultBanner({ result }) {
+  if (!result) return null
+  const isOk = result.status === 'ok'
+  return (
+    <div className={'mt-3 p-3 rounded-lg text-sm ' + (isOk ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800')}>
+      <p className="font-medium">{isOk ? 'Connected' : 'Failed'}</p>
+      <p>{result.message}</p>
+      {result.duration_ms && <p className="text-xs mt-1">Response time: {result.duration_ms}ms</p>}
+    </div>
+  )
+}
+
+function EnableToggle({ enabled, onChange }) {
+  return (
+    <label className="flex items-center space-x-2 mb-4">
+      <input type="checkbox" checked={enabled} onChange={e => onChange(e.target.checked)} className="form-checkbox" />
+      <span className="text-sm text-gray-700">Enabled</span>
+    </label>
+  )
+}
+
+
+// =============================================================================
+// Service-specific forms
+// =============================================================================
+
+function ImapForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
+  const [config, setConfig] = useState(initial)
+  const [enabled, setEnabled] = useState(initEnabled)
+  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
+
+  return (
+    <div>
+      <EnableToggle enabled={enabled} onChange={setEnabled} />
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="form-label">IMAP Server</label>
+          <input type="text" value={config.imap_server || ''} onChange={e => update('imap_server', e.target.value)} placeholder="imap.gmail.com" className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Port</label>
+          <input type="number" value={config.imap_port || 993} onChange={e => update('imap_port', parseInt(e.target.value))} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Email Address</label>
+          <input type="email" value={config.email_address || ''} onChange={e => update('email_address', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Password / App Password</label>
+          <input type="password" value={config.password || ''} onChange={e => update('password', e.target.value)} className="form-input w-full" />
+        </div>
+      </div>
+      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
+      <TestResultBanner result={testResult} />
+    </div>
+  )
+}
+
+function ForwardingForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
+  const [config, setConfig] = useState(initial)
+  const [enabled, setEnabled] = useState(initEnabled)
+  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
+
+  return (
+    <div>
+      <EnableToggle enabled={enabled} onChange={setEnabled} />
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <label className="form-label">Webhook URL</label>
+          <input type="text" value={config.webhook_url || ''} onChange={e => update('webhook_url', e.target.value)} placeholder="https://your-server.com/api/integrations/webhook/inbound" className="form-input w-full" />
+          <p className="text-xs text-gray-400 mt-1">Configure your email provider to forward to this URL</p>
+        </div>
+        <div>
+          <label className="form-label">Secret Key (for HMAC verification)</label>
+          <input type="password" value={config.secret_key || ''} onChange={e => update('secret_key', e.target.value)} className="form-input w-full" />
+        </div>
+      </div>
+      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
+      <TestResultBanner result={testResult} />
+    </div>
+  )
+}
+
+function OAuthForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
+  const [config, setConfig] = useState(initial)
+  const [enabled, setEnabled] = useState(initEnabled)
+  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
+
+  async function handleAuthorize() {
+    try {
+      const result = await api.request('/integrations/oauth/microsoft/init', { method: 'POST' })
+      if (result.auth_url) {
+        window.open(result.auth_url, '_blank')
+      }
+    } catch (err) {
+      alert('OAuth init failed: ' + err.message)
+    }
+  }
+
+  return (
+    <div>
+      <EnableToggle enabled={enabled} onChange={setEnabled} />
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="form-label">Email Address</label>
+          <input type="email" value={config.email_address || ''} onChange={e => update('email_address', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Provider</label>
+          <select value={config.provider || 'microsoft'} onChange={e => update('provider', e.target.value)} className="form-select w-full">
+            <option value="microsoft">Microsoft 365</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label">Client ID (Azure AD App)</label>
+          <input type="text" value={config.client_id || ''} onChange={e => update('client_id', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Tenant ID</label>
+          <input type="text" value={config.tenant_id || ''} onChange={e => update('tenant_id', e.target.value)} placeholder="common" className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Client Secret</label>
+          <input type="password" value={config.client_secret || ''} onChange={e => update('client_secret', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Redirect URI</label>
+          <input type="text" value={config.redirect_uri || 'http://localhost:8000/api/integrations/oauth/callback'} onChange={e => update('redirect_uri', e.target.value)} className="form-input w-full" />
+        </div>
+      </div>
+      <div className="flex space-x-3 mt-4">
+        <button onClick={() => onSave(config, enabled)} className="btn btn-primary">Save</button>
+        {hasCredential && (
+          <>
+            <button onClick={handleAuthorize} className="btn btn-secondary">Authorize</button>
+            <button onClick={onTest} disabled={testing} className="btn btn-secondary">
+              {testing ? 'Testing...' : 'Test Token'}
+            </button>
+            <button onClick={onDelete} className="btn btn-secondary text-red-600">Delete</button>
+          </>
+        )}
+      </div>
+      <TestResultBanner result={testResult} />
+    </div>
+  )
+}
+
+function CdForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
+  const [config, setConfig] = useState(initial)
+  const [enabled, setEnabled] = useState(initEnabled)
+  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
+
+  return (
+    <div>
+      <EnableToggle enabled={enabled} onChange={setEnabled} />
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="form-label">Username</label>
+          <input type="text" value={config.username || ''} onChange={e => update('username', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Password</label>
+          <input type="password" value={config.password || ''} onChange={e => update('password', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Shipper ID</label>
+          <input type="text" value={config.shipper_id || ''} onChange={e => update('shipper_id', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Environment</label>
+          <select value={config.sandbox ? 'sandbox' : 'production'} onChange={e => update('sandbox', e.target.value === 'sandbox')} className="form-select w-full">
+            <option value="sandbox">Sandbox</option>
+            <option value="production">Production</option>
+          </select>
+        </div>
+      </div>
+      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
+      <TestResultBanner result={testResult} />
+    </div>
+  )
+}
+
+function SheetsForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
+  const [config, setConfig] = useState(initial)
+  const [enabled, setEnabled] = useState(initEnabled)
+  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
+
+  return (
+    <div>
+      <EnableToggle enabled={enabled} onChange={setEnabled} />
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="form-label">Spreadsheet ID</label>
+          <input type="text" value={config.spreadsheet_id || ''} onChange={e => update('spreadsheet_id', e.target.value)} className="form-input w-full" />
+        </div>
+        <div>
+          <label className="form-label">Sheet Name</label>
+          <input type="text" value={config.sheet_name || 'Pickups'} onChange={e => update('sheet_name', e.target.value)} className="form-input w-full" />
+        </div>
+        <div className="col-span-2">
+          <label className="form-label">Credentials File Path</label>
+          <input type="text" value={config.credentials_file || 'config/sheets_credentials.json'} onChange={e => update('credentials_file', e.target.value)} className="form-input w-full" />
+          <p className="text-xs text-gray-400 mt-1">Path to the Google service account JSON file on the server</p>
+        </div>
+      </div>
+      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
+      <TestResultBanner result={testResult} />
+    </div>
+  )
+}
+
+function AnthropicForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
+  const [config, setConfig] = useState(initial)
+  const [enabled, setEnabled] = useState(initEnabled)
+  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
+
+  return (
+    <div>
+      <EnableToggle enabled={enabled} onChange={setEnabled} />
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <label className="form-label">API Key</label>
+          <input type="password" value={config.api_key || ''} onChange={e => update('api_key', e.target.value)} placeholder="sk-ant-..." className="form-input w-full" />
+          <p className="text-xs text-gray-400 mt-1">Used for Claude Haiku extraction. Falls back to ANTHROPIC_API_KEY env var if not set.</p>
+        </div>
+      </div>
+      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
+      <TestResultBanner result={testResult} />
+    </div>
+  )
+}

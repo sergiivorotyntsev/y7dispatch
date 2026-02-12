@@ -471,6 +471,22 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+
+  // ==========================================================================
+  // Credential Management
+  // ==========================================================================
+  getCredentials: () => request('/credentials/'),
+  getCredential: (service) => request(`/credentials/${service}`),
+  saveCredential: (service, config, enabled = false) => request(`/credentials/${service}`, {
+    method: 'PUT',
+    body: JSON.stringify({ config, enabled }),
+  }),
+  deleteCredential: (service) => request(`/credentials/${service}`, {
+    method: 'DELETE',
+  }),
+  testCredential: (service) => request(`/credentials/${service}/test`, {
+    method: 'POST',
+  }),
 }
 
 export default api

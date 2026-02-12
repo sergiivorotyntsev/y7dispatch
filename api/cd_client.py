@@ -92,7 +92,18 @@ class CDClient:
         base_url: Optional[str] = None,
         timeout: int = 30,
     ):
-        self.api_key = api_key or os.environ.get("CD_API_KEY", "")
+        self.api_key = api_key
+        if not self.api_key:
+            try:
+                from services.credential_store import get_credential_for_service
+
+                cred = get_credential_for_service("cd_api")
+                if cred:
+                    self.api_key = cred.get("password", "") or cred.get("api_key", "")
+            except Exception:
+                pass
+        if not self.api_key:
+            self.api_key = os.environ.get("CD_API_KEY", "")
         self.base_url = base_url or os.environ.get(
             "CD_API_URL", "https://api.centraldispatch.com/v2"
         )

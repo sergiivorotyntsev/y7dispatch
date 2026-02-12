@@ -226,7 +226,19 @@ Prices: Extract as numbers only (no $ or commas)"""
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
             enable_caching: Enable prompt caching for reduced costs (Phase 1.6)
         """
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.api_key = api_key
+        if not self.api_key:
+            # Try credential store first, then env var
+            try:
+                from services.credential_store import get_credential_for_service
+
+                cred = get_credential_for_service("anthropic")
+                if cred:
+                    self.api_key = cred.get("api_key")
+            except Exception:
+                pass
+        if not self.api_key:
+            self.api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not self.api_key:
             logger.warning("ANTHROPIC_API_KEY not set - extraction will fail")
 

@@ -6,13 +6,15 @@ import {
   EmailTab,
   WarehousesTab,
   AuditLogTab,
+  CredentialsTab,
 } from '../components/settings'
 
 function SettingsContent() {
-  const [activeTab, setActiveTab] = useState('warehouses')
+  const [activeTab, setActiveTab] = useState('credentials')
   const { loading, message } = useSettings()
 
   const tabs = [
+    { id: 'credentials', label: 'Credentials' },
     { id: 'warehouses', label: 'Warehouses' },
     { id: 'cd', label: 'Central Dispatch' },
     { id: 'email', label: 'Email' },
@@ -62,6 +64,7 @@ function SettingsContent() {
       {/* Tab Content */}
       <div className="card">
         <div className="card-body">
+          {activeTab === 'credentials' && <CredentialsTab />}
           {activeTab === 'warehouses' && <WarehousesTab />}
           {activeTab === 'cd' && <CDTab />}
           {activeTab === 'email' && <EmailTab />}

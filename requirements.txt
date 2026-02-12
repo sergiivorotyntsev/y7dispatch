@@ -27,6 +27,10 @@ pytest>=7.0.0
 pytest-cov>=4.0.0
 pytest-mock>=3.10.0
 
+# Encryption & Auth
+cryptography>=41.0.0
+msal>=1.24.0
+
 # Optional: OCR support (uncomment if needed)
 # pytesseract>=0.3.10
 # pdf2image>=1.16.0
