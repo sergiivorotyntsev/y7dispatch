@@ -56,6 +56,11 @@ def setup_e2e_environment():
     models.seed_base_auction_types()
     models.seed_default_field_mappings()
 
+    # Initialize auction profiles
+    from api.auction_profiles import init_auction_profiles_schema, seed_default_auction_profiles
+    init_auction_profiles_schema()
+    seed_default_auction_profiles()
+
     training_db.init_training_db()
 
     yield
