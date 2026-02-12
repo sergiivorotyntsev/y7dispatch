@@ -1,0 +1,171 @@
+# Manheim Locations Reference Data
+# Maps addresses to official location names
+#
+# For OFFSITE releases where pickup is at seller's location,
+# use seller_name as pickup_name when addresses match.
+# This file is for known Manheim facilities and common partners.
+
+locations:
+  # Oregon
+  - city: PORTLAND
+    state: OR
+    zip: "97217"
+    address_pattern: "3000 N HAYDEN ISLAND"
+    name: Manheim Portland
+
+  # California
+  - city: RIVERSIDE
+    state: CA
+    zip: "92504"
+    address_pattern: "6446 FREMONT"
+    name: Manheim Riverside
+
+  - city: LOS ANGELES
+    state: CA
+    zip: "90022"
+    name: Manheim Los Angeles
+
+  - city: SAN FRANCISCO
+    state: CA
+    name: Manheim San Francisco Bay
+
+  # New Jersey / New York Metro
+  - city: FAIRFIELD
+    state: NJ
+    zip: "07004"
+    address_pattern: "100 US HIGHWAY 46|100 ROUTE 46"
+    name: Manheim NY Metro Skyline
+
+  - city: BORDENTOWN
+    state: NJ
+    name: Manheim New Jersey
+
+  # Massachusetts
+  - city: FRAMINGHAM
+    state: MA
+    zip: "01702"
+    address_pattern: "63 WESTERN"
+    name: Manheim Framingham
+
+  # Florida
+  - city: DAVIE
+    state: FL
+    zip: "33314"
+    address_pattern: "5353 S STATE ROAD 7"
+    name: Manheim Fort Lauderdale
+
+  - city: ORLANDO
+    state: FL
+    name: Manheim Orlando
+
+  - city: TAMPA
+    state: FL
+    name: Manheim Tampa
+
+  # Texas
+  - city: DALLAS
+    state: TX
+    name: Manheim Dallas Fort Worth
+
+  - city: HOUSTON
+    state: TX
+    name: Manheim Houston
+
+  - city: SAN ANTONIO
+    state: TX
+    name: Manheim San Antonio
+
+  # Georgia
+  - city: ATLANTA
+    state: GA
+    name: Manheim Atlanta
+
+  # Pennsylvania
+  - city: PHILADELPHIA
+    state: PA
+    name: Manheim Pennsylvania
+
+  # Illinois
+  - city: CHICAGO
+    state: IL
+    name: Manheim Chicago
+
+  # Arizona
+  - city: PHOENIX
+    state: AZ
+    name: Manheim Phoenix
+
+  # Nevada
+  - city: LAS VEGAS
+    state: NV
+    name: Manheim Las Vegas
+
+  # Colorado
+  - city: DENVER
+    state: CO
+    name: Manheim Denver
+
+  # Michigan
+  - city: DETROIT
+    state: MI
+    name: Manheim Detroit
+
+  # Ohio
+  - city: CLEVELAND
+    state: OH
+    name: Manheim Cleveland
+
+  - city: COLUMBUS
+    state: OH
+    name: Manheim Ohio
+
+  # North Carolina
+  - city: CHARLOTTE
+    state: NC
+    name: Manheim Charlotte
+
+  # Tennessee
+  - city: NASHVILLE
+    state: TN
+    name: Manheim Nashville
+
+  # Washington
+  - city: SEATTLE
+    state: WA
+    name: Manheim Seattle
+
+  # Minnesota
+  - city: MINNEAPOLIS
+    state: MN
+    name: Manheim Minneapolis
+
+  # Missouri
+  - city: KANSAS CITY
+    state: MO
+    name: Manheim Kansas City
+
+  - city: ST LOUIS
+    state: MO
+    name: Manheim St Louis
+
+  # Indiana
+  - city: INDIANAPOLIS
+    state: IN
+    name: Manheim Indianapolis
+
+# Known partner locations (for OFFSITE releases)
+# These are common dealer/fleet locations that appear in OFFSITE releases
+partners:
+  # ADESA locations (may appear in some Manheim docs due to Cox Automotive)
+  - city: BOSTON
+    state: MA
+    name_pattern: "ADESA"
+    name: ADESA Boston
+
+  - city: FRAMINGHAM
+    state: MA
+    address_pattern: "63 WESTERN"
+    name: ADESA Boston
+
+# Note: For OFFSITE releases, if the pickup address matches seller address,
+# use the seller_name as the pickup location name.

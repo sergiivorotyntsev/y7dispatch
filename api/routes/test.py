@@ -477,15 +477,14 @@ async def preview_sheets_row(
 
     try:
         from extractors import ExtractorManager
-        from services.sheets_exporter import load_schema
+        from schemas.sheets_schema_v3 import get_column_names
 
         manager = ExtractorManager()
         classification = manager.classify(tmp_path)
         result = manager.extract_with_result(tmp_path)
 
-        # Load schema for column names
-        schema = load_schema()
-        column_names = [col["name"] for col in schema["columns"]]
+        # Get column names from schema
+        column_names = get_column_names()
 
         # Build row dict
         row_dict = {
@@ -587,7 +586,6 @@ async def dry_run(
 
     try:
         from extractors import ExtractorManager
-        from services.sheets_exporter import load_schema
 
         manager = ExtractorManager()
         classification = manager.classify(tmp_path)

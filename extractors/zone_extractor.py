@@ -17,11 +17,11 @@ Usage:
     print(result["pickup_city"])  # "LAS VEGAS" (from correct zone)
 """
 
-import re
 import logging
+import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
+from typing import Any, Optional
 
 import pdfplumber
 
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class FieldType(str, Enum):
     """Field data types for validation and parsing"""
+
     TEXT = "text"
     ADDRESS = "address"
     CITY_STATE_ZIP = "city_state_zip"
@@ -40,14 +41,77 @@ class FieldType(str, Enum):
     NUMBER = "number"
 
 
+# Default field configurations for common field keys
+# These are used when fields from database don't have complete metadata
+DEFAULT_FIELD_CONFIGS = {
+    "vehicle_vin": {
+        "field_type": FieldType.VIN,
+        "pattern": r"\b([A-HJ-NPR-Z0-9]{17})\b",
+        "required": True,
+    },
+    "vehicle_year": {
+        "field_type": FieldType.NUMBER,
+        "pattern": r"\b(19[89]\d|20[0-2]\d)\b",
+    },
+    "vehicle_make": {"field_type": FieldType.TEXT},
+    "vehicle_model": {"field_type": FieldType.TEXT},
+    "vehicle_lot": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"(?:LOT|STOCK)\s*#?\s*:?\s*(\d{6,10})",
+    },
+    "pickup_address": {"field_type": FieldType.ADDRESS, "required": True},
+    "pickup_city": {"field_type": FieldType.TEXT, "required": True},
+    "pickup_state": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"\b(AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b",
+        "required": True,
+    },
+    "pickup_zip": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"\b(\d{5}(?:-\d{4})?)\b",
+        "required": True,
+    },
+    "pickup_phone": {
+        "field_type": FieldType.PHONE,
+        "pattern": r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})",
+    },
+    "buyer_id": {
+        "field_type": FieldType.TEXT,
+        "pattern": r"(?:Member|MEMBER|Buyer)\s*#?\s*:?\s*(\d+)",
+    },
+    "total_amount": {
+        "field_type": FieldType.CURRENCY,
+        "pattern": r"(?:Total|Amount\s*Due)[:\s]*\$?([\d,]+\.?\d*)",
+    },
+    "sale_date": {
+        "field_type": FieldType.DATE,
+        "pattern": r"(?:Sale|Sold)\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
+    },
+}
+
+
 @dataclass
 class ZoneField:
     """A field to extract from a zone"""
-    key: str                          # Field key (e.g., "pickup_city")
+
+    key: str  # Field key (e.g., "pickup_city")
     field_type: FieldType = FieldType.TEXT
-    pattern: Optional[str] = None     # Optional regex pattern
-    label: Optional[str] = None       # Label to look for (e.g., "City:")
+    pattern: Optional[str] = None  # Optional regex pattern
+    label: Optional[str] = None  # Label to look for (e.g., "City:")
+    label_patterns: list[str] = field(default_factory=list)  # Multiple label patterns (e.g., ["Stock\\s*No", "StockNo"])
+    extract_strategy: str = "after_label"  # How to extract: after_label, regex, full_zone
     required: bool = False
+
+    def apply_defaults(self):
+        """Apply default configuration from DEFAULT_FIELD_CONFIGS if available"""
+        defaults = DEFAULT_FIELD_CONFIGS.get(self.key, {})
+        if defaults:
+            if self.field_type == FieldType.TEXT and "field_type" in defaults:
+                self.field_type = defaults["field_type"]
+            if not self.pattern and "pattern" in defaults:
+                self.pattern = defaults["pattern"]
+            if not self.required and defaults.get("required"):
+                self.required = defaults["required"]
 
 
 @dataclass
@@ -61,21 +125,30 @@ class DocumentZone:
 
     This allows templates to work across different page sizes.
     """
+
     name: str
     x0: float  # Left edge (0-100%)
     y0: float  # Top edge (0-100%)
     x1: float  # Right edge (0-100%)
     y1: float  # Bottom edge (0-100%)
-    fields: List[ZoneField] = field(default_factory=list)
+    fields: list[ZoneField] = field(default_factory=list)
     description: Optional[str] = None
 
-    def to_bbox(self, page_width: float, page_height: float) -> Tuple[float, float, float, float]:
-        """Convert percentage coordinates to absolute bbox"""
+    def to_bbox(self, page_width: float, page_height: float) -> tuple[float, float, float, float]:
+        """
+        Convert percentage coordinates to absolute bbox.
+        Returns (x0, y0, x1, y1) in PDF points.
+        Ensures coordinates are in correct order (x0 < x1, y0 < y1).
+        """
+        # Ensure coordinates are in correct order
+        x0, x1 = min(self.x0, self.x1), max(self.x0, self.x1)
+        y0, y1 = min(self.y0, self.y1), max(self.y0, self.y1)
+
         return (
-            page_width * self.x0 / 100,
-            page_height * self.y0 / 100,
-            page_width * self.x1 / 100,
-            page_height * self.y1 / 100,
+            page_width * x0 / 100,
+            page_height * y0 / 100,
+            page_width * x1 / 100,
+            page_height * y1 / 100,
         )
 
     def to_dict(self) -> dict:
@@ -87,8 +160,15 @@ class DocumentZone:
             "x1": self.x1,
             "y1": self.y1,
             "fields": [
-                {"key": f.key, "field_type": f.field_type.value,
-                 "pattern": f.pattern, "label": f.label, "required": f.required}
+                {
+                    "key": f.key,
+                    "field_type": f.field_type.value,
+                    "pattern": f.pattern,
+                    "label": f.label,
+                    "label_patterns": f.label_patterns,
+                    "extract_strategy": f.extract_strategy,
+                    "required": f.required,
+                }
                 for f in self.fields
             ],
             "description": self.description,
@@ -103,6 +183,8 @@ class DocumentZone:
                 field_type=FieldType(f.get("field_type", "text")),
                 pattern=f.get("pattern"),
                 label=f.get("label"),
+                label_patterns=f.get("label_patterns", []),
+                extract_strategy=f.get("extract_strategy", "after_label"),
                 required=f.get("required", False),
             )
             for f in data.get("fields", [])
@@ -125,11 +207,12 @@ class DocumentTemplate:
 
     Contains multiple zones, each with its own field mappings.
     """
+
     template_id: str
     name: str
     auction_type: str
     version: int = 1
-    zones: List[DocumentZone] = field(default_factory=list)
+    zones: list[DocumentZone] = field(default_factory=list)
     description: Optional[str] = None
     is_active: bool = True
 
@@ -163,11 +246,12 @@ class DocumentTemplate:
 @dataclass
 class ExtractionResult:
     """Result of zone-based extraction"""
-    fields: Dict[str, Any]
-    zone_texts: Dict[str, str]  # Raw text from each zone
+
+    fields: dict[str, Any]
+    zone_texts: dict[str, str]  # Raw text from each zone
     confidence: float
     template_id: str
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class ZoneExtractor:
@@ -191,18 +275,301 @@ class ZoneExtractor:
     US_STATES = r"AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY"
 
     def __init__(self):
-        self.templates: Dict[str, DocumentTemplate] = {}
+        self.templates: dict[str, DocumentTemplate] = {}
         self._load_default_templates()
+        # Load templates from database (overrides defaults)
+        self._load_database_templates()
 
     def _load_default_templates(self):
         """Load default templates for known auction types"""
-        # These will be loaded from database in production
-        # For now, define programmatically
+        # These serve as fallbacks if no database templates exist
 
         # COPART Invoice Template
         self.templates["COPART"] = self._create_copart_template()
         self.templates["IAA"] = self._create_iaa_template()
         self.templates["MANHEIM"] = self._create_manheim_template()
+
+    def _load_database_templates(self):
+        """
+        Load templates from database, overriding defaults.
+        This allows users to customize zone definitions via the UI.
+        """
+        try:
+            from api.routes.templates import TemplateRepository
+            import json
+
+            templates = TemplateRepository.list_all(active_only=True)
+            for row in templates:
+                try:
+                    auction_type = row.get("auction_type", "").upper()
+                    if not auction_type:
+                        continue
+
+                    # Parse zones from JSON
+                    zones_data = json.loads(row.get("zones_json", "[]"))
+                    zones = []
+
+                    for zd in zones_data:
+                        # Convert field definitions
+                        fields = []
+                        for fd in zd.get("fields", []):
+                            # Handle both dict and ZoneField formats
+                            if isinstance(fd, dict):
+                                field_type_str = fd.get("field_type", "text").lower()
+                                # Convert string to FieldType enum by value
+                                field_type = FieldType.TEXT  # default
+                                for ft in FieldType:
+                                    if ft.value == field_type_str:
+                                        field_type = ft
+                                        break
+
+                                zone_field = ZoneField(
+                                    key=fd.get("key", ""),
+                                    field_type=field_type,
+                                    pattern=fd.get("pattern"),
+                                    label=fd.get("label"),
+                                    label_patterns=fd.get("label_patterns", []),
+                                    extract_strategy=fd.get("extract_strategy", "after_label"),
+                                    required=fd.get("required", False),
+                                )
+                                # Apply default patterns/types for known fields
+                                zone_field.apply_defaults()
+                                fields.append(zone_field)
+
+                        zone = DocumentZone(
+                            name=zd.get("name", ""),
+                            x0=float(zd.get("x0", 0)),
+                            y0=float(zd.get("y0", 0)),
+                            x1=float(zd.get("x1", 100)),
+                            y1=float(zd.get("y1", 100)),
+                            description=zd.get("description", ""),
+                            fields=fields,
+                        )
+                        zones.append(zone)
+
+                    if zones:
+                        template = DocumentTemplate(
+                            template_id=row.get("template_id", ""),
+                            name=row.get("name", ""),
+                            auction_type=auction_type,
+                            version=row.get("version", 1),
+                            description=row.get("description", ""),
+                            zones=zones,
+                        )
+                        self.templates[auction_type] = template
+                        logger.info(f"Loaded template from database: {auction_type} with {len(zones)} zones")
+
+                except Exception as e:
+                    logger.warning(f"Failed to parse template {row.get('template_id')}: {e}")
+
+        except Exception as e:
+            # Database might not be available during tests
+            logger.debug(f"Could not load templates from database: {e}")
+
+    def reload_templates(self):
+        """Reload templates from database. Call after user updates templates."""
+        self._load_default_templates()
+        self._load_database_templates()
+
+    def get_template_from_db(self, auction_type: str) -> Optional[DocumentTemplate]:
+        """
+        Load template directly from database (bypassing cache).
+        This ensures we always use the latest user-configured zones.
+
+        Returns None if no template found in DB - caller should use defaults.
+        """
+        import json
+        try:
+            from api.routes.templates import TemplateRepository
+
+            # Get template from database
+            row = TemplateRepository.get_by_auction_type(auction_type.upper())
+            if not row:
+                logger.info(f"No template in DB for {auction_type}, will use default")
+                return None
+
+            # Parse zones from JSON
+            zones_data = json.loads(row.get("zones_json", "[]"))
+            if not zones_data:
+                logger.warning(f"Template {row.get('template_id')} has no zones defined")
+                return None
+
+            zones = []
+            for zd in zones_data:
+                fields = []
+                for fd in zd.get("fields", []):
+                    if isinstance(fd, dict):
+                        field_type_str = fd.get("field_type", "text").lower()
+                        field_type = FieldType.TEXT
+                        for ft in FieldType:
+                            if ft.value == field_type_str:
+                                field_type = ft
+                                break
+
+                        zone_field = ZoneField(
+                            key=fd.get("key", ""),
+                            field_type=field_type,
+                            pattern=fd.get("pattern"),
+                            label=fd.get("label"),
+                            label_patterns=fd.get("label_patterns", []),
+                            extract_strategy=fd.get("extract_strategy", "after_label"),
+                            required=fd.get("required", False),
+                        )
+                        zone_field.apply_defaults()
+                        fields.append(zone_field)
+
+                zone = DocumentZone(
+                    name=zd.get("name", ""),
+                    x0=float(zd.get("x0", 0)),
+                    y0=float(zd.get("y0", 0)),
+                    x1=float(zd.get("x1", 100)),
+                    y1=float(zd.get("y1", 100)),
+                    description=zd.get("description", ""),
+                    fields=fields,
+                )
+                zones.append(zone)
+
+            template = DocumentTemplate(
+                template_id=row.get("template_id", ""),
+                name=row.get("name", ""),
+                auction_type=auction_type.upper(),
+                version=row.get("version", 1),
+                description=row.get("description", ""),
+                zones=zones,
+            )
+
+            logger.info(f"Loaded template from DB: {template.template_id} with {len(zones)} zones")
+            for z in zones:
+                logger.info(f"  Zone '{z.name}': ({z.x0:.1f}, {z.y0:.1f}) -> ({z.x1:.1f}, {z.y1:.1f}), fields: {[f.key for f in z.fields]}")
+
+            return template
+
+        except Exception as e:
+            logger.error(f"Error loading template from DB for {auction_type}: {e}")
+            return None
+
+    def extract_with_logging(self, pdf_path: str, auction_type: str, page_num: int = 0) -> ExtractionResult:
+        """
+        Extract with detailed logging for debugging.
+        Always loads template fresh from DB.
+        """
+        logger.info(f"=" * 60)
+        logger.info(f"ZONE EXTRACTION START: {auction_type}")
+        logger.info(f"PDF: {pdf_path}")
+        logger.info(f"=" * 60)
+
+        # Try to load from database first
+        template = self.get_template_from_db(auction_type)
+
+        if not template:
+            # Fall back to cached/default template
+            template = self.templates.get(auction_type.upper())
+            if template:
+                logger.info(f"Using DEFAULT template: {template.template_id}")
+            else:
+                logger.warning(f"NO TEMPLATE FOUND for {auction_type}!")
+                return ExtractionResult(
+                    fields={"auction_source": auction_type},
+                    zone_texts={},
+                    confidence=0.0,
+                    template_id="none",
+                    warnings=[f"No template found for auction type: {auction_type}"],
+                )
+        else:
+            logger.info(f"Using DATABASE template: {template.template_id}")
+
+        fields = {}
+        zone_texts = {}
+        warnings = []
+        required_found = 0
+        required_total = 0
+
+        # Extract from each zone
+        for zone in template.zones:
+            logger.info(f"-" * 40)
+            logger.info(f"Processing zone: {zone.name}")
+            logger.info(f"  Coordinates: ({zone.x0:.1f}%, {zone.y0:.1f}%) -> ({zone.x1:.1f}%, {zone.y1:.1f}%)")
+            logger.info(f"  Fields to extract: {[f.key for f in zone.fields]}")
+
+            zone_text = self.extract_zone_text(pdf_path, zone, page_num)
+            zone_texts[zone.name] = zone_text
+
+            if zone_text:
+                logger.info(f"  Extracted text ({len(zone_text)} chars):")
+                for line in zone_text.split('\n')[:5]:
+                    logger.info(f"    | {line[:80]}")
+                if len(zone_text.split('\n')) > 5:
+                    logger.info(f"    | ... ({len(zone_text.split(chr(10)))-5} more lines)")
+            else:
+                logger.warning(f"  NO TEXT extracted from zone {zone.name}!")
+                warnings.append(f"Empty text in zone: {zone.name}")
+                continue
+
+            # Parse fields from zone
+            for field_def in zone.fields:
+                if field_def.required:
+                    required_total += 1
+
+                # Special handling for city/state/zip
+                if field_def.key in ("pickup_city", "pickup_state", "pickup_zip"):
+                    if "pickup_city" not in fields:
+                        city, state, zip_code = self._parse_city_state_zip(zone_text)
+                        if city:
+                            fields["pickup_city"] = city
+                            required_found += 1
+                            logger.info(f"  Found pickup_city: {city}")
+                        if state:
+                            fields["pickup_state"] = state
+                            required_found += 1
+                            logger.info(f"  Found pickup_state: {state}")
+                        if zip_code:
+                            fields["pickup_zip"] = zip_code
+                            required_found += 1
+                            logger.info(f"  Found pickup_zip: {zip_code}")
+                    continue
+
+                value = self.parse_field_from_text(zone_text, field_def)
+
+                if value:
+                    fields[field_def.key] = value
+                    if field_def.required:
+                        required_found += 1
+                    logger.info(f"  Found {field_def.key}: {value}")
+                elif field_def.required:
+                    warnings.append(f"Required field not found: {field_def.key} in zone {zone.name}")
+                    logger.warning(f"  MISSING required field: {field_def.key}")
+
+        # Calculate confidence
+        confidence = required_found / required_total if required_total > 0 else 0.5
+
+        # Add auction source
+        fields["auction_source"] = auction_type
+        fields["pickup_location_type"] = "AUCTION"
+
+        # MANHEIM Page 4 extraction
+        if auction_type.upper() == "MANHEIM":
+            logger.info("Attempting Manheim Page 4 pickup extraction")
+            page4_pickup = self._extract_manheim_page4_pickup(pdf_path)
+            if page4_pickup:
+                for key, value in page4_pickup.items():
+                    if value and key.startswith("pickup_"):
+                        fields[key] = value
+                        logger.info(f"Page 4 pickup: {key}={value}")
+
+        logger.info(f"=" * 60)
+        logger.info(f"EXTRACTION COMPLETE: {len(fields)} fields, confidence={confidence:.2f}")
+        logger.info(f"Fields: {list(fields.keys())}")
+        if warnings:
+            logger.info(f"Warnings: {warnings}")
+        logger.info(f"=" * 60)
+
+        return ExtractionResult(
+            fields=fields,
+            zone_texts=zone_texts,
+            confidence=confidence,
+            template_id=template.template_id,
+            warnings=warnings,
+        )
 
     def _create_copart_template(self) -> DocumentTemplate:
         """
@@ -231,76 +598,111 @@ class ZoneExtractor:
                 # Zone 1: Member/Buyer Info (LEFT column) - 0% to 28.6%
                 DocumentZone(
                     name="member_info",
-                    x0=0, y0=7.5, x1=28.6, y1=20,
+                    x0=0,
+                    y0=7.5,
+                    x1=28.6,
+                    y1=20,
                     description="Buyer/Member information (left column)",
                     fields=[
-                        ZoneField(key="buyer_id", field_type=FieldType.TEXT,
-                                  pattern=r"(?:Member|MEMBER)[:\s#]*(\d+)", label="Member"),
+                        ZoneField(
+                            key="buyer_id",
+                            field_type=FieldType.TEXT,
+                            pattern=r"(?:Member|MEMBER)[:\s#]*(\d+)",
+                            label="Member",
+                        ),
                         ZoneField(key="buyer_name", field_type=FieldType.TEXT),
                         ZoneField(key="buyer_address", field_type=FieldType.ADDRESS),
-                    ]
+                    ],
                 ),
-
                 # Zone 2: Physical Address of Lot (CENTER column) - PICKUP LOCATION
                 # CRITICAL: This is the correct zone for pickup address (28.6% to 58.8%)
                 DocumentZone(
                     name="lot_address",
-                    x0=28.6, y0=7.5, x1=58.8, y1=20,
+                    x0=28.6,
+                    y0=7.5,
+                    x1=58.8,
+                    y1=20,
                     description="Physical address of lot - PICKUP LOCATION (center column)",
                     fields=[
-                        ZoneField(key="pickup_name", field_type=FieldType.TEXT,
-                                  label="Copart"),
-                        ZoneField(key="pickup_address", field_type=FieldType.ADDRESS, required=True),
+                        ZoneField(key="pickup_name", field_type=FieldType.TEXT, label="Copart"),
+                        ZoneField(
+                            key="pickup_address", field_type=FieldType.ADDRESS, required=True
+                        ),
                         ZoneField(key="pickup_city", field_type=FieldType.TEXT, required=True),
                         ZoneField(key="pickup_state", field_type=FieldType.TEXT, required=True),
                         ZoneField(key="pickup_zip", field_type=FieldType.TEXT, required=True),
-                    ]
+                    ],
                 ),
-
                 # Zone 3: Seller Info (RIGHT column) - NOT pickup!
                 DocumentZone(
                     name="seller_info",
-                    x0=58.8, y0=7.5, x1=100, y1=20,
+                    x0=58.8,
+                    y0=7.5,
+                    x1=100,
+                    y1=20,
                     description="Seller information (right column) - NOT pickup location",
                     fields=[
-                        ZoneField(key="seller_id", field_type=FieldType.TEXT,
-                                  pattern=r"(\d{6,})"),
+                        ZoneField(key="seller_id", field_type=FieldType.TEXT, pattern=r"(\d{6,})"),
                         ZoneField(key="seller_name", field_type=FieldType.TEXT),
-                    ]
+                    ],
                 ),
-
                 # Zone 4: Vehicle Information (full width, middle section)
                 DocumentZone(
                     name="vehicle_info",
-                    x0=0, y0=18, x1=100, y1=50,
+                    x0=0,
+                    y0=18,
+                    x1=100,
+                    y1=50,
                     description="Vehicle details (VIN, Year, Make, Model, Lot)",
                     fields=[
-                        ZoneField(key="vehicle_vin", field_type=FieldType.VIN, required=True,
-                                  pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b"),
-                        ZoneField(key="vehicle_year", field_type=FieldType.NUMBER,
-                                  pattern=r"\b(19[89]\d|20[0-2]\d)\b"),
+                        ZoneField(
+                            key="vehicle_vin",
+                            field_type=FieldType.VIN,
+                            required=True,
+                            pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b",
+                        ),
+                        ZoneField(
+                            key="vehicle_year",
+                            field_type=FieldType.NUMBER,
+                            pattern=r"\b(19[89]\d|20[0-2]\d)\b",
+                        ),
                         ZoneField(key="vehicle_make", field_type=FieldType.TEXT),
                         ZoneField(key="vehicle_model", field_type=FieldType.TEXT),
-                        ZoneField(key="vehicle_lot", field_type=FieldType.TEXT,
-                                  pattern=r"Lot\s*#?\s*[:\s]*(\d+)", label="Lot"),
-                    ]
+                        ZoneField(
+                            key="vehicle_lot",
+                            field_type=FieldType.TEXT,
+                            pattern=r"Lot\s*#?\s*[:\s]*(\d+)",
+                            label="Lot",
+                        ),
+                    ],
                 ),
-
                 # Zone 5: Financial Information (bottom section)
                 DocumentZone(
                     name="financial_info",
-                    x0=0, y0=45, x1=100, y1=95,
+                    x0=0,
+                    y0=45,
+                    x1=100,
+                    y1=95,
                     description="Sale price, fees, totals",
                     fields=[
-                        ZoneField(key="sale_price", field_type=FieldType.CURRENCY,
-                                  pattern=r"Sale\s*Price[:\s]*\$?([\d,]+\.?\d*)"),
-                        ZoneField(key="total_amount", field_type=FieldType.CURRENCY,
-                                  pattern=r"(?:Net\s*Due|Total\s*Due|Total)[:\s]*\$?([\d,]+\.?\d*)"),
-                        ZoneField(key="sale_date", field_type=FieldType.DATE,
-                                  pattern=r"Sale\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})"),
-                    ]
+                        ZoneField(
+                            key="sale_price",
+                            field_type=FieldType.CURRENCY,
+                            pattern=r"Sale\s*Price[:\s]*\$?([\d,]+\.?\d*)",
+                        ),
+                        ZoneField(
+                            key="total_amount",
+                            field_type=FieldType.CURRENCY,
+                            pattern=r"(?:Net\s*Due|Total\s*Due|Total)[:\s]*\$?([\d,]+\.?\d*)",
+                        ),
+                        ZoneField(
+                            key="sale_date",
+                            field_type=FieldType.DATE,
+                            pattern=r"Sale\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
+                        ),
+                    ],
                 ),
-            ]
+            ],
         )
 
     def _create_iaa_template(self) -> DocumentTemplate:
@@ -340,76 +742,121 @@ class ZoneExtractor:
                 # Header
                 DocumentZone(
                     name="header_info",
-                    x0=0, y0=0, x1=100, y1=12.5,
+                    x0=0,
+                    y0=0,
+                    x1=100,
+                    y1=12.5,
                     description="Header with IAA branding and receipt info",
                     fields=[
-                        ZoneField(key="reference_id", field_type=FieldType.TEXT,
-                                  pattern=r"Stock\s*#?\s*[:\s]*(\d+)"),
-                    ]
+                        ZoneField(
+                            key="reference_id",
+                            field_type=FieldType.TEXT,
+                            pattern=r"Stock\s*#?\s*[:\s]*(\d+)",
+                        ),
+                    ],
                 ),
-
                 # Pickup Location (LEFT side, 0-42% X, 15-28% Y)
                 DocumentZone(
                     name="pickup_location",
-                    x0=0, y0=15, x1=42, y1=32,
+                    x0=0,
+                    y0=15,
+                    x1=42,
+                    y1=32,
                     description="Pick-Up Location section (left column)",
                     fields=[
-                        ZoneField(key="pickup_name", field_type=FieldType.TEXT,
-                                  pattern=r"(?:IAA\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,"),
-                        ZoneField(key="pickup_address", field_type=FieldType.ADDRESS, required=True),
+                        ZoneField(
+                            key="pickup_name",
+                            field_type=FieldType.TEXT,
+                            pattern=r"(?:IAA\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,",
+                        ),
+                        ZoneField(
+                            key="pickup_address", field_type=FieldType.ADDRESS, required=True
+                        ),
                         ZoneField(key="pickup_city", field_type=FieldType.TEXT, required=True),
                         ZoneField(key="pickup_state", field_type=FieldType.TEXT, required=True),
                         ZoneField(key="pickup_zip", field_type=FieldType.TEXT, required=True),
-                        ZoneField(key="pickup_phone", field_type=FieldType.PHONE,
-                                  pattern=r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})"),
-                    ]
+                        ZoneField(
+                            key="pickup_phone",
+                            field_type=FieldType.PHONE,
+                            pattern=r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})",
+                        ),
+                    ],
                 ),
-
                 # Buyer Info (RIGHT side, 42-100% X, 17-30% Y)
                 DocumentZone(
                     name="buyer_info",
-                    x0=42, y0=15, x1=100, y1=32,
+                    x0=42,
+                    y0=15,
+                    x1=100,
+                    y1=32,
                     description="Buyer/Bidder information (right column)",
                     fields=[
-                        ZoneField(key="buyer_id", field_type=FieldType.TEXT,
-                                  pattern=r"Buyer\s*#[:\s]*(\d+)"),
-                        ZoneField(key="buyer_name", field_type=FieldType.TEXT,
-                                  pattern=r"Buyer\s*Name[:\s]*([^\n]+)"),
-                        ZoneField(key="sale_date", field_type=FieldType.DATE,
-                                  pattern=r"Sale\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})"),
-                    ]
+                        ZoneField(
+                            key="buyer_id",
+                            field_type=FieldType.TEXT,
+                            pattern=r"Buyer\s*#[:\s]*(\d+)",
+                        ),
+                        ZoneField(
+                            key="buyer_name",
+                            field_type=FieldType.TEXT,
+                            pattern=r"Buyer\s*Name[:\s]*([^\n]+)",
+                        ),
+                        ZoneField(
+                            key="sale_date",
+                            field_type=FieldType.DATE,
+                            pattern=r"Sale\s*Date[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})",
+                        ),
+                    ],
                 ),
-
                 # Vehicle Data Row (full width, 32-38% Y)
                 DocumentZone(
                     name="vehicle_info",
-                    x0=0, y0=32, x1=100, y1=42,
+                    x0=0,
+                    y0=32,
+                    x1=100,
+                    y1=42,
                     description="Vehicle data row (Stock, Year, Make, Model, VIN)",
                     fields=[
-                        ZoneField(key="vehicle_vin", field_type=FieldType.VIN, required=True,
-                                  pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b"),
-                        ZoneField(key="vehicle_year", field_type=FieldType.NUMBER,
-                                  pattern=r"\b(19[89]\d|20[0-2]\d)\b"),
+                        ZoneField(
+                            key="vehicle_vin",
+                            field_type=FieldType.VIN,
+                            required=True,
+                            pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b",
+                        ),
+                        ZoneField(
+                            key="vehicle_year",
+                            field_type=FieldType.NUMBER,
+                            pattern=r"\b(19[89]\d|20[0-2]\d)\b",
+                        ),
                         ZoneField(key="vehicle_make", field_type=FieldType.TEXT),
                         ZoneField(key="vehicle_model", field_type=FieldType.TEXT),
-                        ZoneField(key="vehicle_lot", field_type=FieldType.TEXT,
-                                  pattern=r"(\d{8})"),  # Stock numbers are typically 8 digits
-                    ]
+                        ZoneField(
+                            key="vehicle_lot", field_type=FieldType.TEXT, pattern=r"(\d{8})"
+                        ),  # Stock numbers are typically 8 digits
+                    ],
                 ),
-
                 # Financial Info (right side, 35-100% X, 36-55% Y)
                 DocumentZone(
                     name="financial_info",
-                    x0=35, y0=36, x1=100, y1=60,
+                    x0=35,
+                    y0=36,
+                    x1=100,
+                    y1=60,
                     description="Financial charges (Bid Amount, Fees, Total)",
                     fields=[
-                        ZoneField(key="bid_amount", field_type=FieldType.CURRENCY,
-                                  pattern=r"Bid\s*Amount[:\s]*\$?([\d,]+\.?\d*)"),
-                        ZoneField(key="total_amount", field_type=FieldType.CURRENCY,
-                                  pattern=r"(?:Total|Amount\s*Due)[:\s]*\$?([\d,]+\.?\d*)"),
-                    ]
+                        ZoneField(
+                            key="bid_amount",
+                            field_type=FieldType.CURRENCY,
+                            pattern=r"Bid\s*Amount[:\s]*\$?([\d,]+\.?\d*)",
+                        ),
+                        ZoneField(
+                            key="total_amount",
+                            field_type=FieldType.CURRENCY,
+                            pattern=r"(?:Total|Amount\s*Due)[:\s]*\$?([\d,]+\.?\d*)",
+                        ),
+                    ],
                 ),
-            ]
+            ],
         )
 
     def _create_manheim_template(self) -> DocumentTemplate:
@@ -438,57 +885,85 @@ class ZoneExtractor:
                 # Header with "BILL OF SALE"
                 DocumentZone(
                     name="header",
-                    x0=0, y0=0, x1=100, y1=12,
+                    x0=0,
+                    y0=0,
+                    x1=100,
+                    y1=12,
                     description="Bill of Sale header (Page 1)",
                     fields=[
-                        ZoneField(key="document_type", field_type=FieldType.TEXT,
-                                  pattern=r"(BILL\s+OF\s+SALE)"),
-                    ]
+                        ZoneField(
+                            key="document_type",
+                            field_type=FieldType.TEXT,
+                            pattern=r"(BILL\s+OF\s+SALE)",
+                        ),
+                    ],
                 ),
-
                 # Page 1: Vehicle Info (middle section of Bill of Sale)
                 # "Vehicle Information" section contains VIN, Year, Make, Model
                 DocumentZone(
                     name="vehicle_info",
-                    x0=0, y0=38, x1=50, y1=65,
+                    x0=0,
+                    y0=38,
+                    x1=50,
+                    y1=65,
                     description="Vehicle Information section (Page 1)",
                     fields=[
-                        ZoneField(key="vehicle_vin", field_type=FieldType.VIN, required=True,
-                                  pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b"),
-                        ZoneField(key="vehicle_year", field_type=FieldType.NUMBER,
-                                  pattern=r"\b(19[89]\d|20[0-2]\d)\b"),
+                        ZoneField(
+                            key="vehicle_vin",
+                            field_type=FieldType.VIN,
+                            required=True,
+                            pattern=r"\b([A-HJ-NPR-Z0-9]{17})\b",
+                        ),
+                        ZoneField(
+                            key="vehicle_year",
+                            field_type=FieldType.NUMBER,
+                            pattern=r"\b(19[89]\d|20[0-2]\d)\b",
+                        ),
                         ZoneField(key="vehicle_make", field_type=FieldType.TEXT),
                         ZoneField(key="vehicle_model", field_type=FieldType.TEXT),
-                    ]
+                    ],
                 ),
-
                 # Page 1: Sale Price (center-right area)
                 DocumentZone(
                     name="sale_price_section",
-                    x0=35, y0=17, x1=75, y1=35,
+                    x0=35,
+                    y0=17,
+                    x1=75,
+                    y1=35,
                     description="Sale price section (Page 1)",
                     fields=[
-                        ZoneField(key="sale_date", field_type=FieldType.DATE,
-                                  pattern=r"Sale\s*Date[:\s]*(\d{1,2}-[A-Z]{3}-\d{4})"),
-                        ZoneField(key="sale_price", field_type=FieldType.CURRENCY,
-                                  pattern=r"(?:Final\s+)?Sale\s*Price[:\s]*\$?\s*([\d,]+\.?\d*)"),
-                        ZoneField(key="total_amount", field_type=FieldType.CURRENCY,
-                                  pattern=r"Final\s+Sale\s+Price[:\s]*\$?\s*([\d,]+\.?\d*)"),
-                    ]
+                        ZoneField(
+                            key="sale_date",
+                            field_type=FieldType.DATE,
+                            pattern=r"Sale\s*Date[:\s]*(\d{1,2}-[A-Z]{3}-\d{4})",
+                        ),
+                        ZoneField(
+                            key="sale_price",
+                            field_type=FieldType.CURRENCY,
+                            pattern=r"(?:Final\s+)?Sale\s*Price[:\s]*\$?\s*([\d,]+\.?\d*)",
+                        ),
+                        ZoneField(
+                            key="total_amount",
+                            field_type=FieldType.CURRENCY,
+                            pattern=r"Final\s+Sale\s+Price[:\s]*\$?\s*([\d,]+\.?\d*)",
+                        ),
+                    ],
                 ),
-
                 # Page 1: Auction location (left side) - NOT the real pickup!
                 # This is the auction house address (e.g., Atlanta, GA)
                 DocumentZone(
                     name="auction_location",
-                    x0=0, y0=12, x1=35, y1=35,
+                    x0=0,
+                    y0=12,
+                    x1=35,
+                    y1=35,
                     description="Auction location (NOT actual pickup - Page 1)",
                     fields=[
                         # We extract this for reference but DON'T use it as pickup
                         ZoneField(key="auction_name", field_type=FieldType.TEXT),
-                    ]
+                    ],
                 ),
-            ]
+            ],
         )
 
     def register_template(self, template: DocumentTemplate):
@@ -516,7 +991,9 @@ class ZoneExtractor:
                 page = pdf.pages[page_num]
                 bbox = zone.to_bbox(page.width, page.height)
 
-                logger.info(f"Extracting zone '{zone.name}' from bbox {bbox} (page size: {page.width}x{page.height})")
+                logger.info(
+                    f"Extracting zone '{zone.name}' from bbox {bbox} (page size: {page.width}x{page.height})"
+                )
 
                 # Crop the page to the zone
                 cropped = page.crop(bbox)
@@ -530,6 +1007,7 @@ class ZoneExtractor:
         except Exception as e:
             logger.error(f"Error extracting zone '{zone.name}': {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             return ""
 
@@ -537,11 +1015,12 @@ class ZoneExtractor:
         """
         Parse a specific field from zone text.
 
-        Strategies:
+        Strategies (in order of priority):
         1. If pattern is defined, use regex
-        2. If label is defined, look for "Label: Value" format
-        3. For ADDRESS type, use special address parsing
-        4. For CITY_STATE_ZIP, extract city/state/zip pattern
+        2. If label_patterns array is defined, try each pattern to find value after label
+        3. If single label is defined, look for "Label: Value" format
+        4. For ADDRESS type, use special address parsing
+        5. For CITY_STATE_ZIP, extract city/state/zip pattern
         """
         if not text:
             return None
@@ -559,14 +1038,44 @@ class ZoneExtractor:
                     # Pattern has no capturing group, return full match
                     return match.group(0).strip()
 
-        # Strategy 2: Look for label
+        # Strategy 2: Try each label_pattern (learned from training)
+        if field_def.label_patterns:
+            for label_pattern in field_def.label_patterns:
+                try:
+                    # Build pattern to extract value after label
+                    # Handle different extract strategies
+                    if field_def.extract_strategy == "regex":
+                        # Use label_pattern directly as regex
+                        match = re.search(label_pattern, text, re.IGNORECASE)
+                        if match:
+                            try:
+                                return match.group(1).strip()
+                            except IndexError:
+                                return match.group(0).strip()
+                    else:
+                        # Default: after_label - look for value after label
+                        # Pattern: label followed by optional colon/spaces and capture value
+                        value_pattern = rf"{label_pattern}[:\s]*([^\n]+)"
+                        match = re.search(value_pattern, text, re.IGNORECASE)
+                        if match:
+                            value = match.group(1).strip()
+                            # Clean up common trailing garbage
+                            value = re.sub(r"\s{2,}.*$", "", value)  # Stop at multiple spaces
+                            if value and len(value) >= 2:
+                                logger.debug(f"Found {field_def.key} via label_pattern '{label_pattern}': {value}")
+                                return value
+                except re.error as e:
+                    logger.warning(f"Invalid regex in label_pattern '{label_pattern}': {e}")
+                    continue
+
+        # Strategy 3: Look for single label
         if field_def.label:
             label_pattern = rf"{re.escape(field_def.label)}[:\s]*([^\n]+)"
             match = re.search(label_pattern, text, re.IGNORECASE)
             if match:
                 return match.group(1).strip()
 
-        # Strategy 3: Type-specific parsing
+        # Strategy 4: Type-specific parsing
         if field_def.field_type == FieldType.VIN:
             vin_match = re.search(r"\b([A-HJ-NPR-Z0-9]{17})\b", text_upper)
             if vin_match:
@@ -605,7 +1114,7 @@ class ZoneExtractor:
         if match:
             addr = match.group(1).strip()
             # Clean up multiple spaces
-            addr = re.sub(r'\s+', ' ', addr)
+            addr = re.sub(r"\s+", " ", addr)
             return addr.title()
 
         # Pattern 2: US Route/Highway
@@ -616,11 +1125,13 @@ class ZoneExtractor:
 
         return None
 
-    def _parse_city_state_zip(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _parse_city_state_zip(
+        self, text: str
+    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """Parse city, state, ZIP from text"""
         # Normalize whitespace - replace newlines with spaces
-        text_normalized = re.sub(r'[\n\r]+', ' ', text)
-        text_normalized = re.sub(r'\s+', ' ', text_normalized)
+        text_normalized = re.sub(r"[\n\r]+", " ", text)
+        text_normalized = re.sub(r"\s+", " ", text_normalized)
         text_upper = text_normalized.upper()
 
         # Pattern 1: CITY STATE ZIP (standard format)
@@ -634,10 +1145,10 @@ class ZoneExtractor:
             zip_code = match.group(3)
 
             # Clean up city - remove leading/trailing directionals and numbers
-            city = re.sub(r'^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+', '', city)
-            city = re.sub(r'\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$', '', city)
-            city = re.sub(r'\s+\d+$', '', city)  # Remove trailing numbers
-            city = re.sub(r'^\d+\s+', '', city)  # Remove leading numbers
+            city = re.sub(r"^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+", "", city)
+            city = re.sub(r"\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$", "", city)
+            city = re.sub(r"\s+\d+$", "", city)  # Remove trailing numbers
+            city = re.sub(r"^\d+\s+", "", city)  # Remove leading numbers
             city = city.strip().title()
 
             if len(city) >= 2:
@@ -652,21 +1163,21 @@ class ZoneExtractor:
             zip_code = match.group(2)
 
             # Find text before state - look for city name
-            before_state = text_upper[:match.start()].strip()
+            before_state = text_upper[: match.start()].strip()
             # Get last word(s) that look like a city name (letters only)
-            city_match = re.search(r'([A-Z][A-Z]+(?:\s+[A-Z]+)*)$', before_state)
+            city_match = re.search(r"([A-Z][A-Z]+(?:\s+[A-Z]+)*)$", before_state)
             if city_match:
                 city = city_match.group(1).strip()
                 # Clean up - remove directionals
-                city = re.sub(r'^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+', '', city)
-                city = re.sub(r'\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$', '', city)
+                city = re.sub(r"^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+", "", city)
+                city = re.sub(r"\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$", "", city)
                 city = city.strip().title()
                 if len(city) >= 2:
                     return city, state, zip_code
 
         return None, None, None
 
-    def _extract_manheim_page4_pickup(self, pdf_path: str) -> Dict[str, str]:
+    def _extract_manheim_page4_pickup(self, pdf_path: str) -> dict[str, str]:
         """
         Extract pickup location from Manheim Page 4 (Vehicle Release).
 
@@ -689,7 +1200,9 @@ class ZoneExtractor:
                 page_width = page.width
                 page_height = page.height
 
-                logger.info(f"Extracting Manheim Page 4 pickup (page size: {page_width}x{page_height})")
+                logger.info(
+                    f"Extracting Manheim Page 4 pickup (page size: {page_width}x{page_height})"
+                )
 
                 # Pickup Location zone on Page 4
                 # Based on analysis: X=0-100%, Y=40-60%
@@ -705,12 +1218,17 @@ class ZoneExtractor:
                 result = {}
 
                 # Extract Manheim location name (e.g., "Manheim Portland")
-                name_match = re.search(r"(Manheim\s+[A-Za-z\s]+?)(?:\s*\n|\s{2,})", text, re.IGNORECASE)
+                name_match = re.search(
+                    r"(Manheim\s+[A-Za-z\s]+?)(?:\s*\n|\s{2,})", text, re.IGNORECASE
+                )
                 if name_match:
                     result["pickup_name"] = name_match.group(1).strip()
 
                 # Extract street address
-                addr_match = re.search(r"(\d+\s+[A-Z0-9\.\s]+(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN))", text.upper())
+                addr_match = re.search(
+                    r"(\d+\s+[A-Z0-9\.\s]+(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN))",
+                    text.upper(),
+                )
                 if addr_match:
                     result["pickup_address"] = addr_match.group(1).strip().title()
 
@@ -733,6 +1251,7 @@ class ZoneExtractor:
         except Exception as e:
             logger.error(f"Error extracting Manheim Page 4: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             return {}
 
@@ -758,7 +1277,7 @@ class ZoneExtractor:
                 zone_texts={},
                 confidence=0.0,
                 template_id="none",
-                warnings=[f"No template found for auction type: {auction_type}"]
+                warnings=[f"No template found for auction type: {auction_type}"],
             )
 
         fields = {}
@@ -803,7 +1322,9 @@ class ZoneExtractor:
                     if field_def.required:
                         required_found += 1
                 elif field_def.required:
-                    warnings.append(f"Required field not found: {field_def.key} in zone {zone.name}")
+                    warnings.append(
+                        f"Required field not found: {field_def.key} in zone {zone.name}"
+                    )
 
         # Calculate confidence based on required fields found
         confidence = required_found / required_total if required_total > 0 else 0.5
@@ -860,9 +1381,9 @@ class ZoneExtractor:
 
                 # Define colors for different zones
                 colors = [
-                    (255, 0, 0, 100),    # Red
-                    (0, 255, 0, 100),    # Green
-                    (0, 0, 255, 100),    # Blue
+                    (255, 0, 0, 100),  # Red
+                    (0, 255, 0, 100),  # Green
+                    (0, 0, 255, 100),  # Blue
                     (255, 255, 0, 100),  # Yellow
                     (255, 0, 255, 100),  # Magenta
                     (0, 255, 255, 100),  # Cyan
@@ -892,6 +1413,7 @@ class ZoneExtractor:
 
 # Singleton instance
 _zone_extractor = None
+
 
 def get_zone_extractor() -> ZoneExtractor:
     """Get singleton ZoneExtractor instance"""

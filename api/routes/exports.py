@@ -111,6 +111,91 @@ class ExportJobListResponse(BaseModel):
 
 
 # =============================================================================
+# MARKET INTELLIGENCE PRICING HELPER
+# =============================================================================
+
+
+def _get_mi_recommended_price(
+    pickup_city: str = None,
+    pickup_state: str = None,
+    pickup_zip: str = None,
+    delivery_city: str = None,
+    delivery_state: str = None,
+    delivery_zip: str = None,
+    vehicle_vin: str = None,
+    vehicle_year: int = None,
+    vehicle_make: str = None,
+    vehicle_model: str = None,
+    is_inop: bool = False,
+) -> Optional[float]:
+    """
+    Get recommended price from Market Intelligence API.
+
+    Returns suggested price or None if unavailable.
+    """
+    # Require minimum location data
+    if not pickup_city or not pickup_state:
+        return None
+    if not delivery_city or not delivery_state:
+        return None
+
+    try:
+        from api.mi_client import MIStop, MIVehicle, get_pricing_service
+
+        service = get_pricing_service()
+
+        pickup_stop = MIStop(
+            stop_number=1,
+            city=pickup_city,
+            state=pickup_state,
+            postal_code=pickup_zip,
+        )
+
+        dropoff_stop = MIStop(
+            stop_number=2,
+            city=delivery_city,
+            state=delivery_state,
+            postal_code=delivery_zip,
+        )
+
+        # Determine vehicle type based on make/model (simplified)
+        vehicle_type = "SEDAN"
+        if vehicle_make:
+            make_lower = vehicle_make.lower()
+            if any(t in make_lower for t in ["ford f-", "chevy silverado", "ram", "gmc sierra"]):
+                vehicle_type = "TRUCK"
+            elif any(t in make_lower for t in ["explorer", "tahoe", "expedition", "suburban"]):
+                vehicle_type = "SUV"
+
+        vehicle = MIVehicle(
+            vin=vehicle_vin,
+            year=int(vehicle_year) if vehicle_year else None,
+            make=vehicle_make,
+            model=vehicle_model,
+            vehicle_type=vehicle_type,
+            is_operable=not is_inop,
+        )
+
+        quote = service.mi_client.get_list_prices(
+            stops=[pickup_stop, dropoff_stop],
+            vehicles=[vehicle],
+            is_enclosed=False,
+        )
+
+        if quote and quote.suggested_price > 0:
+            logger.info(
+                f"MI pricing: ${quote.suggested_price:.2f} "
+                f"(low=${quote.low_price}, high=${quote.high_price})"
+            )
+            return quote.suggested_price
+
+    except Exception as e:
+        logger.warning(f"MI pricing failed: {e}")
+
+    return None
+
+
+# =============================================================================
 # CD PAYLOAD BUILDER
 # =============================================================================
 
@@ -197,12 +282,23 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     resolved = resolver.resolve_all(extracted_values, context)
 
     # Build item_map from resolved values (for backward compatibility)
+    # CRITICAL: FieldResolver returns canonical keys (e.g., pickup_postal_code)
+    # but validation/payload expects aliases (e.g., pickup_zip).
+    # We populate item_map with BOTH canonical and alias keys.
+    from extractors.field_resolver import get_all_key_variants
+
     item_map = {}
     field_sources_info = {}  # Track where each field value came from
     for field_key, resolved_field in resolved.items():
         if resolved_field.value is not None:
+            # Add canonical key
             item_map[field_key] = resolved_field.value
             field_sources_info[field_key] = resolved_field.source.value
+            # Add all alias variants so lookup works by any key
+            for variant in get_all_key_variants(field_key):
+                if variant not in item_map:
+                    item_map[variant] = resolved_field.value
+                    field_sources_info[variant] = resolved_field.source.value
 
     errors = []
     warnings = []
@@ -229,6 +325,16 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     for field in required:
         if not get_field(field):
             errors.append(f"Missing required field: {field}")
+
+    # Validate warehouse/delivery fields
+    # If no warehouse was selected, delivery fields will have placeholder values
+    delivery_city = get_field("delivery_city") or get_field("dropoff_city")
+    if not delivery_city or delivery_city in ("TBD", ""):
+        errors.append("Missing delivery location: Please select a warehouse in Review before export")
+
+    delivery_address = get_field("delivery_address") or get_field("dropoff_address")
+    if not delivery_address or delivery_address in ("TBD", ""):
+        errors.append("Missing delivery address: Warehouse not properly configured")
 
     # Validate VIN
     vin = get_field("vehicle_vin", "")
@@ -258,14 +364,14 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     }
 
     # Build delivery stop (M3.P0.2: uses resolved values from FieldResolver)
-    # Delivery address is populated from warehouse constants when warehouse is selected
+    # Delivery address MUST come from warehouse constants - no placeholders
     dropoff_stop = {
         "stopNumber": 2,
-        "locationName": get_field("delivery_name") or get_field("dropoff_name", "Warehouse"),
-        "address": get_field("delivery_address") or get_field("dropoff_address", "TBD"),
-        "city": get_field("delivery_city") or get_field("dropoff_city", "TBD"),
-        "state": get_field("delivery_state") or get_field("dropoff_state", "TX"),
-        "postalCode": get_field("delivery_zip") or get_field("dropoff_zip", "00000"),
+        "locationName": get_field("delivery_name") or get_field("dropoff_name") or "",
+        "address": get_field("delivery_address") or get_field("dropoff_address") or "",
+        "city": get_field("delivery_city") or get_field("dropoff_city") or "",
+        "state": get_field("delivery_state") or get_field("dropoff_state") or "",
+        "postalCode": get_field("delivery_zip") or get_field("dropoff_zip") or "",
         "country": "US",
         "locationType": "BUSINESS",
     }
@@ -293,15 +399,36 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     if get_field("vehicle_lot"):
         vehicle["lotNumber"] = str(get_field("vehicle_lot"))
 
-    # Build price
+    # Build price with Market Intelligence integration
     total_amount = get_field("total_amount")
+    price_source = "extracted"
     try:
         price_total = float(total_amount) if total_amount else 0.0
     except (ValueError, TypeError):
         price_total = 0.0
 
     if price_total <= 0:
-        price_total = 450.00  # Default price
+        # Try Market Intelligence API for recommended pricing
+        mi_price = _get_mi_recommended_price(
+            pickup_city=get_field("pickup_city"),
+            pickup_state=get_field("pickup_state"),
+            pickup_zip=get_field("pickup_zip"),
+            delivery_city=get_field("delivery_city") or get_field("dropoff_city"),
+            delivery_state=get_field("delivery_state") or get_field("dropoff_state"),
+            delivery_zip=get_field("delivery_zip") or get_field("dropoff_zip"),
+            vehicle_vin=get_field("vehicle_vin"),
+            vehicle_year=get_field("vehicle_year"),
+            vehicle_make=get_field("vehicle_make"),
+            vehicle_model=get_field("vehicle_model"),
+            is_inop=is_inop,
+        )
+        if mi_price and mi_price > 0:
+            price_total = mi_price
+            price_source = "market_intelligence"
+        else:
+            # Fallback to auction profile default or system default
+            price_total = 450.00
+            price_source = "default"
 
     price = {
         "total": price_total,
@@ -311,6 +438,8 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
             "paymentLocation": "DELIVERY",
         },
     }
+    # Track price source in field_sources_info
+    field_sources_info["price_total"] = price_source
 
     # Build notes
     notes_parts = []
@@ -1117,22 +1246,48 @@ async def preview_cd_payload(run_id: int):
 
     Useful for debugging before export.
     """
-    run = ExtractionRunRepository.get_by_id(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Extraction run not found")
+    try:
+        run = ExtractionRunRepository.get_by_id(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Extraction run not found")
 
-    doc = DocumentRepository.get_by_id(run.document_id)
+        doc = DocumentRepository.get_by_id(run.document_id)
 
-    payload, errors = build_cd_payload(run_id)
+        # Check if run has required data
+        if not run.auction_type_id:
+            return CDPayloadPreview(
+                dispatch_id="",
+                run_id=run_id,
+                document_filename=doc.filename if doc else None,
+                payload={},
+                validation_errors=[
+                    "Extraction run missing auction type. Please re-run extraction."
+                ],
+                is_valid=False,
+            )
 
-    return CDPayloadPreview(
-        dispatch_id=payload.get("externalId", ""),
-        run_id=run_id,
-        document_filename=doc.filename if doc else None,
-        payload=payload,
-        validation_errors=errors,
-        is_valid=len(errors) == 0,
-    )
+        payload, errors = build_cd_payload(run_id)
+
+        return CDPayloadPreview(
+            dispatch_id=payload.get("externalId", ""),
+            run_id=run_id,
+            document_filename=doc.filename if doc else None,
+            payload=payload,
+            validation_errors=errors,
+            is_valid=len(errors) == 0,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating preview for run {run_id}: {e}")
+        return CDPayloadPreview(
+            dispatch_id="",
+            run_id=run_id,
+            document_filename=None,
+            payload={},
+            validation_errors=[f"Failed to generate preview: {str(e)}"],
+            is_valid=False,
+        )
 
 
 @router.get("/jobs", response_model=ExportJobListResponse)
@@ -1340,6 +1495,132 @@ async def get_blocking_issues(run_id: int, mode: str = "export"):
         "is_ready": len(issues) == 0,
         "issues": issues,
     }
+
+
+# =============================================================================
+# MARKET INTELLIGENCE PRICING ENDPOINT
+# =============================================================================
+
+
+class PricingRecommendationResponse(BaseModel):
+    """Response with pricing recommendation."""
+
+    run_id: int
+    suggested_price: Optional[float] = None
+    low_price: Optional[float] = None
+    high_price: Optional[float] = None
+    price_source: str = "default"
+    confidence: float = 0.0
+    pickup_location: Optional[str] = None
+    delivery_location: Optional[str] = None
+
+
+@router.get("/pricing/{run_id}", response_model=PricingRecommendationResponse)
+async def get_pricing_recommendation(run_id: int):
+    """
+    Get Market Intelligence pricing recommendation for an extraction run.
+
+    Returns recommended price based on:
+    - Pickup and delivery locations
+    - Vehicle details
+    - Current market conditions
+
+    Falls back to default pricing if MI API is unavailable.
+    """
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Extraction run not found")
+
+    # Get field values
+    items = ReviewItemRepository.get_by_run(run_id)
+    data = {}
+    for item in items:
+        value = item.corrected_value if item.corrected_value else item.predicted_value
+        data[item.source_key] = value
+
+    # Also check outputs_json
+    if run.outputs_json:
+        outputs = (
+            run.outputs_json if isinstance(run.outputs_json, dict) else json.loads(run.outputs_json)
+        )
+        for key, value in outputs.items():
+            if key not in data:
+                data[key] = value
+
+    # Extract location info
+    pickup_city = data.get("pickup_city")
+    pickup_state = data.get("pickup_state")
+    pickup_zip = data.get("pickup_zip")
+    delivery_city = data.get("delivery_city") or data.get("dropoff_city")
+    delivery_state = data.get("delivery_state") or data.get("dropoff_state")
+    delivery_zip = data.get("delivery_zip") or data.get("dropoff_zip")
+
+    pickup_location = f"{pickup_city}, {pickup_state}" if pickup_city and pickup_state else None
+    delivery_location = (
+        f"{delivery_city}, {delivery_state}" if delivery_city and delivery_state else None
+    )
+
+    # Check for user override price first
+    override_price = data.get("override_price_total") or data.get("price_total")
+    if override_price:
+        try:
+            price = float(override_price)
+            if price > 0:
+                return PricingRecommendationResponse(
+                    run_id=run_id,
+                    suggested_price=price,
+                    price_source="user_override",
+                    confidence=1.0,
+                    pickup_location=pickup_location,
+                    delivery_location=delivery_location,
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # Try Market Intelligence API
+    is_inop = data.get("vehicle_is_inoperable", False)
+    if isinstance(is_inop, str):
+        is_inop = is_inop.lower() in ("true", "yes", "1", "inoperable")
+
+    mi_price = _get_mi_recommended_price(
+        pickup_city=pickup_city,
+        pickup_state=pickup_state,
+        pickup_zip=pickup_zip,
+        delivery_city=delivery_city,
+        delivery_state=delivery_state,
+        delivery_zip=delivery_zip,
+        vehicle_vin=data.get("vehicle_vin"),
+        vehicle_year=data.get("vehicle_year"),
+        vehicle_make=data.get("vehicle_make"),
+        vehicle_model=data.get("vehicle_model"),
+        is_inop=is_inop,
+    )
+
+    if mi_price and mi_price > 0:
+        # Try to get range from MI API
+        low_price = mi_price * 0.85  # Estimate 15% below
+        high_price = mi_price * 1.15  # Estimate 15% above
+
+        return PricingRecommendationResponse(
+            run_id=run_id,
+            suggested_price=mi_price,
+            low_price=round(low_price, 2),
+            high_price=round(high_price, 2),
+            price_source="market_intelligence",
+            confidence=0.8,
+            pickup_location=pickup_location,
+            delivery_location=delivery_location,
+        )
+
+    # Fallback to default
+    return PricingRecommendationResponse(
+        run_id=run_id,
+        suggested_price=450.00,
+        price_source="default",
+        confidence=0.3,
+        pickup_location=pickup_location,
+        delivery_location=delivery_location,
+    )
 
 
 # =============================================================================
@@ -1854,7 +2135,7 @@ async def apply_production_corrections_to_training(
     """
     from api.database import get_connection
     from api.training_db import get_session
-    from services.training_service import TrainingService
+    from services.correction_rules_service import CorrectionRulesService
 
     if not correction_ids and not apply_all_pending:
         raise HTTPException(
@@ -1897,7 +2178,7 @@ async def apply_production_corrections_to_training(
         # Apply to training service
         session = next(get_session())
         try:
-            service = TrainingService(session)
+            service = CorrectionRulesService(session)
 
             for _at_code, corrections in by_auction.items():
                 for corr in corrections:

@@ -2,7 +2,6 @@
 Integrations Module
 
 Aggregates all integration routers:
-- ClickUp
 - Google Sheets
 - Central Dispatch
 - Email

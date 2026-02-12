@@ -842,17 +842,19 @@ LISTING_FIELDS: list[ListingField] = [
         help_text="Total purchase amount (internal use)",
         extraction_hint="TOTAL, AMOUNT DUE, GRAND TOTAL",
     ),
+    # F2 fix: DEPRECATED - Use vehicle_lot instead
+    # Kept for backward compatibility with old data
     ListingField(
         key="stock_number",
-        label="Stock Number",
+        label="Stock Number (Deprecated)",
         section=FieldSection.ADDITIONAL,
-        cd_api_key=None,  # Not sent to CD
+        cd_api_key=None,  # Not sent to CD - use vehicle_lot
         field_type=FieldType.TEXT,
         required=False,
         display_order=9,
         category=FieldCategory.INTERNAL,
         source_type=FieldSourceType.EXTRACTED,
-        help_text="Auction stock number",
+        help_text="DEPRECATED: Use vehicle_lot. Normalized by field_resolver.",
         extraction_hint="STOCK #, STOCK NUMBER",
     ),
     ListingField(
@@ -1024,17 +1026,17 @@ class ListingFieldRegistry:
             return None  # Optional empty values are valid
 
         # Normalize ZIP codes before validation
-        if key in ('pickup_zip', 'delivery_zip'):
+        if key in ("pickup_zip", "delivery_zip"):
             if isinstance(value, (int, float)):
                 value = str(int(value)).zfill(5)
             elif isinstance(value, str):
                 value = value.strip()
                 # Extract just digits and hyphen
-                zip_match = re.match(r'^(\d{5})[-\s]?(\d{4})?', value)
+                zip_match = re.match(r"^(\d{5})[-\s]?(\d{4})?", value)
                 if zip_match:
                     value = zip_match.group(1)
                     if zip_match.group(2):
-                        value += '-' + zip_match.group(2)
+                        value += "-" + zip_match.group(2)
 
         # String validations
         if isinstance(value, str):
@@ -1064,13 +1066,20 @@ class ListingFieldRegistry:
 
         return None
 
-    def validate_all(self, data: dict[str, Any]) -> list[dict[str, str]]:
+    def validate_all(self, data: dict[str, Any], skip_internal: bool = True) -> list[dict[str, str]]:
         """
         Validate all fields in data dict.
         Returns list of {field: key, error: message} for invalid fields.
+
+        Args:
+            data: Field values dict
+            skip_internal: If True, skip INTERNAL fields (not sent to CD API)
         """
         errors = []
         for field_def in LISTING_FIELDS:
+            # Skip INTERNAL fields - they're not sent to CD API
+            if skip_internal and field_def.category == FieldCategory.INTERNAL:
+                continue
             value = data.get(field_def.key)
             error = self.validate_field(field_def.key, value)
             if error:
@@ -1091,7 +1100,7 @@ class ListingFieldRegistry:
         today_str = datetime.now().strftime("%Y-%m-%d")
 
         # Normalize ZIP codes to ensure they're strings with proper format
-        for zip_field in ['pickup_zip', 'delivery_zip']:
+        for zip_field in ["pickup_zip", "delivery_zip"]:
             if zip_field in result and result[zip_field] is not None:
                 zip_val = result[zip_field]
                 # Convert to string if numeric
@@ -1101,18 +1110,18 @@ class ListingFieldRegistry:
                     # Clean up: remove spaces, keep only digits and hyphen
                     zip_val = zip_val.strip()
                     # Extract just the ZIP portion (handle formats like "89115-1234", "89115 1234")
-                    zip_match = re.match(r'^(\d{5})[-\s]?(\d{4})?', zip_val)
+                    zip_match = re.match(r"^(\d{5})[-\s]?(\d{4})?", zip_val)
                     if zip_match:
                         zip_val = zip_match.group(1)
                         if zip_match.group(2):
-                            zip_val += '-' + zip_match.group(2)
+                            zip_val += "-" + zip_match.group(2)
                 result[zip_field] = zip_val
 
         # Auto-set pickup_location_type to AUCTION for auction sources
-        auction_source = result.get('auction_source', '').upper()
-        if auction_source in ('COPART', 'IAA', 'MANHEIM'):
-            if not result.get('pickup_location_type'):
-                result['pickup_location_type'] = 'AUCTION'
+        auction_source = result.get("auction_source", "").upper()
+        if auction_source in ("COPART", "IAA", "MANHEIM"):
+            if not result.get("pickup_location_type"):
+                result["pickup_location_type"] = "AUCTION"
 
         for field_def in LISTING_FIELDS:
             value = result.get(field_def.key)
@@ -1127,6 +1136,7 @@ class ListingFieldRegistry:
         self,
         data: dict[str, Any],
         warehouse_selected: bool = False,
+        warehouse_data: dict[str, Any] = None,
         mode: str = "export",
     ) -> list[dict[str, str]]:
         """
@@ -1136,6 +1146,7 @@ class ListingFieldRegistry:
         Args:
             data: Field values dict
             warehouse_selected: Whether a warehouse has been selected
+            warehouse_data: Warehouse data dict to apply to delivery fields
             mode: "export" for full CD API validation, "training" for extraction review only
 
         In "training" mode, fields marked export_only=True are skipped
@@ -1154,12 +1165,36 @@ class ListingFieldRegistry:
         # Apply defaults before validation
         effective_data = self.apply_defaults(data)
 
+        # Apply warehouse data to delivery fields if provided
+        if warehouse_data:
+            warehouse_selected = True
+            field_mapping = {
+                "delivery_name": "name",
+                "delivery_address": "address",
+                "delivery_city": "city",
+                "delivery_state": "state",
+                "delivery_zip": "zip_code",
+                "delivery_phone": "phone",
+                "delivery_contact": "contact_name",
+            }
+            for field_key, wh_key in field_mapping.items():
+                if wh_key in warehouse_data and warehouse_data[wh_key]:
+                    effective_data[field_key] = warehouse_data[wh_key]
+
         # Check required fields
         for field_key in self._required_fields:
             field_def = self._fields[field_key]
 
+            # Skip INTERNAL fields - they're not sent to CD API
+            if field_def.category == FieldCategory.INTERNAL:
+                continue
+
             # In training mode, skip fields that are only required at export
             if mode == "training" and field_def.export_only:
+                continue
+
+            # Skip delivery fields if warehouse is selected (they come from warehouse)
+            if warehouse_selected and field_key.startswith("delivery_"):
                 continue
 
             value = effective_data.get(field_key)
@@ -1188,17 +1223,55 @@ class ListingFieldRegistry:
                     }
                 )
 
-        # CD API Rule: exactly 2 stops required
-        # Note: CD docs require 2 stops but do NOT require different addresses.
-        # Same-address check removed per CD API V2 spec review.
-        # If business logic requires different addresses, make it configurable.
+        # CD API Rule: exactly 2 stops required with all required fields
+        # Stop 1 = Pickup, Stop 2 = Delivery
+        pickup_required = ["pickup_city", "pickup_state", "pickup_zip"]
+        delivery_required = ["delivery_city", "delivery_state", "delivery_zip"]
 
-        # CD API Rule: 1-12 vehicles (we currently support single vehicle, so just check VIN exists)
-        vehicle_vin = effective_data.get("vehicle_vin")
-        if not vehicle_vin:
-            # Already caught by required fields check, but adding for clarity
-            pass
-        # Note: Multi-vehicle support would need vehicle count validation here
+        pickup_complete = all(
+            effective_data.get(f) and effective_data.get(f) not in ("TBD", "")
+            for f in pickup_required
+        )
+        delivery_complete = all(
+            effective_data.get(f) and effective_data.get(f) not in ("TBD", "")
+            for f in delivery_required
+        )
+
+        if mode == "export":
+            if not pickup_complete:
+                missing_pickup = [f for f in pickup_required if not effective_data.get(f)]
+                issues.append(
+                    {
+                        "field": "stops",
+                        "issue": f"Pickup stop incomplete. Missing: {', '.join(missing_pickup)}",
+                    }
+                )
+            if not delivery_complete and not warehouse_selected:
+                issues.append(
+                    {
+                        "field": "stops",
+                        "issue": "Delivery stop incomplete. Please select a warehouse.",
+                    }
+                )
+
+        # CD API Rule: 1-12 vehicles, no duplicate VINs
+        # Currently single-vehicle mode - validate VIN exists and format
+        vehicle_vin = effective_data.get("vehicle_vin", "")
+        if mode == "export":
+            if not vehicle_vin:
+                issues.append(
+                    {
+                        "field": "vehicles",
+                        "issue": "At least 1 vehicle required. VIN is missing.",
+                    }
+                )
+            elif len(vehicle_vin) != 17:
+                issues.append(
+                    {
+                        "field": "vehicle_vin",
+                        "issue": f"VIN must be exactly 17 characters (got {len(vehicle_vin)})",
+                    }
+                )
 
         # CD API Rule: externalId max 50 characters
         external_id = effective_data.get("external_id", "")
@@ -1341,6 +1414,9 @@ class ListingFieldRegistry:
             # In training mode, skip validation errors for export_only fields
             if mode == "training" and field_def and field_def.export_only:
                 continue
+            # Skip delivery fields if warehouse is selected (they come from warehouse)
+            if warehouse_selected and err["field"].startswith("delivery_"):
+                continue
             # Avoid duplicate errors
             existing = [i for i in issues if i["field"] == err["field"]]
             if not existing:
@@ -1389,11 +1465,21 @@ class ListingFieldRegistry:
                 "fields": [f.key for f in self.get_fields_by_category(FieldCategory.INTERNAL)],
             },
             "by_source": {
-                "extracted": [f.key for f in self.get_fields_by_source_type(FieldSourceType.EXTRACTED)],
-                "constant": [f.key for f in self.get_fields_by_source_type(FieldSourceType.CONSTANT)],
-                "warehouse_ref": [f.key for f in self.get_fields_by_source_type(FieldSourceType.WAREHOUSE_REF)],
-                "user_input": [f.key for f in self.get_fields_by_source_type(FieldSourceType.USER_INPUT)],
-                "computed": [f.key for f in self.get_fields_by_source_type(FieldSourceType.COMPUTED)],
+                "extracted": [
+                    f.key for f in self.get_fields_by_source_type(FieldSourceType.EXTRACTED)
+                ],
+                "constant": [
+                    f.key for f in self.get_fields_by_source_type(FieldSourceType.CONSTANT)
+                ],
+                "warehouse_ref": [
+                    f.key for f in self.get_fields_by_source_type(FieldSourceType.WAREHOUSE_REF)
+                ],
+                "user_input": [
+                    f.key for f in self.get_fields_by_source_type(FieldSourceType.USER_INPUT)
+                ],
+                "computed": [
+                    f.key for f in self.get_fields_by_source_type(FieldSourceType.COMPUTED)
+                ],
             },
         }
 
@@ -1493,7 +1579,17 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     vtype = data.get("vehicle_type", "SEDAN")
     if vtype:
         vtype = str(vtype).upper()
-    valid_types = ["SEDAN", "SUV", "TRUCK", "VAN", "MOTORCYCLE", "COUPE", "CONVERTIBLE", "WAGON", "OTHER"]
+    valid_types = [
+        "SEDAN",
+        "SUV",
+        "TRUCK",
+        "VAN",
+        "MOTORCYCLE",
+        "COUPE",
+        "CONVERTIBLE",
+        "WAGON",
+        "OTHER",
+    ]
     vehicle["vehicleType"] = vtype if vtype in valid_types else "SEDAN"
 
     # Operability - boolean, defaults to operable
@@ -1525,8 +1621,15 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     # Build pickup stop
     pickup_location_type = data.get("pickup_location_type", "AUCTION")
     valid_location_types = [
-        "RESIDENCE", "BUSINESS", "DEALER", "AUCTION", "PORT",
-        "STORAGE_FACILITY", "BODY_SHOP", "CROSS_DOCK", "OTHER",
+        "RESIDENCE",
+        "BUSINESS",
+        "DEALER",
+        "AUCTION",
+        "PORT",
+        "STORAGE_FACILITY",
+        "BODY_SHOP",
+        "CROSS_DOCK",
+        "OTHER",
     ]
     if pickup_location_type not in valid_location_types:
         pickup_location_type = "AUCTION"

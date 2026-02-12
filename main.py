@@ -583,28 +583,24 @@ def cmd_validate(args):
         if not args.skip_email:
             all_ok = False
 
-    # Validate ClickUp
-    print("\n[ClickUp]")
-    if config.clickup.token and config.clickup.list_id:
-        print(f"  List ID: {config.clickup.list_id}")
-
-        try:
-            client = ClickUpClient(
-                token=config.clickup.token,
-                list_id=config.clickup.list_id,
-            )
-            if client.validate_credentials():
-                print("  Status: OK")
-            else:
-                print("  Status: FAILED - Invalid credentials")
-                all_ok = False
-        except Exception as e:
-            print(f"  Status: ERROR - {e}")
-            all_ok = False
-    else:
-        print("  Status: NOT CONFIGURED")
-        if not args.skip_clickup:
-            all_ok = False
+    # DISABLED 2026-02-11: ClickUp integration removed
+    # print("\n[ClickUp]")
+    # if config.clickup.token and config.clickup.list_id:
+    #     print(f"  List ID: {config.clickup.list_id}")
+    #     try:
+    #         client = ClickUpClient(token=config.clickup.token, list_id=config.clickup.list_id)
+    #         if client.validate_credentials():
+    #             print("  Status: OK")
+    #         else:
+    #             print("  Status: FAILED - Invalid credentials")
+    #             all_ok = False
+    #     except Exception as e:
+    #         print(f"  Status: ERROR - {e}")
+    #         all_ok = False
+    # else:
+    #     print("  Status: NOT CONFIGURED")
+    #     if not args.skip_clickup:
+    #         all_ok = False
 
     # Validate Central Dispatch (optional)
     print("\n[Central Dispatch]")

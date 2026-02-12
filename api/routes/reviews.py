@@ -2,8 +2,12 @@
 Review API Routes
 
 Manage review items and submit corrections for training.
+
+NOTE: training-examples endpoints are DISABLED in MVP (data collection phase).
+Use the correction workflow via /api/training/submit-corrections instead.
 """
 
+from functools import wraps
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -23,6 +27,34 @@ router = APIRouter(prefix="/api/review", tags=["Review"])
 
 
 # =============================================================================
+# ML TRAINING DISABLED - DATA COLLECTION PHASE
+# =============================================================================
+
+ML_DISABLED_MESSAGE = {
+    "message": "ML training examples export is not implemented in MVP",
+    "phase": "data_collection",
+    "roadmap": (
+        "Training examples export will be enabled when sufficient data is collected. "
+        "Currently using rule-based extraction with learning from corrections."
+    ),
+    "active_features": [
+        "Submit corrections via Review UI",
+        "Correction rules learning (POST /api/training/submit-corrections)",
+    ],
+}
+
+
+def ml_training_disabled(func):
+    """Decorator to disable ML training endpoints with 501 response."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        raise HTTPException(status_code=501, detail=ML_DISABLED_MESSAGE)
+
+    return wrapper
+
+
+# =============================================================================
 # REQUEST/RESPONSE MODELS
 # =============================================================================
 
@@ -35,11 +67,15 @@ class ReviewItemResponse(BaseModel):
     source_key: str
     internal_key: Optional[str] = None
     cd_key: Optional[str] = None
+    display_name: Optional[str] = None  # Human-readable label for UI
     predicted_value: Optional[str] = None
     corrected_value: Optional[str] = None
     is_match_ok: bool = False
     export_field: bool = True
     confidence: Optional[float] = None
+    section: Optional[str] = None  # UI section (vehicle, pickup, delivery, etc.)
+    field_type: Optional[str] = None  # Input type (text, number, date, etc.)
+    required: bool = False  # Required for CD export
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -79,6 +115,10 @@ class ReviewSubmitRequest(BaseModel):
     run_id: int = Field(..., description="Extraction run ID")
     items: list[ReviewItemUpdate] = Field(..., description="Updated review items")
     mark_as_reviewed: bool = Field(True, description="Mark run as reviewed after submit")
+    warehouse_id: Optional[int] = Field(None, description="Selected warehouse ID")
+    mark_for_export: bool = Field(False, description="Mark run ready for CD export")
+    load_specific_terms: Optional[str] = Field(None, description="Load-specific terms for CD")
+    transport_special_instructions: Optional[str] = Field(None, description="Transport special instructions")
 
 
 class ReviewSubmitResponse(BaseModel):
@@ -187,7 +227,10 @@ async def get_review_for_run(run_id: int):
     Get all review items for an extraction run.
 
     Returns the extraction run info and all review items to be reviewed.
+    Enriches items with field metadata (display_name, section, etc.) from ListingFieldRegistry.
     """
+    from api.listing_fields import get_registry
+
     run = ExtractionRunRepository.get_by_id(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Extraction run not found")
@@ -197,23 +240,35 @@ async def get_review_for_run(run_id: int):
 
     items = ReviewItemRepository.get_by_run(run_id)
 
-    item_responses = [
-        ReviewItemResponse(
-            id=item.id,
-            run_id=item.run_id,
-            source_key=item.source_key,
-            internal_key=item.internal_key,
-            cd_key=item.cd_key,
-            predicted_value=item.predicted_value,
-            corrected_value=item.corrected_value,
-            is_match_ok=item.is_match_ok,
-            export_field=item.export_field,
-            confidence=item.confidence,
-            created_at=item.created_at,
-            updated_at=item.updated_at,
+    # Get field registry for metadata enrichment
+    registry = get_registry()
+
+    item_responses = []
+    for item in items:
+        # Get field definition from registry
+        field_def = registry.get_field(item.source_key)
+
+        # Build response with enriched metadata
+        item_responses.append(
+            ReviewItemResponse(
+                id=item.id,
+                run_id=item.run_id,
+                source_key=item.source_key,
+                internal_key=item.internal_key,
+                cd_key=item.cd_key,
+                display_name=field_def.label if field_def else _format_field_label(item.source_key),
+                predicted_value=item.predicted_value,
+                corrected_value=item.corrected_value,
+                is_match_ok=item.is_match_ok,
+                export_field=item.export_field,
+                confidence=item.confidence,
+                section=field_def.section.value if field_def else None,
+                field_type=field_def.field_type.value if field_def else "text",
+                required=field_def.required if field_def else False,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
         )
-        for item in items
-    ]
 
     reviewed_count = sum(1 for item in items if item.is_match_ok or item.corrected_value)
 
@@ -231,6 +286,12 @@ async def get_review_for_run(run_id: int):
     )
 
 
+def _format_field_label(key: str) -> str:
+    """Format a field key into a human-readable label."""
+    # Convert snake_case to Title Case
+    return key.replace("_", " ").title()
+
+
 @router.put("/{run_id}/item/{item_id}", response_model=ReviewItemResponse)
 async def update_review_item(run_id: int, item_id: int, data: ReviewItemUpdate):
     """
@@ -238,6 +299,8 @@ async def update_review_item(run_id: int, item_id: int, data: ReviewItemUpdate):
 
     Mark as correct (is_match_ok=true) or provide a corrected value.
     """
+    from api.listing_fields import get_registry
+
     run = ExtractionRunRepository.get_by_id(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Extraction run not found")
@@ -257,17 +320,25 @@ async def update_review_item(run_id: int, item_id: int, data: ReviewItemUpdate):
     # Get updated item
     item = ReviewItemRepository.get_by_id(item_id)
 
+    # Get field definition from registry
+    registry = get_registry()
+    field_def = registry.get_field(item.source_key)
+
     return ReviewItemResponse(
         id=item.id,
         run_id=item.run_id,
         source_key=item.source_key,
         internal_key=item.internal_key,
         cd_key=item.cd_key,
+        display_name=field_def.label if field_def else _format_field_label(item.source_key),
         predicted_value=item.predicted_value,
         corrected_value=item.corrected_value,
         is_match_ok=item.is_match_ok,
         export_field=item.export_field,
         confidence=item.confidence,
+        section=field_def.section.value if field_def else None,
+        field_type=field_def.field_type.value if field_def else "text",
+        required=field_def.required if field_def else False,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -349,16 +420,46 @@ async def submit_review(data: ReviewSubmitRequest):
             status_code=400, detail={"message": "Some items not found", "errors": errors}
         )
 
-    # Mark run as reviewed
-    if data.mark_as_reviewed:
-        ExtractionRunRepository.update(data.run_id, status="reviewed")
+    # Update run outputs with production fields if provided
+    import json
+
+    outputs = run.outputs_json or {}
+    if isinstance(outputs, str):
+        outputs = json.loads(outputs)
+
+    if data.warehouse_id:
+        outputs["warehouse_id"] = data.warehouse_id
+    if data.load_specific_terms:
+        outputs["load_specific_terms"] = data.load_specific_terms
+    if data.transport_special_instructions:
+        outputs["transport_special_instructions"] = data.transport_special_instructions
+
+    # Determine status
+    new_status = run.status
+    if data.mark_for_export:
+        new_status = "approved"
+    elif data.mark_as_reviewed:
+        new_status = "reviewed"
+
+    # Update run
+    ExtractionRunRepository.update(
+        data.run_id,
+        status=new_status,
+        outputs_json=json.dumps(outputs) if outputs else None,
+    )
+
+    # Build message
+    if data.mark_for_export:
+        message = f"Approved for export. {items_updated} items reviewed."
+    else:
+        message = f"Review submitted. {items_updated} items updated, {training_examples_created} training examples created."
 
     return ReviewSubmitResponse(
         run_id=data.run_id,
-        status="reviewed" if data.mark_as_reviewed else run.status,
+        status=new_status,
         items_updated=items_updated,
         training_examples_created=training_examples_created,
-        message=f"Review submitted. {items_updated} items updated, {training_examples_created} training examples created.",
+        message=message,
     )
 
 
@@ -617,7 +718,11 @@ async def get_run_evidence(run_id: int):
 
 
 @router.get("/{run_id}/preflight", response_model=PreflightResponse)
-async def get_run_preflight(run_id: int, mode: str = "training"):
+async def get_run_preflight(
+    run_id: int,
+    mode: str = "training",
+    warehouse_id: Optional[int] = None,
+):
     """
     Get preflight validation for a run before export.
 
@@ -628,10 +733,13 @@ async def get_run_preflight(run_id: int, mode: str = "training"):
         mode: "training" skips export-only fields (delivery address,
               vehicle_type, trailer_type, available_date, etc.)
               "export" checks all CD API required fields.
+        warehouse_id: Optional warehouse ID to use for delivery fields validation.
+                      If provided, delivery fields are populated from warehouse data.
     """
     import json
 
     from api.listing_fields import get_registry
+    from api.routes.warehouses import _get_warehouse_by_id
 
     run = ExtractionRunRepository.get_by_id(run_id)
     if not run:
@@ -642,13 +750,21 @@ async def get_run_preflight(run_id: int, mode: str = "training"):
     if isinstance(outputs, str):
         outputs = json.loads(outputs)
 
-    # Check if warehouse is selected
+    # Get warehouse data if warehouse_id provided
+    warehouse_data = None
     warehouse_selected = bool(outputs.get("warehouse_id") or outputs.get("delivery_address"))
+
+    if warehouse_id:
+        warehouse_data = _get_warehouse_by_id(warehouse_id)
+        warehouse_selected = warehouse_data is not None
 
     # Get blocking issues from field registry
     registry = get_registry()
     raw_issues = registry.get_blocking_issues(
-        outputs, warehouse_selected=warehouse_selected, mode=mode
+        outputs,
+        warehouse_selected=warehouse_selected,
+        warehouse_data=warehouse_data,
+        mode=mode,
     )
 
     # Build issue list

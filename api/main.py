@@ -13,6 +13,7 @@ Endpoints:
 - /api/review - Review items and submit workflow
 - /api/exports - Central Dispatch export
 - /api/models - ML model versions and training
+- /api/dlq - Dead Letter Queue for failed processing
 """
 
 import sys
@@ -36,8 +37,8 @@ from api.database import init_db
 from api.models import init_schema, seed_base_auction_types, seed_default_field_mappings
 from api.routes import (
     auction_types,
-    brokers,
     cd_listings,
+    dlq,
     documents,
     exports,
     extractions,
@@ -46,6 +47,7 @@ from api.routes import (
     integrations,
     metrics,
     models,
+    pricing,
     reviews,
     runs,
     settings,
@@ -125,12 +127,13 @@ app.include_router(exports.router)
 app.include_router(models.router)
 app.include_router(integrations.router)
 app.include_router(warehouses.router)
-app.include_router(brokers.router)
 app.include_router(field_mappings.router)
 app.include_router(training.router, prefix="/api")
 app.include_router(metrics.router)  # M3.P1.5: Metrics endpoints
 app.include_router(cd_listings.router)  # CD Listings API v2 preview + push
 app.include_router(templates.router)  # Zone-based extraction templates
+app.include_router(pricing.router)  # Pricing recommendations via CD Market Intelligence
+app.include_router(dlq.router, prefix="/api", tags=["DLQ"])  # Dead Letter Queue (Phase 0.7)
 
 
 # =============================================================================
@@ -216,11 +219,10 @@ async def startup():
 
     init_auction_profiles_schema()
     seed_default_auction_profiles()
-    # Initialize brokers schema
-    from api.brokers import init_brokers_schema, seed_default_brokers
+    # Initialize warehouse constants schema
+    from api.warehouse_constants import init_warehouse_constants_schema
 
-    init_brokers_schema()
-    seed_default_brokers()
+    init_warehouse_constants_schema()
 
 
 # Serve frontend (simple HTML for now)

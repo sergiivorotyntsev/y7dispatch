@@ -207,13 +207,26 @@ class TestMarketIntelligenceClient:
 class TestLearnedRulesLoading:
     """Tests for learned rules loading fix (P1.1)."""
 
-    def test_get_session_is_context_manager(self):
-        """Test that get_session works as context manager."""
+    def test_session_context_works(self):
+        """Test that SessionContext works as context manager."""
+        from api.training_db import SessionContext
+
+        # SessionContext provides context manager interface for non-FastAPI code
+        with SessionContext() as session:
+            assert session is not None
+
+    def test_get_session_is_generator(self):
+        """Test that get_session is a generator for FastAPI Depends()."""
         from api.training_db import get_session
 
-        # Should not raise "generator object does not support the context manager protocol"
-        with get_session() as session:
-            assert session is not None
+        # get_session should be a generator function (for FastAPI Depends)
+        gen = get_session()
+        session = next(gen)
+        assert session is not None
+        try:
+            gen.send(None)
+        except StopIteration:
+            pass
 
 
 if __name__ == "__main__":

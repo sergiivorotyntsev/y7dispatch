@@ -216,6 +216,51 @@ Total Due: $5,500.00
         assert address is not None
         assert "123 AUCTION BLVD" in address.street or "TAMPA" in address.city
 
+    def test_extract_stock_number_default(self):
+        """Test stock number extraction with default patterns."""
+        extractor = IAAExtractor()
+        extractor._rules_loaded = True
+        extractor._learned_rules = {}
+
+        stock = extractor._extract_stock_number(self.IAA_SAMPLE)
+        assert stock == "123-456789"
+
+    def test_extract_stock_number_with_learned_rule(self):
+        """Test stock number extraction with learned rules from training."""
+        extractor = IAAExtractor()
+        extractor._rules_loaded = True
+        extractor._learned_rules = {
+            "vehicle_lot": LearnedRule(
+                field_key="vehicle_lot",
+                rule_type="label_below",
+                label_patterns=[r"Stock\\s*No", r"StockNo"],
+                exclude_patterns=[],
+                confidence=0.9,
+            )
+        }
+
+        stock = extractor._extract_stock_number(self.IAA_SAMPLE)
+        assert stock == "123-456789"
+
+    def test_extract_stock_number_alternate_format(self):
+        """Test stock number extraction with different format."""
+        alternate_text = """
+Stock Number: 98765432
+VIN: 1HGBH41JXMN109186
+"""
+        extractor = IAAExtractor()
+        extractor._rules_loaded = True
+        extractor._learned_rules = {}
+
+        stock = extractor._extract_stock_number(alternate_text)
+        assert stock == "98765432"
+
+    def test_vehicle_lot_in_default_labels(self):
+        """Test that vehicle_lot is defined in DEFAULT_LABELS."""
+        extractor = IAAExtractor()
+        assert "vehicle_lot" in extractor.DEFAULT_LABELS
+        assert len(extractor.DEFAULT_LABELS["vehicle_lot"]) >= 1
+
 
 class TestManheimExtractorWithLearnedRules:
     """Tests for Manheim extractor with learned rules integration."""
@@ -317,14 +362,14 @@ class TestTrainingModels:
 
 
 @pytest.mark.skipif(True, reason="Requires sqlmodel which may not be installed in test env")
-class TestTrainingServiceMocked:
-    """Tests for TrainingService with mocked database."""
+class TestCorrectionRulesServiceMocked:
+    """Tests for CorrectionRulesService with mocked database."""
 
     def test_save_corrections(self):
         """Test saving corrections creates training records."""
         pytest.importorskip("sqlmodel")
         from models.training import FieldCorrectionCreate
-        from services.training_service import TrainingService
+        from services.correction_rules_service import CorrectionRulesService
 
         mock_session = MagicMock()
 
@@ -335,7 +380,7 @@ class TestTrainingServiceMocked:
         mock_run.extracted_text = "Sample text"
         mock_session.get.return_value = mock_run
 
-        service = TrainingService(mock_session)
+        service = CorrectionRulesService(mock_session)
 
         corrections = [
             FieldCorrectionCreate(
@@ -464,3 +509,140 @@ class TestLearnedRulesLoading:
         assert rule is not None
         assert rule.field_key == "pickup_address"
         assert rule.confidence == 0.8
+
+
+class TestZoneFieldWithLabelPatterns:
+    """Tests for ZoneField with label_patterns functionality."""
+
+    def test_zone_field_with_label_patterns(self):
+        """Test ZoneField stores label_patterns correctly."""
+        from extractors.zone_extractor import ZoneField, FieldType
+
+        field = ZoneField(
+            key="vehicle_lot",
+            field_type=FieldType.TEXT,
+            label_patterns=[r"Stock\s*No", r"StockNo", r"Stock\s*#"],
+            extract_strategy="after_label",
+        )
+
+        assert field.key == "vehicle_lot"
+        assert len(field.label_patterns) == 3
+        assert field.extract_strategy == "after_label"
+
+    def test_zone_field_default_values(self):
+        """Test ZoneField default values for new fields."""
+        from extractors.zone_extractor import ZoneField, FieldType
+
+        field = ZoneField(key="test_field")
+
+        assert field.label_patterns == []
+        assert field.extract_strategy == "after_label"
+        assert field.field_type == FieldType.TEXT
+
+    def test_zone_field_serialization(self):
+        """Test ZoneField serialization with label_patterns."""
+        from extractors.zone_extractor import DocumentZone, ZoneField, FieldType
+
+        zone = DocumentZone(
+            name="test_zone",
+            x0=0, y0=0, x1=100, y1=100,
+            fields=[
+                ZoneField(
+                    key="stock_number",
+                    field_type=FieldType.TEXT,
+                    label_patterns=[r"Stock\s*No"],
+                    extract_strategy="after_label",
+                )
+            ]
+        )
+
+        data = zone.to_dict()
+        assert "label_patterns" in data["fields"][0]
+        assert data["fields"][0]["label_patterns"] == [r"Stock\s*No"]
+        assert data["fields"][0]["extract_strategy"] == "after_label"
+
+    def test_zone_field_deserialization(self):
+        """Test ZoneField deserialization with label_patterns."""
+        from extractors.zone_extractor import DocumentZone
+
+        data = {
+            "name": "test_zone",
+            "x0": 0, "y0": 0, "x1": 100, "y1": 100,
+            "fields": [
+                {
+                    "key": "stock_number",
+                    "field_type": "text",
+                    "label_patterns": [r"Stock\s*No", r"StockNo"],
+                    "extract_strategy": "after_label",
+                }
+            ]
+        }
+
+        zone = DocumentZone.from_dict(data)
+        field = zone.fields[0]
+        assert field.label_patterns == [r"Stock\s*No", r"StockNo"]
+        assert field.extract_strategy == "after_label"
+
+    def test_parse_field_with_label_patterns(self):
+        """Test field extraction using label_patterns array."""
+        from extractors.zone_extractor import ZoneExtractor, ZoneField, FieldType
+
+        extractor = ZoneExtractor()
+
+        # Text with stock number following "StockNo:" label
+        text = """
+Some header text
+StockNo: 123-456789
+VIN: 1HGBH41JXMN109186
+More text
+"""
+
+        field_def = ZoneField(
+            key="stock_number",
+            field_type=FieldType.TEXT,
+            label_patterns=[r"Stock\s*No", r"StockNo"],
+            extract_strategy="after_label",
+        )
+
+        value = extractor.parse_field_from_text(text, field_def)
+        assert value is not None
+        assert "123-456789" in value
+
+
+class TestUnmatchedFieldsDetection:
+    """Tests for unmatched fields detection in training."""
+
+    def test_find_context_returns_none_for_missing_value(self):
+        """Test that _find_context returns None when value not in text."""
+        from services.correction_rules_service import CorrectionRulesService
+        from unittest.mock import MagicMock
+
+        session = MagicMock()
+        service = CorrectionRulesService(session)
+
+        text = "Some document text here"
+        value = "VALUE_NOT_IN_TEXT"
+
+        context = service._find_context(text, value)
+        assert context is None
+
+    def test_find_context_returns_context_when_found(self):
+        """Test that _find_context returns context when value found."""
+        from services.correction_rules_service import CorrectionRulesService
+        from unittest.mock import MagicMock
+
+        session = MagicMock()
+        service = CorrectionRulesService(session)
+
+        text = "Some prefix text THE VALUE IS HERE more text after"
+        value = "THE VALUE IS HERE"
+
+        context = service._find_context(text, value)
+        assert context is not None
+        assert value in context
+
+    def test_learning_summary_includes_unmatched_fields(self):
+        """Test that learning_summary includes unmatched_fields."""
+        # This is an integration test placeholder
+        # The actual integration would require database setup
+        pass

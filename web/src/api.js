@@ -22,7 +22,22 @@ async function request(endpoint, options = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error(error.detail || `HTTP ${response.status}`)
+    // Handle Pydantic validation errors (detail is array of objects)
+    let errorMsg = `HTTP ${response.status}`
+    if (error.detail) {
+      if (Array.isArray(error.detail)) {
+        // Pydantic validation error format
+        errorMsg = error.detail.map(e => {
+          const loc = e.loc ? e.loc.join(' → ') : ''
+          return `${loc}: ${e.msg}`
+        }).join('; ')
+      } else if (typeof error.detail === 'string') {
+        errorMsg = error.detail
+      } else {
+        errorMsg = JSON.stringify(error.detail)
+      }
+    }
+    throw new Error(errorMsg)
   }
 
   // Handle empty responses
@@ -132,8 +147,13 @@ export const api = {
   getDocumentText: (id) => request(`/documents/${id}/text`),
   getDocumentExportPreview: (id) => request(`/documents/${id}/export-preview`),
   getDocumentFileUrl: (id) => `${API_BASE}/documents/${id}/file`,
+  getDocumentPageImageUrl: (id, pageNum = 1, dpi = 150) => `${API_BASE}/documents/${id}/page/${pageNum}/image?dpi=${dpi}`,
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
   clearTestLabDocuments: () => request('/documents/test-lab/clear-all', { method: 'DELETE' }),
+  listTrainingDocuments: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return request(`/documents/training/list${query ? `?${query}` : ''}`)
+  },
   uploadDocument: async (file, auctionTypeId, datasetSplit = 'train') => {
     const formData = new FormData()
     formData.append('file', file)
@@ -143,6 +163,20 @@ export const api = {
     }
     formData.append('dataset_split', datasetSplit)
     formData.append('auto_classify', 'true')  // Enable auto-classification
+    return request('/documents/upload', {
+      method: 'POST',
+      body: formData,
+    })
+  },
+  uploadTrainingDocument: async (file, auctionTypeId = null) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (auctionTypeId !== null && auctionTypeId !== undefined) {
+      formData.append('auction_type_id', auctionTypeId)
+    }
+    formData.append('dataset_split', 'train')
+    formData.append('source', 'test_lab')  // Mark as training document
+    formData.append('auto_classify', 'true')
     return request('/documents/upload', {
       method: 'POST',
       body: formData,
@@ -190,7 +224,14 @@ export const api = {
 
   // Review Preflight (M3.P2) - Get validation status before export
   // mode: "training" skips export-only fields, "export" checks all
-  getRunPreflight: (runId, mode = 'training') => request(`/review/${runId}/preflight?mode=${mode}`),
+  // warehouseId: optional warehouse ID to validate delivery fields
+  getRunPreflight: (runId, mode = 'training', warehouseId = null) => {
+    let url = `/review/${runId}/preflight?mode=${mode}`
+    if (warehouseId) {
+      url += `&warehouse_id=${warehouseId}`
+    }
+    return request(url)
+  },
 
   // Get latest extraction run for a document
   getDocumentExtractions: (documentId) => request(`/extractions/?document_id=${documentId}&limit=1`),
@@ -277,31 +318,8 @@ export const api = {
   deleteWarehouseFull: (id, hard = false) => request(`/warehouses/${id}?hard=${hard}`, {
     method: 'DELETE',
   }),
-  // State-first warehouse selection (Block 10)
   getWarehouseStates: () => request('/warehouses/states/list'),
-  getBrokersByState: (state) => request(`/warehouses/brokers/by-state?state=${state}`),
-  filterWarehouses: (params = {}) => {
-    const query = new URLSearchParams(params).toString()
-    return request(`/warehouses/filter${query ? `?${query}` : ''}`)
-  },
-
-  // Brokers API
-  listBrokers: (params = {}) => {
-    const query = new URLSearchParams(params).toString()
-    return request(`/brokers/${query ? `?${query}` : ''}`)
-  },
-  getBroker: (id) => request(`/brokers/${id}`),
-  createBroker: (data) => request('/brokers/', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  updateBroker: (id, data) => request(`/brokers/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  }),
-  deleteBroker: (id, hard = false) => request(`/brokers/${id}?hard=${hard}`, {
-    method: 'DELETE',
-  }),
+  syncWarehousesFromYaml: () => request('/warehouses/sync-yaml', { method: 'POST' }),
 
   // Templates / Field Mappings
   listTemplates: () => request('/templates/'),
@@ -362,8 +380,25 @@ export const api = {
   getFieldsForMode: (mode) => request(`/settings/fields/for-mode/${mode}`),
   getExtractedFields: () => request('/settings/fields/extracted'),
 
+  // Field Configuration Persistence
+  getFieldConfigs: () => request('/settings/fields/configs'),
+  updateFieldConfigs: (updates) => request('/settings/fields/configs', {
+    method: 'PUT',
+    body: JSON.stringify({ updates }),
+  }),
+  updateSingleFieldConfig: (fieldKey, data) => request(`/settings/fields/configs/${fieldKey}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  deleteFieldConfig: (fieldKey) => request(`/settings/fields/configs/${fieldKey}`, {
+    method: 'DELETE',
+  }),
+
   // CD Listing Info (ETag tracking)
   getCDListingInfo: (runId) => request(`/exports/cd-listing/${runId}`),
+
+  // Market Intelligence Pricing
+  getPricingRecommendation: (runId) => request(`/exports/pricing/${runId}`),
 
   // CD Listings API v2 — Preview & Push
   getCDPayload: (docId, warehouseCode = null) => {
@@ -427,6 +462,11 @@ export const api = {
     body: JSON.stringify(data),
   }),
   previewZones: (templateId, documentId) => request(`/templates/${templateId}/zones/preview?document_id=${documentId}`),
+  // Live preview with unsaved zones (for edit mode)
+  livePreviewZones: (documentId, zones) => request('/templates/zones/live-preview', {
+    method: 'POST',
+    body: JSON.stringify({ document_id: documentId, zones }),
+  }),
   submitTemplateFeedback: (data) => request('/templates/feedback', {
     method: 'POST',
     body: JSON.stringify(data),

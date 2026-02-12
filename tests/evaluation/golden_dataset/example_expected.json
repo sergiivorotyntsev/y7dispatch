@@ -1,0 +1,43 @@
+{
+  "document_id": "example_copart_001",
+  "auction_type": "COPART",
+  "category": "standard",
+  "source": "example_template",
+
+  "expected_fields": {
+    "vehicle_vin": "1HGCM82633A123456",
+    "vehicle_year": 2024,
+    "vehicle_make": "Honda",
+    "vehicle_model": "Accord",
+    "vehicle_color": "Silver",
+    "vehicle_type": "CAR",
+    "vehicle_lot": "12345678",
+
+    "pickup_name": "Copart Denver",
+    "pickup_address": "123 Auction Blvd",
+    "pickup_city": "Denver",
+    "pickup_state": "CO",
+    "pickup_zip": "80216",
+    "pickup_phone": "3035551234",
+
+    "buyer_id": "87654321",
+    "buyer_name": "ABC Motors LLC",
+    "seller_name": "Progressive Insurance",
+    "sale_date": "2026-02-01",
+    "total_amount": 15500.00
+  },
+
+  "metadata": {
+    "annotated_by": "example",
+    "annotated_at": "2026-02-11",
+    "notes": "Example template - replace with actual document data",
+    "quality_score": 1.0,
+    "is_example": true
+  },
+
+  "validation": {
+    "min_fields_required": 12,
+    "allow_partial_match": ["pickup_address", "vehicle_model"],
+    "skip_fields": []
+  }
+}

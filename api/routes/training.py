@@ -18,7 +18,7 @@ from models.training import (
     ExtractionRule,
     FieldCorrectionCreate,
 )
-from services.training_service import TrainingService
+from services.correction_rules_service import CorrectionRulesService
 
 
 def init_training_schema():
@@ -48,12 +48,21 @@ class SubmitCorrectionsRequest(BaseModel):
     stay_in_training: bool = True  # Don't redirect to runs
 
 
+class LearningSummary(BaseModel):
+    rules_created: int = 0
+    rules_updated: int = 0
+    patterns_learned: list[str] = []
+    fields_improved: list[str] = []
+    unmatched_fields: list[str] = []  # Fields where corrected value not found in document text
+
+
 class SubmitCorrectionsResponse(BaseModel):
     success: bool
     saved_count: int
     error_count: int
     message: str
     training_stats: dict
+    learning_summary: LearningSummary
 
 
 class TrainingStatsResponse(BaseModel):
@@ -87,7 +96,7 @@ def submit_corrections(request: SubmitCorrectionsRequest, session: Session = Dep
     3. Triggers learning to update extraction rules
     4. Returns updated training stats
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
 
     # Convert request corrections to model format
     corrections = [
@@ -101,7 +110,7 @@ def submit_corrections(request: SubmitCorrectionsRequest, session: Session = Dep
     ]
 
     try:
-        saved_count, error_count = service.save_corrections(
+        saved_count, error_count, learning_summary = service.save_corrections(
             run_id=request.extraction_run_id,
             corrections=corrections,
             mark_validated=request.mark_as_validated,
@@ -110,12 +119,29 @@ def submit_corrections(request: SubmitCorrectionsRequest, session: Session = Dep
         # Get updated training stats
         stats = service.get_training_stats()
 
+        # Build user-friendly message
+        message_parts = [f"Saved {saved_count} corrections."]
+        if learning_summary.get("rules_created", 0) > 0:
+            message_parts.append(f"{learning_summary['rules_created']} new rule(s) created!")
+        if learning_summary.get("rules_updated", 0) > 0:
+            message_parts.append(f"{learning_summary['rules_updated']} rule(s) improved.")
+        if learning_summary.get("fields_improved"):
+            fields = ", ".join(learning_summary["fields_improved"][:3])
+            message_parts.append(f"Confidence improved for: {fields}")
+        if learning_summary.get("unmatched_fields"):
+            unmatched = ", ".join(learning_summary["unmatched_fields"][:3])
+            message_parts.append(
+                f"Note: Could not learn patterns for {unmatched} - "
+                "value not found in document text."
+            )
+
         return SubmitCorrectionsResponse(
             success=True,
             saved_count=saved_count,
             error_count=error_count,
-            message=f"Saved {saved_count} corrections. Training data updated.",
+            message=" ".join(message_parts),
             training_stats=stats,
+            learning_summary=LearningSummary(**learning_summary),
         )
 
     except ValueError as e:
@@ -131,7 +157,7 @@ def get_training_stats(
     """
     Get training statistics for all auction types or a specific one.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     stats = service.get_training_stats(auction_type_id)
     return TrainingStatsResponse(**stats)
 
@@ -143,7 +169,7 @@ def get_extraction_rules(
     """
     Get extraction rules for an auction type.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     rules = service.get_extraction_rules(auction_type_id, field_key)
 
     return [
@@ -166,7 +192,7 @@ def get_rules_for_extractor(auction_type_code: str, session: Session = Depends(g
     """
     Get extraction rules in format suitable for extractors.
     """
-    service = TrainingService(session)
+    service = CorrectionRulesService(session)
     return service.get_rules_for_extractor(auction_type_code)
 
 
@@ -184,3 +210,69 @@ def delete_rule(rule_id: int, session: Session = Depends(get_session)):
     session.commit()
 
     return {"success": True, "message": "Rule deactivated"}
+
+
+@router.get("/field-confidence/{auction_type_id}")
+def get_field_confidence(auction_type_id: int, session: Session = Depends(get_session)):
+    """
+    Get confidence scores for all fields of an auction type.
+
+    Returns dict of field_key -> confidence info for UI display.
+    """
+    service = CorrectionRulesService(session)
+    rules = service.get_extraction_rules(auction_type_id)
+
+    result = {}
+    for rule in rules:
+        result[rule.field_key] = {
+            "confidence": round(rule.confidence, 2),
+            "validation_count": rule.validation_count,
+            "has_learned_patterns": len(rule.get_label_patterns()) > 0,
+            "status": (
+                "learning"
+                if rule.validation_count < 5
+                else ("confident" if rule.confidence >= 0.8 else "improving")
+            ),
+        }
+
+    return {
+        "auction_type_id": auction_type_id,
+        "fields": result,
+        "total_rules": len(rules),
+    }
+
+
+@router.get("/learning-progress")
+def get_learning_progress(session: Session = Depends(get_session)):
+    """
+    Get overall learning progress summary.
+
+    Shows how much the system has learned across all auction types.
+    """
+    service = CorrectionRulesService(session)
+    stats = service.get_training_stats()
+
+    total_rules = 0
+    total_examples = 0
+    total_corrections = 0
+    high_confidence_fields = 0
+
+    for at_stats in stats.get("by_auction_type", {}).values():
+        total_rules += at_stats.get("rules_count", 0)
+        total_examples += at_stats.get("total_examples", 0)
+        total_corrections += at_stats.get("correction_count", 0)
+        if at_stats.get("avg_confidence", 0) >= 0.8:
+            high_confidence_fields += at_stats.get("rules_count", 0)
+
+    return {
+        "total_rules": total_rules,
+        "total_examples": total_examples,
+        "total_corrections": total_corrections,
+        "high_confidence_rules": high_confidence_fields,
+        "learning_status": (
+            "just_started"
+            if total_examples < 10
+            else ("learning" if total_examples < 50 else "trained")
+        ),
+        "by_auction_type": stats.get("by_auction_type", {}),
+    }

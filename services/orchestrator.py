@@ -61,18 +61,19 @@ class Orchestrator:
 
     def __init__(self, config: Optional[AppConfig] = None):
         self.config = config or get_config()
-        self._clickup_client: Optional[ClickUpClient] = None
+        self._clickup_client: Optional[object] = None  # ClickUp disabled
         self._idempotency_store: Optional[IdempotencyStore] = None
 
     @property
-    def clickup_client(self) -> ClickUpClient:
-        """Lazy-load ClickUp client."""
-        if self._clickup_client is None:
-            self._clickup_client = ClickUpClient(
-                token=self.config.clickup.token,
-                list_id=self.config.clickup.list_id,
-            )
-        return self._clickup_client
+    def clickup_client(self):
+        """Lazy-load ClickUp client. DISABLED - always returns None."""
+        # DISABLED 2026-02-11: ClickUp integration removed
+        # if self._clickup_client is None:
+        #     self._clickup_client = ClickUpClient(
+        #         token=self.config.clickup.token,
+        #         list_id=self.config.clickup.list_id,
+        #     )
+        return None  # ClickUp disabled
 
     @property
     def idempotency_store(self) -> IdempotencyStore:

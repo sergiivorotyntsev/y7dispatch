@@ -114,21 +114,49 @@ class AuctionInvoice:
     pickup_address: Optional[Address] = None
     location_type: LocationType = LocationType.ONSITE
     release_id: Optional[str] = None
-    stock_number: Optional[str] = None
-    lot_number: Optional[str] = None
+    # F2 fix: Unified lot/stock number field
+    # Copart uses lot_number, IAA/Manheim use stock_number
+    # Now consolidated into vehicle_lot for consistency
+    vehicle_lot: Optional[str] = None
     vehicles: list[Vehicle] = field(default_factory=list)
     total_amount: Optional[float] = None
     notes: Optional[str] = None
+    # Seller information (for Manheim OFFSITE pickup name resolution)
+    seller_name: Optional[str] = None
+    seller_address: Optional[Address] = None
+    # Release availability date (if different from sale date)
+    release_available_date: Optional[datetime] = None
+    # Additional release notes for CD (OFFSITE info, special instructions)
+    release_notes: Optional[str] = None
 
     @property
     def reference_id(self) -> str:
         """Get the appropriate reference ID based on auction source."""
         if self.source == AuctionSource.MANHEIM:
-            return self.release_id or self.stock_number or ""
-        elif self.source == AuctionSource.COPART:
-            return self.lot_number or ""
-        else:  # IAA
-            return self.stock_number or ""
+            return self.release_id or self.vehicle_lot or ""
+        else:  # Copart, IAA - all use vehicle_lot now
+            return self.vehicle_lot or ""
+
+    # Backward compatibility properties for legacy code
+    @property
+    def lot_number(self) -> Optional[str]:
+        """Backward compatibility alias for vehicle_lot."""
+        return self.vehicle_lot
+
+    @lot_number.setter
+    def lot_number(self, value: Optional[str]) -> None:
+        """Backward compatibility setter for vehicle_lot."""
+        self.vehicle_lot = value
+
+    @property
+    def stock_number(self) -> Optional[str]:
+        """Backward compatibility alias for vehicle_lot."""
+        return self.vehicle_lot
+
+    @stock_number.setter
+    def stock_number(self, value: Optional[str]) -> None:
+        """Backward compatibility setter for vehicle_lot."""
+        self.vehicle_lot = value
 
 
 @dataclass
@@ -155,10 +183,17 @@ class TransportListing:
         delivery_stop = self.delivery_address.to_cd_stop(2)
         vehicles = [v.to_cd_vehicle() for v in self.invoice.vehicles]
 
+        # Use release_available_date from invoice if available_date not explicitly set
+        effective_available_date = (
+            self.available_date
+            or self.invoice.release_available_date
+            or datetime.utcnow()
+        )
+
         listing = {
             "trailerType": self.trailer_type.value,
             "hasInOpVehicle": has_inop,
-            "availableDate": (self.available_date or datetime.utcnow()).strftime(
+            "availableDate": effective_available_date.strftime(
                 "%Y-%m-%dT00:00:00Z"
             ),
             "price": {
@@ -203,5 +238,14 @@ class TransportListing:
                 )
             else:
                 listing["transportationReleaseNotes"] = location_info
+
+        # Add release notes from invoice (e.g., OFFSITE release instructions)
+        if self.invoice.release_notes:
+            if "transportationReleaseNotes" in listing:
+                listing["transportationReleaseNotes"] = (
+                    f"{listing['transportationReleaseNotes']} | {self.invoice.release_notes}"
+                )
+            else:
+                listing["transportationReleaseNotes"] = self.invoice.release_notes
 
         return listing

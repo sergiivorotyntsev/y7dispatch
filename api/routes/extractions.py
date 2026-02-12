@@ -711,58 +711,147 @@ def run_extraction(
         evidence_list = []
 
         # =================================================================
-        # ZONE-BASED EXTRACTION (PRIORITY - highest accuracy)
-        # Uses template zones to extract from correct regions
+        # ZONE-BASED EXTRACTION (PRIMARY - highest accuracy)
+        # Uses template zones from DATABASE to extract from correct regions
+        # Always loads fresh template from DB, not from singleton cache
         # =================================================================
         zone_outputs = {}
-        use_zone_extraction = True  # Feature flag
 
-        if use_zone_extraction and doc.file_path:
+        if doc.file_path:
             try:
                 from extractors.zone_extractor import get_zone_extractor
+                import logging
 
+                logger = logging.getLogger(__name__)
                 zone_extractor = get_zone_extractor()
-                zone_template = zone_extractor.get_template(auction_type.code)
 
-                if zone_template:
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(f"Using zone extraction for {auction_type.code}")
+                # Use extract_with_logging() which ALWAYS loads from DB
+                logger.info(f"ZONE EXTRACTION: Loading template from DB for {auction_type.code}")
+                zone_result = zone_extractor.extract_with_logging(doc.file_path, auction_type.code)
 
-                    zone_result = zone_extractor.extract(doc.file_path, auction_type.code)
+                zone_outputs = zone_result.fields
+                metrics["zone_extraction"] = {
+                    "template_id": zone_result.template_id,
+                    "confidence": zone_result.confidence,
+                    "fields_count": len(zone_result.fields),
+                    "warnings": zone_result.warnings,
+                    "source": "database" if zone_result.template_id != "none" else "none",
+                }
 
-                    if zone_result.confidence > 0.3:
-                        zone_outputs = zone_result.fields
-                        metrics["zone_extraction"] = {
-                            "template_id": zone_result.template_id,
+                # Track zone-extracted fields
+                for key, value in zone_outputs.items():
+                    if value is not None:
+                        field_sources[key] = {
+                            "value": value,
+                            "source": "ZONE_EXTRACTED",
                             "confidence": zone_result.confidence,
-                            "fields_count": len(zone_result.fields),
-                            "warnings": zone_result.warnings,
+                            "method": f"zone_extractor:{zone_result.template_id}",
                         }
 
-                        # Track zone-extracted fields
-                        for key, value in zone_outputs.items():
-                            if value is not None:
-                                field_sources[key] = {
-                                    "value": value,
-                                    "source": "ZONE_EXTRACTED",
-                                    "confidence": zone_result.confidence,
-                                    "method": f"zone_extractor:{zone_result.template_id}",
-                                }
+                logger.info(
+                    f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}"
+                )
 
-                        logger.info(f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}")
+                # =================================================================
+                # APPLY TRAINING RULES (learned from user corrections)
+                # Training rules can provide additional patterns for extraction
+                # =================================================================
+                try:
+                    from services.correction_rules_service import CorrectionRulesService
+                    from api.training_db import SessionContext
+
+                    with SessionContext() as session:
+                        rules_service = CorrectionRulesService(session)
+                        learned_rules = rules_service.get_rules_for_extractor(auction_type.code)
+
+                        if learned_rules:
+                            metrics["training_rules_applied"] = len(learned_rules)
+                            logger.info(f"Training: {len(learned_rules)} learned rules available")
+
+                            # Apply learned patterns to improve extraction
+                            for field_key, rule_info in learned_rules.items():
+                                if not rule_info.get("label_patterns"):
+                                    continue
+
+                                current_value = zone_outputs.get(field_key)
+                                current_source = field_sources.get(field_key, {})
+                                current_confidence = current_source.get("confidence", 0)
+                                rule_confidence = rule_info.get("confidence", 0.5)
+                                rule_validations = rule_info.get("validation_count", 0)
+
+                                # Criteria for applying training rule:
+                                # 1. Field is missing, OR
+                                # 2. Rule has high confidence (>0.7) AND many validations (>3) AND current extraction has lower confidence
+                                should_apply = (
+                                    not current_value or
+                                    (rule_confidence > 0.7 and rule_validations >= 3 and rule_confidence > current_confidence)
+                                )
+
+                                if not should_apply:
+                                    continue
+
+                                # Try to find value using learned label patterns
+                                for pattern in rule_info["label_patterns"][:3]:  # Top 3 patterns
+                                    import re
+                                    # More specific pattern matching for different field types
+                                    if "lot" in field_key.lower() or "stock" in field_key.lower():
+                                        value_pattern = r"[\dA-Z]+-?\d+|\d{5,}"
+                                    elif "vin" in field_key.lower():
+                                        value_pattern = r"[A-HJ-NPR-Z0-9]{17}"
+                                    else:
+                                        value_pattern = r"\S+(?:\s+\S+)*"
+
+                                    match = re.search(
+                                        f"{pattern}[:\\s]*({value_pattern})",
+                                        raw_text,
+                                        re.IGNORECASE
+                                    )
+                                    if match:
+                                        value = match.group(1).strip()
+                                        if value and len(value) > 2:
+                                            # Log if overriding existing value
+                                            if current_value and current_value != value:
+                                                logger.info(
+                                                    f"Training rule OVERRIDE {field_key}: "
+                                                    f"'{current_value}' -> '{value}' "
+                                                    f"(rule_confidence={rule_confidence:.2f}, validations={rule_validations})"
+                                                )
+                                            zone_outputs[field_key] = value
+                                            field_sources[field_key] = {
+                                                "value": value,
+                                                "source": "TRAINING_RULE",
+                                                "confidence": rule_confidence,
+                                                "method": f"training_pattern:{pattern[:30]}",
+                                                "overrode_value": current_value if current_value else None,
+                                            }
+                                            break
+                except Exception as te:
+                    logger.debug(f"Training rules not applied: {te}")
+
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(f"Zone extraction error: {e}")
                 metrics["zone_extraction_error"] = str(e)
 
         # =================================================================
-        # M3.P0.1: BLOCK EXTRACTION (fallback/supplement)
-        # Run layout-aware extraction, then fall back to pattern
+        # BLOCK EXTRACTION (FALLBACK - only for fields not found by zone)
+        # Run layout-aware extraction as fallback for zone extraction
         # =================================================================
         block_outputs = {}
-        if doc.file_path:
+
+        # Only run block extraction if zone extraction didn't find key fields
+        zone_has_required = (
+            zone_outputs.get("vehicle_vin") and
+            zone_outputs.get("pickup_city")
+        )
+
+        if doc.file_path and not zone_has_required:
             try:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info("Block extraction FALLBACK: Zone missing required fields")
+
                 block_outputs, evidence_list = _run_block_extraction(
                     document_id=document_id,
                     run_id=run_id,
@@ -770,29 +859,44 @@ def run_extraction(
                     raw_text=raw_text,
                     metrics=metrics,
                 )
-                # Track block-extracted fields
+                # Track block-extracted fields (lower priority than zone)
                 for key, value in block_outputs.items():
-                    if value is not None:
+                    if value is not None and key not in field_sources:
                         field_sources[key] = {
                             "value": value,
-                            "source": "EXTRACTED",
-                            "confidence": 0.85,
-                            "method": "block_extractor",
+                            "source": "BLOCK_EXTRACTED",
+                            "confidence": 0.75,
+                            "method": "block_extractor_fallback",
                         }
             except Exception as e:
                 import logging
-
                 logging.getLogger(__name__).warning(f"Block extraction error: {e}")
                 metrics["block_extraction_error"] = str(e)
+        else:
+            metrics["block_extraction_skipped"] = "zone_had_required_fields"
 
         # =================================================================
-        # PATTERN EXTRACTION (fallback/supplement)
+        # PATTERN EXTRACTION (LAST RESORT - only if zone/block failed)
+        # Uses regex patterns on raw text
         # =================================================================
         from extractors import ExtractorManager
+        import logging
+
+        pattern_logger = logging.getLogger(__name__)
+
+        # Only run pattern extraction if we're missing critical fields
+        zone_and_block_fields = {**zone_outputs, **block_outputs}
+        missing_critical = not (
+            zone_and_block_fields.get("vehicle_vin") and
+            zone_and_block_fields.get("pickup_city")
+        )
+
+        if missing_critical:
+            pattern_logger.info("Pattern extraction FALLBACK: Missing critical fields")
 
         manager = ExtractorManager()
 
-        # Classify and extract
+        # Classify and extract - always for classification, but only fill missing fields
         classification = manager.get_extractor_for_text(raw_text)
         if classification:
             extractor = classification
@@ -950,26 +1054,41 @@ def run_extraction(
                             ExtractionRunRepository.update(run_id, auction_type_id=detected_type.id)
 
         # =================================================================
-        # ZONE EXTRACTION OVERRIDE (HIGHEST PRIORITY)
-        # Zone extraction is most accurate for pickup/delivery fields
-        # because it extracts from the correct column/region
+        # FINAL MERGE: ZONE EXTRACTION OVERRIDE (HIGHEST PRIORITY)
+        #
+        # Priority order (highest to lowest):
+        # 1. ZONE_EXTRACTED - From database templates, most accurate
+        # 2. TRAINING_RULE - Learned from user corrections
+        # 3. BLOCK_EXTRACTED - Fallback layout-aware extraction
+        # 4. PATTERN_EXTRACTED - Last resort regex patterns
+        #
+        # Zone extraction is definitive for location fields because
+        # it extracts from the correct column/region of the document.
         # =================================================================
-        zone_priority_fields = [
-            "pickup_address", "pickup_city", "pickup_state", "pickup_zip",
-            "pickup_name", "pickup_phone", "pickup_location_type",
-            "seller_id", "seller_name",  # These come from correct zones
-        ]
-
         if zone_outputs:
+            import logging
+            merge_logger = logging.getLogger(__name__)
+            merge_logger.info(f"MERGE: Zone outputs override - {len(zone_outputs)} fields")
+
             for field_key, zone_value in zone_outputs.items():
                 if zone_value is not None and str(zone_value).strip():
-                    # Zone extraction ALWAYS takes priority for location fields
-                    if field_key in zone_priority_fields:
-                        outputs[field_key] = zone_value
-                        # field_sources already set during zone extraction
-                    # For other fields, use zone value if not already set
-                    elif not outputs.get(field_key):
-                        outputs[field_key] = zone_value
+                    old_value = outputs.get(field_key)
+
+                    # Zone extraction ALWAYS overrides pattern/block for ALL fields
+                    outputs[field_key] = zone_value
+
+                    # Update field_sources if zone value is different from pattern value
+                    if old_value != zone_value and field_key in field_sources:
+                        merge_logger.info(f"  {field_key}: '{old_value}' -> '{zone_value}' (zone override)")
+
+                    # Ensure field_sources reflects zone extraction
+                    if field_key not in field_sources or field_sources[field_key].get("source") not in ("ZONE_EXTRACTED", "TRAINING_RULE"):
+                        field_sources[field_key] = {
+                            "value": zone_value,
+                            "source": "ZONE_EXTRACTED",
+                            "confidence": metrics.get("zone_extraction", {}).get("confidence", 0.8),
+                            "method": f"zone_extractor:{metrics.get('zone_extraction', {}).get('template_id', 'unknown')}",
+                        }
 
         # Calculate field metrics
         metrics["fields_extracted_count"] = len(outputs)
@@ -1191,7 +1310,7 @@ def _create_review_items_for_all_fields(
         - export: Full CD API field set with strict validation
     """
     from api.database import get_connection
-    from api.listing_fields import FieldCategory, FieldSourceType, get_registry
+    from api.listing_fields import FieldCategory, get_registry
 
     # Get centralized field registry
     registry = get_registry()
@@ -1369,13 +1488,33 @@ async def list_extraction_runs(
     document_id: Optional[int] = Query(None),
     auction_type_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
+    is_test: Optional[bool] = Query(None, description="Filter by test/training documents"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """List extraction runs with optional filtering."""
+    """List extraction runs with optional filtering.
+
+    Parameters:
+    - is_test: If True, returns only training/test document runs.
+               If False, returns only production document runs.
+               If None, returns all.
+    """
     from api.database import get_connection
 
-    sql = "SELECT * FROM extraction_runs WHERE 1=1"
+    # Base query with optional join to documents for is_test filter
+    if is_test is not None:
+        sql = """
+            SELECT er.* FROM extraction_runs er
+            JOIN documents d ON er.document_id = d.id
+            WHERE 1=1
+        """
+        if is_test:
+            sql += " AND (d.is_test = 1 OR d.source = 'test_lab')"
+        else:
+            sql += " AND (d.is_test = 0 OR d.is_test IS NULL) AND (d.source != 'test_lab' OR d.source IS NULL)"
+    else:
+        sql = "SELECT * FROM extraction_runs WHERE 1=1"
+
     params = []
 
     if document_id:
@@ -1531,6 +1670,7 @@ async def list_runs_needing_review(
 async def get_extraction_run(id: int):
     """Get detailed extraction run with field-level outputs."""
     import logging
+
     logger = logging.getLogger(__name__)
 
     try:
@@ -1559,13 +1699,15 @@ async def get_extraction_run(id: int):
                     except (TypeError, ValueError):
                         confidence = None
 
-                fields.append(ExtractionFieldOutput(
-                    source_key=item.source_key or "",
-                    internal_key=item.internal_key,
-                    cd_key=item.cd_key,
-                    value=value,
-                    confidence=confidence,
-                ))
+                fields.append(
+                    ExtractionFieldOutput(
+                        source_key=item.source_key or "",
+                        internal_key=item.internal_key,
+                        cd_key=item.cd_key,
+                        value=value,
+                        confidence=confidence,
+                    )
+                )
             except Exception as field_err:
                 logger.warning(f"Skipping field {item.source_key}: {field_err}")
                 continue
@@ -1576,6 +1718,7 @@ async def get_extraction_run(id: int):
             outputs = {}
         elif isinstance(outputs, str):
             import json
+
             try:
                 outputs = json.loads(outputs)
             except json.JSONDecodeError:
@@ -1629,6 +1772,7 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
     When warehouse_id is provided, automatically populates delivery fields.
     """
     import json
+
     from api.database import get_connection
 
     run = ExtractionRunRepository.get_by_id(id)
@@ -1659,8 +1803,7 @@ async def update_extraction_run(id: int, data: ExtractionUpdateRequest):
         # Fetch warehouse from database and populate delivery fields
         with get_connection() as conn:
             wh_row = conn.execute(
-                "SELECT * FROM warehouses WHERE id = ?",
-                (data.warehouse_id,)
+                "SELECT * FROM warehouses WHERE id = ?", (data.warehouse_id,)
             ).fetchone()
 
         if wh_row:
@@ -1908,42 +2051,52 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     # Step 1: Get extraction run
     run = ExtractionRunRepository.get_by_id(id)
     if not run:
-        response.steps.append({
-            "step": "1. Get extraction run",
-            "status": "FAILED",
-            "detail": f"Extraction run {id} not found in database",
-        })
+        response.steps.append(
+            {
+                "step": "1. Get extraction run",
+                "status": "FAILED",
+                "detail": f"Extraction run {id} not found in database",
+            }
+        )
         issues.append("Extraction run does not exist")
-        fixes.append(f"Check if document was uploaded. Run extraction via POST /api/extractions/run with document_id")
+        fixes.append(
+            "Check if document was uploaded. Run extraction via POST /api/extractions/run with document_id"
+        )
         response.issues_found = issues
         response.fix_actions = fixes
         return response
 
-    response.steps.append({
-        "step": "1. Get extraction run",
-        "status": "OK",
-        "detail": f"Run ID={run.id}, status={run.status}, created={run.created_at}",
-    })
+    response.steps.append(
+        {
+            "step": "1. Get extraction run",
+            "status": "OK",
+            "detail": f"Run ID={run.id}, status={run.status}, created={run.created_at}",
+        }
+    )
     response.document_id = run.document_id
 
     # Step 2: Get document
     doc = DocumentRepository.get_by_id(run.document_id) if run.document_id else None
     if not doc:
-        response.steps.append({
-            "step": "2. Get document",
-            "status": "FAILED",
-            "detail": f"Document ID={run.document_id} not found",
-        })
+        response.steps.append(
+            {
+                "step": "2. Get document",
+                "status": "FAILED",
+                "detail": f"Document ID={run.document_id} not found",
+            }
+        )
         issues.append("Document record missing from database")
         fixes.append("Re-upload the document")
     else:
         response.document_filename = doc.filename
         file_exists = os.path.exists(doc.file_path) if doc.file_path else False
-        response.steps.append({
-            "step": "2. Get document",
-            "status": "OK" if file_exists else "WARNING",
-            "detail": f"filename={doc.filename}, file_exists={file_exists}, path={doc.file_path}",
-        })
+        response.steps.append(
+            {
+                "step": "2. Get document",
+                "status": "OK" if file_exists else "WARNING",
+                "detail": f"filename={doc.filename}, file_exists={file_exists}, path={doc.file_path}",
+            }
+        )
         if not file_exists:
             issues.append("PDF file not found on disk")
             fixes.append(f"Re-upload the document. Expected path: {doc.file_path}")
@@ -1951,28 +2104,34 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     # Step 3: Get auction type
     at = AuctionTypeRepository.get_by_id(run.auction_type_id) if run.auction_type_id else None
     if not at:
-        response.steps.append({
-            "step": "3. Get auction type",
-            "status": "FAILED",
-            "detail": f"Auction type ID={run.auction_type_id} not found",
-        })
+        response.steps.append(
+            {
+                "step": "3. Get auction type",
+                "status": "FAILED",
+                "detail": f"Auction type ID={run.auction_type_id} not found",
+            }
+        )
         issues.append("Auction type not found")
         fixes.append("Check auction_types table is seeded. Restart server to re-seed.")
     else:
         response.auction_type = at.code
-        response.steps.append({
-            "step": "3. Get auction type",
-            "status": "OK",
-            "detail": f"code={at.code}, name={at.name}",
-        })
+        response.steps.append(
+            {
+                "step": "3. Get auction type",
+                "status": "OK",
+                "detail": f"code={at.code}, name={at.name}",
+            }
+        )
 
     # Step 4: Check extraction status
     status_ok = run.status in ("needs_review", "reviewed", "exported")
-    response.steps.append({
-        "step": "4. Extraction status",
-        "status": "OK" if status_ok else "FAILED",
-        "detail": f"status={run.status}, score={run.extraction_score}, time_ms={run.processing_time_ms}",
-    })
+    response.steps.append(
+        {
+            "step": "4. Extraction status",
+            "status": "OK" if status_ok else "FAILED",
+            "detail": f"status={run.status}, score={run.extraction_score}, time_ms={run.processing_time_ms}",
+        }
+    )
     if run.status == "failed":
         issues.append(f"Extraction failed: {run.errors_json}")
         fixes.append("Check extraction errors. May need OCR or different extractor.")
@@ -1989,22 +2148,26 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
             outputs = {}
 
     response.outputs_json_fields = len(outputs)
-    response.outputs_sample = {k: v for k, v in list(outputs.items())[:10]} if outputs else None
+    response.outputs_sample = dict(list(outputs.items())[:10]) if outputs else None
 
     if not outputs:
-        response.steps.append({
-            "step": "5. Check outputs_json",
-            "status": "FAILED",
-            "detail": "outputs_json is empty - no fields extracted",
-        })
+        response.steps.append(
+            {
+                "step": "5. Check outputs_json",
+                "status": "FAILED",
+                "detail": "outputs_json is empty - no fields extracted",
+            }
+        )
         issues.append("No fields were extracted from document")
         fixes.append("Check debug endpoint for text quality. Document may need OCR.")
     else:
-        response.steps.append({
-            "step": "5. Check outputs_json",
-            "status": "OK",
-            "detail": f"{len(outputs)} fields extracted: {list(outputs.keys())[:5]}...",
-        })
+        response.steps.append(
+            {
+                "step": "5. Check outputs_json",
+                "status": "OK",
+                "detail": f"{len(outputs)} fields extracted: {list(outputs.keys())[:5]}...",
+            }
+        )
 
     # Step 6: Check review_items
     review_items = ReviewItemRepository.get_by_run(id)
@@ -2015,20 +2178,26 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     ]
 
     if not review_items:
-        response.steps.append({
-            "step": "6. Check review_items",
-            "status": "FAILED",
-            "detail": "No review_items created for this extraction",
-        })
+        response.steps.append(
+            {
+                "step": "6. Check review_items",
+                "status": "FAILED",
+                "detail": "No review_items created for this extraction",
+            }
+        )
         issues.append("review_items table is empty for this run")
-        fixes.append("review_items are created by _create_review_items_for_all_fields(). Check if extraction completed.")
+        fixes.append(
+            "review_items are created by _create_review_items_for_all_fields(). Check if extraction completed."
+        )
     else:
         filled = sum(1 for r in review_items if r.predicted_value)
-        response.steps.append({
-            "step": "6. Check review_items",
-            "status": "OK",
-            "detail": f"{len(review_items)} items, {filled} with values",
-        })
+        response.steps.append(
+            {
+                "step": "6. Check review_items",
+                "status": "OK",
+                "detail": f"{len(review_items)} items, {filled} with values",
+            }
+        )
 
     # Step 7: Check field_mappings
     with get_connection() as conn:
@@ -2041,28 +2210,34 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     response.field_mappings_count = mapping_count
 
     if mapping_count == 0:
-        response.steps.append({
-            "step": "7. Check field_mappings",
-            "status": "WARNING",
-            "detail": f"No field_mappings for auction_type_id={run.auction_type_id}. Using defaults.",
-        })
+        response.steps.append(
+            {
+                "step": "7. Check field_mappings",
+                "status": "WARNING",
+                "detail": f"No field_mappings for auction_type_id={run.auction_type_id}. Using defaults.",
+            }
+        )
         issues.append("field_mappings not seeded for this auction type")
         fixes.append("Restart server to re-seed field_mappings. Or use default fields.")
     else:
-        response.steps.append({
-            "step": "7. Check field_mappings",
-            "status": "OK",
-            "detail": f"{mapping_count} field mappings configured",
-        })
+        response.steps.append(
+            {
+                "step": "7. Check field_mappings",
+                "status": "OK",
+                "detail": f"{mapping_count} field mappings configured",
+            }
+        )
 
     # Step 8: Check field_evidence
     evidence = FieldEvidenceRepository.get_by_run(id)
     response.field_evidence_count = len(evidence)
-    response.steps.append({
-        "step": "8. Check field_evidence",
-        "status": "OK" if evidence else "INFO",
-        "detail": f"{len(evidence)} evidence records (for PDF highlighting)",
-    })
+    response.steps.append(
+        {
+            "step": "8. Check field_evidence",
+            "status": "OK" if evidence else "INFO",
+            "detail": f"{len(evidence)} evidence records (for PDF highlighting)",
+        }
+    )
 
     # Step 9: Check metrics for OCR/text issues
     metrics = run.metrics_json or {}
@@ -2077,25 +2252,31 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     needs_ocr = metrics.get("needs_ocr", False)
 
     if text_length < 100 and not ocr_applied:
-        response.steps.append({
-            "step": "9. Text quality",
-            "status": "FAILED",
-            "detail": f"Only {text_length} chars extracted, OCR not applied",
-        })
+        response.steps.append(
+            {
+                "step": "9. Text quality",
+                "status": "FAILED",
+                "detail": f"Only {text_length} chars extracted, OCR not applied",
+            }
+        )
         issues.append("Document has very little text and OCR was not applied")
         fixes.append("Install ocrmypdf for OCR support, or manually enter data")
     elif needs_ocr and not ocr_applied:
-        response.steps.append({
-            "step": "9. Text quality",
-            "status": "WARNING",
-            "detail": f"OCR recommended but not applied. text_length={text_length}",
-        })
+        response.steps.append(
+            {
+                "step": "9. Text quality",
+                "status": "WARNING",
+                "detail": f"OCR recommended but not applied. text_length={text_length}",
+            }
+        )
     else:
-        response.steps.append({
-            "step": "9. Text quality",
-            "status": "OK",
-            "detail": f"text_length={text_length}, ocr_applied={ocr_applied}",
-        })
+        response.steps.append(
+            {
+                "step": "9. Text quality",
+                "status": "OK",
+                "detail": f"text_length={text_length}, ocr_applied={ocr_applied}",
+            }
+        )
 
     # Summary
     response.issues_found = issues

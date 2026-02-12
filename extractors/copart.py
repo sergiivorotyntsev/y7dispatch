@@ -7,6 +7,7 @@ from typing import Optional
 
 from extractors.address_parser import extract_lines_after_label
 from extractors.base import BaseExtractor
+from extractors.location_lookup import get_copart_location_name
 from models.vehicle import (
     Address,
     AuctionInvoice,
@@ -120,7 +121,7 @@ class CopartExtractor(BaseExtractor):
 
         lot_match = re.search(r"LOT#[:\s]+(\d+)", text)
         if lot_match:
-            invoice.lot_number = lot_match.group(1)
+            invoice.vehicle_lot = lot_match.group(1)
 
         date_patterns = [r"Sale[:\s]+(\d{1,2}/\d{1,2}/\d{4})", r"(\d{1,2}/\d{1,2}/\d{4})"]
         for pattern in date_patterns:
@@ -143,7 +144,7 @@ class CopartExtractor(BaseExtractor):
 
         vehicle = self._extract_vehicle(text)
         if vehicle:
-            vehicle.lot_number = invoice.lot_number
+            vehicle.lot_number = invoice.vehicle_lot  # Uses setter for backward compat
             invoice.vehicles.append(vehicle)
 
         total_patterns = [
@@ -185,16 +186,16 @@ class CopartExtractor(BaseExtractor):
                 return False
             s = s.strip()
             # Street starting with 6+ digits = likely a seller/member ID
-            if re.match(r'^\d{6,}', s):
+            if re.match(r"^\d{6,}", s):
                 return False
             # Street that is only digits = not valid
-            if re.match(r'^\d+$', s.replace(' ', '')):
+            if re.match(r"^\d+$", s.replace(" ", "")):
                 return False
             # Valid street should have a number followed by letters
-            if re.match(r'^\d{1,5}\s+[A-Za-z]', s):
+            if re.match(r"^\d{1,5}\s+[A-Za-z]", s):
                 return True
             # Also accept "US ROUTE" or "STATE HIGHWAY" patterns
-            if re.search(r'(?:US\s*)?(?:ROUTE|RT|HWY|HIGHWAY)', s, re.IGNORECASE):
+            if re.search(r"(?:US\s*)?(?:ROUTE|RT|HWY|HIGHWAY)", s, re.IGNORECASE):
                 return True
             return False
 
@@ -203,8 +204,8 @@ class CopartExtractor(BaseExtractor):
         # Strategy 0A (HIGHEST PRIORITY): Look for well-formed address with BLVD/AVE/ST etc.
         # Pattern: <number> <street name with suffix> <city> <state> <zip>
         # Example: "4810 N. LAMB BLVD LAS VEGAS NV 89115"
-        street_types = r'(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY)'
-        named_addr_pattern = rf'(\d{{1,5}}\s+[A-Z0-9\.\s]+?{street_types})[,\.\s]+([A-Z]{{2,}}(?:\s+[A-Z]{{2,}})?)\s+({US_STATES})\s+(\d{{5}})'
+        street_types = r"(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY)"
+        named_addr_pattern = rf"(\d{{1,5}}\s+[A-Z0-9\.\s]+?{street_types})[,\.\s]+([A-Z]{{2,}}(?:\s+[A-Z]{{2,}})?)\s+({US_STATES})\s+(\d{{5}})"
         named_matches = re.findall(named_addr_pattern, text, re.IGNORECASE)
 
         for match in named_matches:
@@ -214,16 +215,25 @@ class CopartExtractor(BaseExtractor):
             potential_zip = match[3].strip()
 
             # Skip if this looks like buyer/member address
-            if any(ind in potential_city for ind in ['AYER', 'BROADWAY', 'MOTORING', 'FITCHBURG']):
+            if any(ind in potential_city for ind in ["AYER", "BROADWAY", "MOTORING", "FITCHBURG"]):
                 continue
-            if any(ind in potential_street.upper() for ind in ['AYER', 'BROADWAY', 'MOTORING', 'FITCHBURG', 'MEMBER']):
+            if any(
+                ind in potential_street.upper()
+                for ind in ["AYER", "BROADWAY", "MOTORING", "FITCHBURG", "MEMBER"]
+            ):
                 continue
 
             if is_valid_street(potential_street):
                 # Clean up street
-                potential_street = re.sub(r'\s{2,}', ' ', potential_street)
+                potential_street = re.sub(r"\s{2,}", " ", potential_street)
+                location_name = get_copart_location_name(
+                    city=potential_city,
+                    state=potential_state,
+                    zip_code=potential_zip,
+                    street=potential_street,
+                )
                 return Address(
-                    name="Copart",
+                    name=location_name,
                     street=potential_street.title(),
                     city=potential_city.title(),
                     state=potential_state,
@@ -233,7 +243,11 @@ class CopartExtractor(BaseExtractor):
         # Strategy 0B: Look specifically after "PHYSICAL ADDRESS OF LOT" label
         # This is reliable for Copart documents
         # Pattern: PHYSICAL ADDRESS OF LOT:\n<street>\n<city> <state> <zip>
-        physical_section_pattern = r'PHYSICAL\s*ADDRESS\s*(?:OF\s*)?LOT[:\s]*\n?\s*([^\n]+)\n\s*([A-Z][A-Za-z\s]+)\s+(' + US_STATES + r')\s+(\d{5})'
+        physical_section_pattern = (
+            r"PHYSICAL\s*ADDRESS\s*(?:OF\s*)?LOT[:\s]*\n?\s*([^\n]+)\n\s*([A-Z][A-Za-z\s]+)\s+("
+            + US_STATES
+            + r")\s+(\d{5})"
+        )
         physical_match = re.search(physical_section_pattern, text, re.IGNORECASE)
 
         if physical_match:
@@ -245,12 +259,23 @@ class CopartExtractor(BaseExtractor):
             # Validate street is not a numeric ID
             if is_valid_street(potential_street):
                 # Clean the street address
-                potential_street = re.sub(r'\s{2,}', ' ', potential_street)
+                potential_street = re.sub(r"\s{2,}", " ", potential_street)
                 # Remove any trailing noise (SELLER info that leaked in)
-                potential_street = re.sub(r'\s+(SELLER|SOLD|PROGRESSIVE|GEICO|INSURANCE).*$', '', potential_street, flags=re.IGNORECASE)
+                potential_street = re.sub(
+                    r"\s+(SELLER|SOLD|PROGRESSIVE|GEICO|INSURANCE).*$",
+                    "",
+                    potential_street,
+                    flags=re.IGNORECASE,
+                )
 
+                location_name = get_copart_location_name(
+                    city=potential_city,
+                    state=potential_state,
+                    zip_code=potential_zip,
+                    street=potential_street,
+                )
                 return Address(
-                    name="Copart",
+                    name=location_name,
                     street=potential_street.title(),
                     city=potential_city.title(),
                     state=potential_state,
@@ -259,18 +284,18 @@ class CopartExtractor(BaseExtractor):
 
         # Strategy 1: Find address pattern with street type suffix + city state zip on same or nearby line
         # Example: "4810 N. LAMB BLVD LAS VEGAS NV 89115" or "4810 N LAMB BLVD\nLAS VEGAS NV 89115"
-        street_types = r'(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY|ROUTE|RT|MOUND|CIRCLE|CIR|PLACE|PL)'
+        street_types = r"(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY|ROUTE|RT|MOUND|CIRCLE|CIR|PLACE|PL)"
 
         # Pattern for address with multi-word city (like "LAS VEGAS")
-        full_address_pattern = rf'(\d{{1,5}}\s+[A-Z0-9\.\s]+{street_types})[,\s]+([A-Z][A-Z\s]{{2,20}})\s+({US_STATES})\s+(\d{{5}})'
+        full_address_pattern = rf"(\d{{1,5}}\s+[A-Z0-9\.\s]+{street_types})[,\s]+([A-Z][A-Z\s]{{2,20}})\s+({US_STATES})\s+(\d{{5}})"
 
         all_addresses = re.findall(full_address_pattern, text, re.IGNORECASE)
 
         # Filter: prefer address that appears near "PHYSICAL ADDRESS OF LOT"
-        physical_addr_pos = text.upper().find('PHYSICAL ADDRESS')
+        physical_addr_pos = text.upper().find("PHYSICAL ADDRESS")
 
         best_match = None
-        best_distance = float('inf')
+        best_distance = float("inf")
 
         for match in all_addresses:
             potential_street = match[0].strip()
@@ -283,7 +308,7 @@ class CopartExtractor(BaseExtractor):
                 continue
 
             # Skip if this looks like buyer address (check context)
-            buyer_indicators = ['AYER', 'BROADWAY', 'MOTORING', 'FITCHBURG', 'MEMBER']
+            buyer_indicators = ["AYER", "BROADWAY", "MOTORING", "FITCHBURG", "MEMBER"]
             if any(ind.upper() in potential_street.upper() for ind in buyer_indicators):
                 continue
             if any(ind.upper() == potential_city for ind in buyer_indicators):
@@ -308,11 +333,17 @@ class CopartExtractor(BaseExtractor):
             zip_code = best_match[3].strip()
 
             # Clean up street
-            street = re.sub(r'\s{2,}', ' ', street)
-            street = re.sub(rf'\s+{re.escape(city)}.*$', '', street, flags=re.IGNORECASE).strip()
+            street = re.sub(r"\s{2,}", " ", street)
+            street = re.sub(rf"\s+{re.escape(city)}.*$", "", street, flags=re.IGNORECASE).strip()
 
+            location_name = get_copart_location_name(
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                street=street,
+            )
             return Address(
-                name="Copart",
+                name=location_name,
                 street=street.title(),
                 city=city.title(),
                 state=state,
@@ -551,8 +582,14 @@ class CopartExtractor(BaseExtractor):
 
         # Build address
         if street or (city and state):
+            location_name = get_copart_location_name(
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                street=street,
+            )
             return Address(
-                name="Copart",
+                name=location_name,
                 street=street or "",
                 city=city or "",
                 state=state or "",
@@ -596,8 +633,14 @@ class CopartExtractor(BaseExtractor):
                 break
 
         if street or (city and state):
+            location_name = get_copart_location_name(
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                street=street,
+            )
             return Address(
-                name="Copart",
+                name=location_name,
                 street=street,
                 city=city,
                 state=state,
@@ -607,7 +650,12 @@ class CopartExtractor(BaseExtractor):
         return None
 
     def _extract_seller_name(self, text: str) -> str:
-        """Extract seller name using learned rules or defaults."""
+        """
+        Extract seller name using learned rules or defaults.
+
+        Seller in Copart documents is typically an insurance company.
+        Located in the rightmost column of the 3-column layout.
+        """
         # Check for learned rule
         rule = self.get_learned_rule("seller_name")
 
@@ -623,18 +671,45 @@ class CopartExtractor(BaseExtractor):
                             if len(seller) > 2 and len(seller) < 100:
                                 return seller
 
-        # Fallback: try default patterns
+        # Fallback patterns with more flexibility
         seller_patterns = [
-            r"SELLER[:\s]*\n([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD)",
-            r"SELLER[:\s]+([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD)",
+            # "SELLER: <name>"
+            r"SELLER[:\s]+([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD|$)",
+            # "SELLER\n<name>"
+            r"SELLER[:\s]*\n([A-Z][A-Za-z\s\-\.]+?)(?:\n|SOLD|$)",
+            # "SOLD THROUGH COPART"... then on next section: insurance company
+            r"SOLD\s*THROUGH.*\n.*?([A-Z][A-Za-z\s]+(?:INSURANCE|INS|MUTUAL|CASUALTY)[A-Za-z\s]*)",
         ]
+
         for pattern in seller_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 seller = match.group(1).strip()
+                # Clean up trailing numbers, IDs, dates
                 seller = re.sub(r"\s+\d+.*$", "", seller)
+                seller = re.sub(r"\s{2,}", " ", seller)
                 if len(seller) > 2 and len(seller) < 100:
                     return seller
+
+        # Additional pattern: look for insurance company names
+        insurance_patterns = [
+            r"(PROGRESSIVE\s*(?:CASUALTY\s*)?(?:INSURANCE)?(?:\s*CO)?)",
+            r"(GEICO\s*(?:INSURANCE)?)",
+            r"(STATE\s*FARM\s*(?:MUTUAL)?(?:\s*AUTOMOBILE)?(?:\s*INSURANCE)?)",
+            r"(ALLSTATE\s*(?:INSURANCE)?(?:\s*CO)?)",
+            r"(FARMERS\s*(?:INSURANCE)?)",
+            r"(USAA\s*(?:CASUALTY)?(?:\s*INSURANCE)?)",
+            r"(LIBERTY\s*MUTUAL\s*(?:INSURANCE)?)",
+            r"(TRAVELERS\s*(?:INSURANCE)?(?:\s*CO)?)",
+            r"(NATIONWIDE\s*(?:MUTUAL)?(?:\s*INSURANCE)?)",
+        ]
+
+        for pattern in insurance_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                seller = match.group(1).strip()
+                seller = re.sub(r"\s{2,}", " ", seller)
+                return seller
 
         return ""
 
@@ -650,7 +725,51 @@ class CopartExtractor(BaseExtractor):
         or:
             MEMBER: 12345678
             BROADWAY MOTORING INC
+
+        CRITICAL: Must exclude seller-related text that can appear mixed in
+        due to PDF 3-column layout extraction.
         """
+        # Common insurance/seller company names to exclude from buyer
+        SELLER_INDICATORS = [
+            "PROGRESSIVE",
+            "GEICO",
+            "STATE FARM",
+            "ALLSTATE",
+            "FARMERS",
+            "NATIONWIDE",
+            "LIBERTY MUTUAL",
+            "USAA",
+            "TRAVELERS",
+            "HARTFORD",
+            "INSURANCE",
+            "CASUALTY",
+            "ASSURANCE",
+            "SOLD THROUGH",
+            "SELLER",
+            "INS CO",
+            "MUTUAL INS",
+            "AUTO INS",
+            "SOLD BY",
+            "CONSIGNED",
+        ]
+
+        # Field labels that indicate we've passed the buyer section
+        SECTION_INDICATORS = [
+            "LOT",
+            "VIN",
+            "VEHICLE",
+            "SALE",
+            "DATE",
+            "RECEIPT",
+            "TOTAL",
+            "PHYSICAL",
+            "ADDRESS",
+            "SELLER",
+            "SOLD",
+            "LOCATION",
+            "PRICE",
+        ]
+
         lines = text.split("\n")
         found_member = False
         found_member_number = False
@@ -679,20 +798,21 @@ class CopartExtractor(BaseExtractor):
 
                 # After member number, the next non-empty line should be the buyer name
                 if found_member_number:
+                    # Skip if this is a section indicator (we've passed buyer section)
+                    if any(ind in stripped.upper() for ind in SECTION_INDICATORS):
+                        continue
+
+                    # Skip if this looks like seller/insurance company
+                    if any(ind in stripped.upper() for ind in SELLER_INDICATORS):
+                        continue
+
                     # Check if this looks like a company/person name (not a field label or number)
-                    if (
-                        re.match(r"^[A-Z]", stripped)
-                        and not re.match(
-                            r"^(LOT|VIN|VEHICLE|SALE|DATE|RECEIPT|TOTAL|PHYSICAL)",
-                            stripped,
-                            re.IGNORECASE,
-                        )
-                        and len(stripped) > 2
-                        and len(stripped) < 100
-                    ):
+                    if re.match(r"^[A-Z]", stripped) and len(stripped) > 2 and len(stripped) < 100:
                         # Clean up - remove trailing numbers/dates
                         buyer_name = re.sub(r"\s+\d+.*$", "", stripped)
-                        return buyer_name
+                        # Double check it's not seller-related after cleanup
+                        if not any(ind in buyer_name.upper() for ind in SELLER_INDICATORS):
+                            return buyer_name
 
                 # Safety: don't search too far
                 if i > 20:

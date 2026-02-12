@@ -1,38 +1,12 @@
 import { useState, useEffect } from 'react'
 import api from '../api'
-
-// Central Dispatch API field definitions
-const CD_FIELDS = [
-  { key: 'vehicle_vin', label: 'VIN', type: 'text', required: true, description: 'Vehicle Identification Number' },
-  { key: 'vehicle_year', label: 'Year', type: 'number', required: true, description: 'Vehicle year' },
-  { key: 'vehicle_make', label: 'Make', type: 'text', required: true, description: 'Vehicle manufacturer' },
-  { key: 'vehicle_model', label: 'Model', type: 'text', required: true, description: 'Vehicle model' },
-  { key: 'vehicle_color', label: 'Color', type: 'text', required: false, description: 'Vehicle color' },
-  { key: 'vehicle_type', label: 'Vehicle Type', type: 'select', required: true, description: 'sedan, suv, truck, van, motorcycle, other', options: ['sedan', 'suv', 'truck', 'van', 'motorcycle', 'other'] },
-  { key: 'vehicle_condition', label: 'Condition', type: 'select', required: true, description: 'operable, inoperable', options: ['operable', 'inoperable'] },
-  { key: 'pickup_name', label: 'Pickup Location Name', type: 'text', required: false, description: 'Name of pickup location (e.g., Copart Dallas)' },
-  { key: 'pickup_address', label: 'Pickup Street Address', type: 'text', required: true, description: 'Street address for pickup' },
-  { key: 'pickup_city', label: 'Pickup City', type: 'text', required: true, description: 'City for pickup' },
-  { key: 'pickup_state', label: 'Pickup State', type: 'text', required: true, description: 'State abbreviation (e.g., TX)' },
-  { key: 'pickup_zip', label: 'Pickup ZIP', type: 'text', required: true, description: '5-digit ZIP code' },
-  { key: 'pickup_phone', label: 'Pickup Phone', type: 'text', required: false, description: 'Contact phone for pickup location' },
-  { key: 'pickup_contact', label: 'Pickup Contact', type: 'text', required: false, description: 'Contact person name' },
-  { key: 'delivery_name', label: 'Delivery Location Name', type: 'text', required: false, description: 'Name of delivery location' },
-  { key: 'delivery_address', label: 'Delivery Street Address', type: 'text', required: true, description: 'Street address for delivery' },
-  { key: 'delivery_city', label: 'Delivery City', type: 'text', required: true, description: 'City for delivery' },
-  { key: 'delivery_state', label: 'Delivery State', type: 'text', required: true, description: 'State abbreviation' },
-  { key: 'delivery_zip', label: 'Delivery ZIP', type: 'text', required: true, description: '5-digit ZIP code' },
-  { key: 'delivery_phone', label: 'Delivery Phone', type: 'text', required: false, description: 'Contact phone for delivery' },
-  { key: 'delivery_contact', label: 'Delivery Contact', type: 'text', required: false, description: 'Contact person name' },
-  { key: 'buyer_id', label: 'Buyer ID', type: 'text', required: false, description: 'Buyer/Member ID from auction' },
-  { key: 'buyer_name', label: 'Buyer Name', type: 'text', required: false, description: 'Buyer name' },
-  { key: 'lot_number', label: 'Lot Number', type: 'text', required: false, description: 'Auction lot number' },
-  { key: 'stock_number', label: 'Stock Number', type: 'text', required: false, description: 'Stock/Reference number' },
-  { key: 'sale_date', label: 'Sale Date', type: 'date', required: false, description: 'Date of sale' },
-  { key: 'total_amount', label: 'Total Amount', type: 'number', required: false, description: 'Total sale amount' },
-  { key: 'notes', label: 'Notes', type: 'textarea', required: false, description: 'Additional notes or special instructions' },
-  { key: 'transport_special_instructions', label: 'Transport Special Instructions', type: 'textarea', required: false, description: 'Special instructions for transport (appointment times, hours, etc.)' },
-]
+import {
+  CD_FIELDS,
+  StatusIndicator,
+  StatusBadge,
+  ProductionCorrectionsPanel,
+  ZoneTemplatesTab,
+} from '../components/testlab'
 
 function TestLab() {
   const [auctionTypes, setAuctionTypes] = useState([])
@@ -80,23 +54,6 @@ function TestLab() {
     description: '',
   })
 
-  // Warehouses
-  const [warehouses, setWarehouses] = useState([])
-  const [showWarehouseForm, setShowWarehouseForm] = useState(false)
-  const [warehouseForm, setWarehouseForm] = useState({
-    name: '',
-    code: '',
-    address: '',
-    city: '',
-    state: '',
-    zip_code: '',
-    phone: '',
-    contact_name: '',
-    transport_special_instructions: '',
-    is_default: false,
-  })
-  const [editingWarehouse, setEditingWarehouse] = useState(null)
-
   // Training data
   const [trainingDocuments, setTrainingDocuments] = useState([])
   const [uploadingTrainingDoc, setUploadingTrainingDoc] = useState(false)
@@ -105,7 +62,6 @@ function TestLab() {
     loadAuctionTypes()
     loadRecentTests()
     loadTrainingStats()
-    loadWarehouses()
   }, [])
 
   // Load field mappings when editing auction type changes
@@ -130,7 +86,9 @@ function TestLab() {
   async function loadRecentTests() {
     setLoadingTests(true)
     try {
-      const data = await api.listExtractions({ limit: 20 })
+      // Only load extractions from training/test documents (is_test=true)
+      // This ensures Test Lab doesn't show production documents
+      const data = await api.listExtractions({ limit: 20, is_test: true })
       setRecentTests(data.items || [])
     } catch (err) {
       console.error('Failed to load recent tests:', err)
@@ -148,15 +106,6 @@ function TestLab() {
       }
     } catch (err) {
       console.error('Failed to load training stats:', err)
-    }
-  }
-
-  async function loadWarehouses() {
-    try {
-      const data = await api.listWarehouses()
-      setWarehouses(data.items || [])
-    } catch (err) {
-      console.error('Failed to load warehouses:', err)
     }
   }
 
@@ -325,116 +274,14 @@ function TestLab() {
     setFieldMappings(updated)
   }
 
-  async function handleCreateWarehouse(e) {
-    e.preventDefault()
-    try {
-      // Format data for the API
-      const warehouseData = {
-        code: warehouseForm.code,
-        name: warehouseForm.name,
-        address: warehouseForm.address,
-        city: warehouseForm.city,
-        state: warehouseForm.state,
-        zip_code: warehouseForm.zip_code,
-        contact: {
-          phone: warehouseForm.phone || null,
-          notes: warehouseForm.contact_name || null,
-        },
-        requirements: {
-          special_instructions: warehouseForm.transport_special_instructions || null,
-        },
-        is_active: true,
-      }
-      await api.createWarehouse(warehouseData)
-      setShowWarehouseForm(false)
-      setWarehouseForm({
-        name: '',
-        code: '',
-        address: '',
-        city: '',
-        state: '',
-        zip_code: '',
-        phone: '',
-        contact_name: '',
-        transport_special_instructions: '',
-        is_default: false,
-      })
-      loadWarehouses()
-    } catch (err) {
-      alert('Error: ' + err.message)
-    }
-  }
-
-  async function handleUpdateWarehouse(e) {
-    e.preventDefault()
-    if (!editingWarehouse) return
-    try {
-      const warehouseData = {
-        name: warehouseForm.name,
-        address: warehouseForm.address,
-        city: warehouseForm.city,
-        state: warehouseForm.state,
-        zip_code: warehouseForm.zip_code,
-        contact: {
-          phone: warehouseForm.phone || null,
-          notes: warehouseForm.contact_name || null,
-        },
-        requirements: {
-          special_instructions: warehouseForm.transport_special_instructions || null,
-        },
-      }
-      await api.updateWarehouse(editingWarehouse.id, warehouseData)
-      setEditingWarehouse(null)
-      setWarehouseForm({
-        name: '',
-        code: '',
-        address: '',
-        city: '',
-        state: '',
-        zip_code: '',
-        phone: '',
-        contact_name: '',
-        transport_special_instructions: '',
-        is_default: false,
-      })
-      loadWarehouses()
-    } catch (err) {
-      alert('Error: ' + err.message)
-    }
-  }
-
-  async function handleDeleteWarehouse(id) {
-    if (!confirm('Are you sure you want to delete this warehouse?')) return
-    try {
-      await api.deleteWarehouseFull(id)
-      loadWarehouses()
-    } catch (err) {
-      alert('Error: ' + err.message)
-    }
-  }
-
-  function startEditWarehouse(wh) {
-    setEditingWarehouse(wh)
-    setWarehouseForm({
-      name: wh.name || '',
-      code: wh.code || '',
-      address: wh.address || '',
-      city: wh.city || '',
-      state: wh.state || '',
-      zip_code: wh.zip_code || '',
-      phone: wh.contact?.phone || '',
-      contact_name: wh.contact?.notes || '',
-      transport_special_instructions: wh.requirements?.special_instructions || '',
-      is_default: false,
-    })
-  }
-
   async function handleUploadTrainingDoc(file, auctionTypeId) {
     setUploadingTrainingDoc(true)
     try {
-      await api.uploadDocument(file, auctionTypeId, 'train')
+      // Upload as TRAINING document (is_test=true, source=test_lab)
+      await api.uploadTrainingDocument(file, auctionTypeId)
       loadTrainingStats()
       loadRecentTests()
+      loadDocuments() // Refresh training documents list
     } catch (err) {
       alert('Error uploading training document: ' + err.message)
     } finally {
@@ -621,26 +468,6 @@ function TestLab() {
             Auction Types
           </button>
           <button
-            onClick={() => setActiveTab('warehouses')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'warehouses'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Warehouses
-          </button>
-          <button
-            onClick={() => setActiveTab('runs')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'runs'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Runs & Logs
-          </button>
-          <button
             onClick={() => setActiveTab('zone-templates')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'zone-templates'
@@ -746,21 +573,43 @@ function TestLab() {
                     <p className="text-sm font-medium text-gray-700 mb-2">Training Progress</p>
                     {(() => {
                       const at = auctionTypes.find(a => a.id.toString() === selectedAuctionType)
-                      const stats = trainingStats?.by_auction_type?.[at?.code] || { total: 0, validated: 0 }
+                      const stats = trainingStats?.by_auction_type?.[at?.code] || {}
+                      const totalExamples = stats.total_examples || 0
+                      const validatedExamples = stats.validated_examples || 0
+                      const rulesCount = stats.rules_count || 0
+                      const avgConfidence = stats.avg_confidence || 0
                       return (
                         <>
-                          <div className="flex justify-between text-xs text-gray-600">
-                            <span>Examples: {stats.total}</span>
-                            <span>Validated: {stats.validated}</span>
+                          <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                            <div className="flex justify-between">
+                              <span>Examples:</span>
+                              <span className="font-medium">{totalExamples}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Validated:</span>
+                              <span className="font-medium">{validatedExamples}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Rules:</span>
+                              <span className="font-medium">{rulesCount}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Confidence:</span>
+                              <span className="font-medium">{Math.round(avgConfidence * 100)}%</span>
+                            </div>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                          <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                             <div
-                              className="bg-green-500 h-2 rounded-full"
-                              style={{ width: `${Math.min(100, (stats.total / 50) * 100)}%` }}
+                              className="bg-green-500 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (totalExamples / 50) * 100)}%` }}
                             ></div>
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
-                            {stats.total >= 50 ? 'Ready for training' : `${50 - stats.total} more examples needed`}
+                            {totalExamples === 0
+                              ? 'No training data yet - use Review & Train to add examples'
+                              : totalExamples >= 50
+                                ? 'Well trained'
+                                : `${50 - totalExamples} more examples needed`}
                           </p>
                         </>
                       )
@@ -857,7 +706,7 @@ function TestLab() {
                       <div className="flex space-x-2 pt-2 border-t">
                         {result.run_id && (
                           <a
-                            href={'/review/' + result.run_id}
+                            href={'/review/' + result.run_id + '?mode=training'}
                             className="btn btn-primary flex-1 text-center"
                           >
                             {result.run_status === 'failed' ? 'Enter Data Manually' : 'Review & Correct Fields'}
@@ -950,7 +799,7 @@ function TestLab() {
                         </td>
                         <td>
                           <div className="flex space-x-2">
-                            <a href={'/review/' + run.id} className="text-sm text-blue-600 hover:text-blue-800">
+                            <a href={'/review/' + run.id + '?mode=training'} className="text-sm text-blue-600 hover:text-blue-800">
                               {run.status === 'failed' ? 'Enter Data' : 'Review & Train'}
                             </a>
                             {run.status !== 'failed' && (
@@ -1442,1013 +1291,10 @@ function TestLab() {
         </div>
       )}
 
-
-      {/* Warehouses Tab */}
-      {activeTab === 'warehouses' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <div className="card">
-              <div className="card-header flex items-center justify-between">
-                <h2 className="font-semibold">Delivery Warehouses</h2>
-                <button
-                  onClick={() => { setShowWarehouseForm(true); setEditingWarehouse(null); }}
-                  className="btn btn-sm btn-primary"
-                >
-                  + Add Warehouse
-                </button>
-              </div>
-              <div className="card-body p-0">
-                {warehouses.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">
-                    No warehouses configured. Add your first warehouse to get started.
-                  </div>
-                ) : (
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Code</th>
-                        <th>Address</th>
-                        <th>Phone</th>
-                        <th>Default</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {warehouses.map((wh) => (
-                        <tr key={wh.id}>
-                          <td className="font-medium">{wh.name}</td>
-                          <td><span className="badge bg-gray-100 text-gray-800">{wh.code}</span></td>
-                          <td className="text-sm text-gray-500">
-                            {wh.address}, {wh.city}, {wh.state} {wh.zip_code}
-                          </td>
-                          <td className="text-sm">{wh.contact?.phone || '-'}</td>
-                          <td>
-                            {wh.is_default ? (
-                              <span className="badge badge-success">Default</span>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
-                          <td>
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => startEditWarehouse(wh)}
-                                className="text-sm text-primary-600 hover:text-primary-800"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteWarehouse(wh.id)}
-                                className="text-sm text-red-600 hover:text-red-800"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-
-            {/* Transport Special Instructions Info */}
-            <div className="card mt-6">
-              <div className="card-header">
-                <h2 className="font-semibold">Transport Special Instructions</h2>
-              </div>
-              <div className="card-body">
-                <p className="text-sm text-gray-600 mb-4">
-                  Each warehouse can have special delivery instructions that will be automatically included
-                  when exporting to Central Dispatch. Common examples:
-                </p>
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
-                  <p><strong>Example 1:</strong> "DROP-OFF Appointment required. Working Hours: Mon-Fri 8am-5pm. Call 24h ahead."</p>
-                  <p><strong>Example 2:</strong> "Gate code: 1234. Contact John at front office upon arrival."</p>
-                  <p><strong>Example 3:</strong> "No deliveries on weekends. Must call 1h before arrival."</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Warehouse Form */}
-          <div className="lg:col-span-1">
-            {(showWarehouseForm || editingWarehouse) ? (
-              <div className="card">
-                <div className="card-header flex items-center justify-between">
-                  <h2 className="font-semibold">{editingWarehouse ? 'Edit Warehouse' : 'Add Warehouse'}</h2>
-                  <button
-                    onClick={() => { setShowWarehouseForm(false); setEditingWarehouse(null); }}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <form onSubmit={editingWarehouse ? handleUpdateWarehouse : handleCreateWarehouse} className="card-body space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="form-label">Name</label>
-                      <input
-                        type="text"
-                        value={warehouseForm.name}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, name: e.target.value }))}
-                        className="form-input w-full"
-                        placeholder="Main Warehouse"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="form-label">Code</label>
-                      <input
-                        type="text"
-                        value={warehouseForm.code}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
-                        className="form-input w-full font-mono"
-                        placeholder="MAIN"
-                        maxLength={20}
-                        required
-                        disabled={!!editingWarehouse}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="form-label">Street Address</label>
-                    <input
-                      type="text"
-                      value={warehouseForm.address}
-                      onChange={(e) => setWarehouseForm(f => ({ ...f, address: e.target.value }))}
-                      className="form-input w-full"
-                      placeholder="123 Main St"
-                      required
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="form-label">City</label>
-                      <input
-                        type="text"
-                        value={warehouseForm.city}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, city: e.target.value }))}
-                        className="form-input w-full"
-                        placeholder="Dallas"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="form-label">State</label>
-                      <input
-                        type="text"
-                        value={warehouseForm.state}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, state: e.target.value.toUpperCase() }))}
-                        className="form-input w-full"
-                        placeholder="TX"
-                        maxLength={2}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="form-label">ZIP</label>
-                      <input
-                        type="text"
-                        value={warehouseForm.zip_code}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, zip_code: e.target.value }))}
-                        className="form-input w-full"
-                        placeholder="75001"
-                        maxLength={10}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="form-label">Phone</label>
-                      <input
-                        type="text"
-                        value={warehouseForm.phone}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, phone: e.target.value }))}
-                        className="form-input w-full"
-                        placeholder="(555) 123-4567"
-                      />
-                    </div>
-                    <div>
-                      <label className="form-label">Contact Name</label>
-                      <input
-                        type="text"
-                        value={warehouseForm.contact_name}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, contact_name: e.target.value }))}
-                        className="form-input w-full"
-                        placeholder="John Smith"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="form-label">Transport Special Instructions</label>
-                    <textarea
-                      value={warehouseForm.transport_special_instructions}
-                      onChange={(e) => setWarehouseForm(f => ({ ...f, transport_special_instructions: e.target.value }))}
-                      className="form-input w-full"
-                      rows={3}
-                      placeholder="DROP-OFF Appointment required. Working Hours: Mon-Fri 8am-5pm..."
-                    />
-                    <p className="text-xs text-gray-500 mt-1">These instructions will be included in Central Dispatch listings</p>
-                  </div>
-                  <div>
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={warehouseForm.is_default}
-                        onChange={(e) => setWarehouseForm(f => ({ ...f, is_default: e.target.checked }))}
-                        className="form-checkbox"
-                      />
-                      <span className="text-sm">Set as default delivery warehouse</span>
-                    </label>
-                  </div>
-                  <button type="submit" className="btn btn-primary w-full">
-                    {editingWarehouse ? 'Update Warehouse' : 'Add Warehouse'}
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="card">
-                <div className="card-body text-center py-8">
-                  <svg className="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  <p className="text-gray-500 mb-4">Configure delivery warehouses for Central Dispatch exports</p>
-                  <button
-                    onClick={() => setShowWarehouseForm(true)}
-                    className="btn btn-primary"
-                  >
-                    Add Warehouse
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Runs & Logs Tab */}
-      {activeTab === 'runs' && (
-        <RunsAndLogs auctionTypes={auctionTypes} />
-      )}
-
       {/* Zone Templates Tab */}
       {activeTab === 'zone-templates' && (
         <ZoneTemplatesTab auctionTypes={auctionTypes} />
       )}
-    </div>
-  )
-}
-
-// Embedded Runs & Logs component for Test Lab
-function RunsAndLogs({ auctionTypes }) {
-  const [runs, setRuns] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [selectedRun, setSelectedRun] = useState(null)
-  const [filters, setFilters] = useState({
-    status: '',
-    auction_type_id: '',
-    limit: 25,
-  })
-
-  useEffect(() => {
-    loadRuns()
-  }, [filters])
-
-  async function loadRuns() {
-    setLoading(true)
-    try {
-      const params = {
-        limit: filters.limit,
-      }
-      if (filters.status) params.status = filters.status
-      if (filters.auction_type_id) params.auction_type_id = filters.auction_type_id
-
-      const data = await api.listExtractions(params)
-      setRuns(data.items || [])
-    } catch (err) {
-      console.error('Failed to load runs:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const statusColors = {
-    needs_review: 'badge-warning',
-    approved: 'badge-success',
-    reviewed: 'badge-success',
-    exported: 'badge-success',
-    failed: 'badge-error',
-    pending: 'badge-warning',
-    processing: 'badge-info',
-    manual_required: 'badge-info',
-  }
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Runs List */}
-      <div className="lg:col-span-2">
-        <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <h2 className="font-semibold">Extraction Runs</h2>
-            <button onClick={loadRuns} className="btn btn-sm btn-secondary">
-              Refresh
-            </button>
-          </div>
-
-          {/* Filters */}
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-            <div className="flex flex-wrap gap-3">
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
-                className="form-select form-select-sm"
-              >
-                <option value="">All Status</option>
-                <option value="needs_review">Needs Review</option>
-                <option value="approved">Approved</option>
-                <option value="exported">Exported</option>
-                <option value="failed">Failed</option>
-              </select>
-              <select
-                value={filters.auction_type_id}
-                onChange={(e) => setFilters(f => ({ ...f, auction_type_id: e.target.value }))}
-                className="form-select form-select-sm"
-              >
-                <option value="">All Types</option>
-                {auctionTypes.map(at => (
-                  <option key={at.id} value={at.id}>{at.name}</option>
-                ))}
-              </select>
-              <select
-                value={filters.limit}
-                onChange={(e) => setFilters(f => ({ ...f, limit: parseInt(e.target.value) }))}
-                className="form-select form-select-sm"
-              >
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            {loading ? (
-              <div className="p-8 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
-              </div>
-            ) : runs.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                No extraction runs found
-              </div>
-            ) : (
-              <table className="table table-sm">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Order ID</th>
-                    <th>Time</th>
-                    <th>Document</th>
-                    <th>Auction</th>
-                    <th>Status</th>
-                    <th>Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.map(run => (
-                    <tr
-                      key={run.id}
-                      onClick={() => setSelectedRun(run)}
-                      className={`cursor-pointer hover:bg-gray-50 ${selectedRun?.id === run.id ? 'bg-primary-50' : ''}`}
-                    >
-                      <td className="font-mono text-xs">{run.id}</td>
-                      <td className="font-mono text-xs text-primary-600">
-                        {run.outputs_json?.order_id || '-'}
-                      </td>
-                      <td className="text-xs text-gray-500">
-                        {run.created_at ? new Date(run.created_at).toLocaleString() : '-'}
-                      </td>
-                      <td className="text-xs truncate max-w-[120px]" title={run.document_filename}>
-                        {run.document_filename || `#${run.document_id}`}
-                      </td>
-                      <td>
-                        {run.auction_type_code && (
-                          <span className="badge badge-info">{run.auction_type_code}</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`badge ${statusColors[run.status] || 'badge-gray'}`}>
-                          {run.status}
-                        </span>
-                      </td>
-                      <td>
-                        {run.extraction_score != null ? (
-                          <span className={`font-medium ${
-                            run.extraction_score >= 0.6 ? 'text-green-600' :
-                            run.extraction_score >= 0.3 ? 'text-yellow-600' : 'text-red-600'
-                          }`}>
-                            {(run.extraction_score * 100).toFixed(0)}%
-                          </span>
-                        ) : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Run Details */}
-      <div className="lg:col-span-1">
-        {selectedRun ? (
-          <div className="card">
-            <div className="card-header flex items-center justify-between">
-              <h3 className="font-medium">Run #{selectedRun.id}</h3>
-              <button
-                onClick={() => setSelectedRun(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="card-body space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500">Order ID</p>
-                  <p className="font-mono text-primary-600">{selectedRun.outputs_json?.order_id || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Status</p>
-                  <span className={`badge ${statusColors[selectedRun.status] || 'badge-gray'}`}>
-                    {selectedRun.status}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-gray-500">Auction Type</p>
-                  <p>{selectedRun.auction_type_code || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Score</p>
-                  <p>{selectedRun.extraction_score != null ? `${(selectedRun.extraction_score * 100).toFixed(0)}%` : '-'}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-500">Document</p>
-                  <p className="truncate">{selectedRun.document_filename || '-'}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-500">Created</p>
-                  <p>{selectedRun.created_at ? new Date(selectedRun.created_at).toLocaleString() : '-'}</p>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="pt-4 border-t border-gray-200 space-y-2">
-                {selectedRun.status === 'needs_review' && (
-                  <a
-                    href={`/review/${selectedRun.id}`}
-                    className="btn btn-primary w-full text-center block"
-                  >
-                    Review Extraction
-                  </a>
-                )}
-                {selectedRun.document_id && (
-                  <a
-                    href={`/documents/${selectedRun.document_id}`}
-                    className="btn btn-secondary w-full text-center block"
-                  >
-                    View Document
-                  </a>
-                )}
-              </div>
-
-              {/* Extracted Fields Preview */}
-              {selectedRun.outputs_json && Object.keys(selectedRun.outputs_json).length > 0 && (
-                <div className="pt-4 border-t border-gray-200">
-                  <h4 className="font-medium text-sm mb-2">Extracted Fields</h4>
-                  <div className="space-y-1 max-h-48 overflow-y-auto text-xs">
-                    {Object.entries(selectedRun.outputs_json).slice(0, 10).map(([key, value]) => (
-                      <div key={key} className="flex justify-between p-1 rounded bg-gray-50">
-                        <span className="text-gray-600 truncate">{key}</span>
-                        <span className="font-medium truncate ml-2">{String(value || '-').substring(0, 30)}</span>
-                      </div>
-                    ))}
-                    {Object.keys(selectedRun.outputs_json).length > 10 && (
-                      <p className="text-gray-400 text-center">+{Object.keys(selectedRun.outputs_json).length - 10} more fields</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="card">
-            <div className="card-body text-center text-gray-500 py-8">
-              <svg className="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <p>Select a run to view details</p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function StatusIndicator({ status }) {
-  const colors = {
-    needs_review: 'bg-yellow-500',
-    approved: 'bg-green-500',
-    reviewed: 'bg-green-500',
-    exported: 'bg-green-500',
-    failed: 'bg-red-500',
-    manual_required: 'bg-orange-500',
-    pending: 'bg-gray-400',
-    processing: 'bg-blue-500',
-  }
-
-  return (
-    <span className={'w-3 h-3 rounded-full ' + (colors[status] || 'bg-gray-400')}></span>
-  )
-}
-
-function StatusBadge({ status }) {
-  const styles = {
-    needs_review: 'badge-warning',
-    approved: 'badge-success',
-    reviewed: 'badge-success',
-    exported: 'badge-success',
-    failed: 'badge-error',
-    manual_required: 'badge-info',
-    pending: 'badge-gray',
-    processing: 'badge-info',
-  }
-
-  const labels = {
-    needs_review: 'Needs Review',
-    manual_required: 'Manual Required',
-  }
-
-  return (
-    <span className={'badge ' + (styles[status] || 'badge-gray')}>
-      {labels[status] || status}
-    </span>
-  )
-}
-
-/**
- * Production Corrections Panel
- *
- * Shows corrections from production workflow (Review & Posting)
- * that can be applied to training. This is the second training channel
- * (primary channel is Test Lab).
- */
-function ProductionCorrectionsPanel() {
-  const [corrections, setCorrections] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [applying, setApplying] = useState(false)
-  const [stats, setStats] = useState({ total: 0, applied_count: 0, pending_count: 0 })
-
-  useEffect(() => {
-    loadCorrections()
-  }, [])
-
-  async function loadCorrections() {
-    setLoading(true)
-    try {
-      const result = await api.listProductionCorrections({ limit: 50 })
-      setCorrections(result.items || [])
-      setStats({
-        total: result.total || 0,
-        applied_count: result.applied_count || 0,
-        pending_count: result.pending_count || 0,
-      })
-    } catch (err) {
-      console.error('Failed to load production corrections:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleApplyAll() {
-    if (!confirm('Apply all pending production corrections to training?')) return
-    setApplying(true)
-    try {
-      await api.applyProductionCorrectionsToTraining(null, true)
-      loadCorrections()
-    } catch (err) {
-      console.error('Failed to apply corrections:', err)
-    } finally {
-      setApplying(false)
-    }
-  }
-
-  return (
-    <div className="card">
-      <div className="card-header flex items-center justify-between">
-        <div>
-          <h2 className="font-semibold">Production Corrections</h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Corrections from production Review & Posting (second training channel)
-          </p>
-        </div>
-        {stats.pending_count > 0 && (
-          <button
-            onClick={handleApplyAll}
-            disabled={applying}
-            className="btn btn-sm btn-primary"
-          >
-            {applying ? 'Applying...' : `Apply ${stats.pending_count} Pending`}
-          </button>
-        )}
-      </div>
-      <div className="card-body">
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="bg-gray-50 rounded p-3 text-center">
-            <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-            <div className="text-xs text-gray-600">Total</div>
-          </div>
-          <div className="bg-green-50 rounded p-3 text-center">
-            <div className="text-2xl font-bold text-green-700">{stats.applied_count}</div>
-            <div className="text-xs text-green-600">Applied</div>
-          </div>
-          <div className="bg-yellow-50 rounded p-3 text-center">
-            <div className="text-2xl font-bold text-yellow-700">{stats.pending_count}</div>
-            <div className="text-xs text-yellow-600">Pending</div>
-          </div>
-        </div>
-
-        {/* Recent Corrections List */}
-        {loading ? (
-          <div className="text-center py-4 text-gray-500">Loading...</div>
-        ) : corrections.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">
-            No production corrections yet.
-            <br />
-            <span className="text-xs">
-              Corrections from Review & Posting will appear here.
-            </span>
-          </div>
-        ) : (
-          <div className="space-y-2 max-h-60 overflow-auto">
-            {corrections.slice(0, 10).map((corr) => (
-              <div
-                key={corr.id}
-                className={`p-3 rounded text-sm ${
-                  corr.applied_to_training ? 'bg-green-50' : 'bg-yellow-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-gray-900">{corr.field_key}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    corr.auction_type_code === 'COPART' ? 'bg-blue-100 text-blue-800' :
-                    corr.auction_type_code === 'IAA' ? 'bg-purple-100 text-purple-800' :
-                    corr.auction_type_code === 'MANHEIM' ? 'bg-green-100 text-green-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {corr.auction_type_code}
-                  </span>
-                </div>
-                <div className="mt-1 text-xs">
-                  {corr.old_value && (
-                    <span className="text-gray-500 line-through mr-2">{corr.old_value}</span>
-                  )}
-                  <span className="text-gray-900">→ {corr.new_value}</span>
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  {corr.created_at ? new Date(corr.created_at).toLocaleString() : ''}
-                  {corr.applied_to_training && (
-                    <span className="ml-2 text-green-600">✓ Applied</span>
-                  )}
-                </div>
-              </div>
-            ))}
-            {corrections.length > 10 && (
-              <div className="text-center text-xs text-gray-500 py-2">
-                ...and {corrections.length - 10} more
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Zone Templates Tab Component
-function ZoneTemplatesTab({ auctionTypes }) {
-  const [templates, setTemplates] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [selectedTemplate, setSelectedTemplate] = useState(null)
-  const [testDocumentId, setTestDocumentId] = useState(null)
-  const [documents, setDocuments] = useState([])
-  const [zonePreview, setZonePreview] = useState(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [testResult, setTestResult] = useState(null)
-
-  useEffect(() => {
-    loadTemplates()
-    loadDocuments()
-  }, [])
-
-  async function loadTemplates() {
-    setLoading(true)
-    try {
-      const result = await api.listZoneTemplates()
-      setTemplates(result.items || [])
-    } catch (err) {
-      console.error('Failed to load templates:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function loadDocuments() {
-    try {
-      const result = await api.listDocuments({ limit: 50 })
-      setDocuments(result.items || [])
-    } catch (err) {
-      console.error('Failed to load documents:', err)
-    }
-  }
-
-  async function loadZonePreview(templateId, docId) {
-    if (!templateId || !docId) return
-    setPreviewLoading(true)
-    try {
-      const result = await api.previewZones(templateId, docId)
-      setZonePreview(result)
-    } catch (err) {
-      console.error('Failed to preview zones:', err)
-    } finally {
-      setPreviewLoading(false)
-    }
-  }
-
-  async function testExtraction() {
-    if (!testDocumentId) {
-      alert('Select a document first')
-      return
-    }
-    try {
-      const result = await api.extractWithZones({
-        document_id: testDocumentId,
-        auction_type: selectedTemplate?.auction_type,
-      })
-      setTestResult(result)
-    } catch (err) {
-      console.error('Extraction failed:', err)
-      alert('Extraction failed: ' + err.message)
-    }
-  }
-
-  // Zone colors
-  const zoneColors = [
-    { bg: 'rgba(239, 68, 68, 0.3)', border: '#ef4444', name: 'red' },
-    { bg: 'rgba(34, 197, 94, 0.3)', border: '#22c55e', name: 'green' },
-    { bg: 'rgba(59, 130, 246, 0.3)', border: '#3b82f6', name: 'blue' },
-    { bg: 'rgba(234, 179, 8, 0.3)', border: '#eab308', name: 'yellow' },
-    { bg: 'rgba(168, 85, 247, 0.3)', border: '#a855f7', name: 'purple' },
-    { bg: 'rgba(6, 182, 212, 0.3)', border: '#06b6d4', name: 'cyan' },
-  ]
-
-  return (
-    <div className="grid grid-cols-3 gap-6">
-      {/* Left: Template List */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <h3 className="text-lg font-semibold mb-4">Extraction Templates</h3>
-
-        {loading ? (
-          <div className="text-center py-4 text-gray-500">Loading...</div>
-        ) : templates.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">No templates found</div>
-        ) : (
-          <div className="space-y-2">
-            {templates.map((t) => (
-              <div
-                key={t.template_id}
-                className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                  selectedTemplate?.template_id === t.template_id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-                onClick={() => {
-                  setSelectedTemplate(t)
-                  if (testDocumentId) {
-                    loadZonePreview(t.template_id, testDocumentId)
-                  }
-                }}
-              >
-                <div className="font-medium">{t.name}</div>
-                <div className="text-sm text-gray-500">{t.auction_type}</div>
-                <div className="text-xs text-gray-400 mt-1">
-                  {t.zones?.length || 0} zones defined
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Center: PDF Preview with Zones */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Zone Preview</h3>
-          <select
-            value={testDocumentId || ''}
-            onChange={(e) => {
-              const docId = e.target.value ? parseInt(e.target.value) : null
-              setTestDocumentId(docId)
-              if (docId && selectedTemplate) {
-                loadZonePreview(selectedTemplate.template_id, docId)
-              }
-            }}
-            className="form-select text-sm"
-          >
-            <option value="">Select document...</option>
-            {documents.map((doc) => (
-              <option key={doc.id} value={doc.id}>
-                {doc.filename} ({doc.auction_type_code || 'unknown'})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {testDocumentId ? (
-          <div className="relative border rounded-lg overflow-hidden bg-gray-100" style={{ height: '500px' }}>
-            {/* PDF Background */}
-            <iframe
-              src={api.getDocumentFileUrl(testDocumentId)}
-              className="w-full h-full"
-              title="PDF Preview"
-            />
-
-            {/* Zone Overlays */}
-            {selectedTemplate?.zones && (
-              <div className="absolute inset-0 pointer-events-none">
-                {selectedTemplate.zones.map((zone, i) => (
-                  <div
-                    key={i}
-                    className="absolute border-2"
-                    style={{
-                      left: `${zone.x0}%`,
-                      top: `${zone.y0}%`,
-                      width: `${zone.x1 - zone.x0}%`,
-                      height: `${zone.y1 - zone.y0}%`,
-                      backgroundColor: zoneColors[i % zoneColors.length].bg,
-                      borderColor: zoneColors[i % zoneColors.length].border,
-                    }}
-                  >
-                    <span
-                      className="absolute -top-5 left-0 text-xs font-bold px-1 rounded"
-                      style={{
-                        backgroundColor: zoneColors[i % zoneColors.length].border,
-                        color: 'white',
-                      }}
-                    >
-                      {zone.name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="h-[500px] flex items-center justify-center text-gray-400 border rounded-lg bg-gray-50">
-            Select a document to preview zones
-          </div>
-        )}
-
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={testExtraction}
-            disabled={!testDocumentId || !selectedTemplate}
-            className="btn btn-primary flex-1"
-          >
-            Test Zone Extraction
-          </button>
-        </div>
-      </div>
-
-      {/* Right: Zone Details & Results */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <h3 className="text-lg font-semibold mb-4">
-          {testResult ? 'Extraction Results' : 'Zone Details'}
-        </h3>
-
-        {testResult ? (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Confidence:</span>
-              <span className={`px-2 py-1 rounded text-sm ${
-                testResult.confidence > 0.7 ? 'bg-green-100 text-green-800' :
-                testResult.confidence > 0.4 ? 'bg-yellow-100 text-yellow-800' :
-                'bg-red-100 text-red-800'
-              }`}>
-                {(testResult.confidence * 100).toFixed(0)}%
-              </span>
-            </div>
-
-            {testResult.warnings?.length > 0 && (
-              <div className="text-sm text-yellow-600 bg-yellow-50 p-2 rounded">
-                {testResult.warnings.map((w, i) => (
-                  <div key={i}>⚠️ {w}</div>
-                ))}
-              </div>
-            )}
-
-            <div>
-              <h4 className="text-sm font-medium mb-2">Extracted Fields:</h4>
-              <div className="space-y-1 max-h-[400px] overflow-auto">
-                {Object.entries(testResult.fields || {}).map(([key, value]) => (
-                  <div key={key} className="flex justify-between text-sm p-2 bg-gray-50 rounded">
-                    <span className="font-mono text-gray-600">{key}</span>
-                    <span className="text-gray-900 font-medium truncate ml-2 max-w-[150px]" title={value}>
-                      {value || '-'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <button
-              onClick={() => setTestResult(null)}
-              className="btn btn-secondary w-full"
-            >
-              Clear Results
-            </button>
-          </div>
-        ) : selectedTemplate ? (
-          <div className="space-y-4">
-            <div>
-              <span className="text-sm font-medium">Template ID:</span>
-              <span className="ml-2 font-mono text-sm">{selectedTemplate.template_id}</span>
-            </div>
-            <div>
-              <span className="text-sm font-medium">Auction Type:</span>
-              <span className="ml-2">{selectedTemplate.auction_type}</span>
-            </div>
-            <div>
-              <span className="text-sm font-medium">Description:</span>
-              <p className="text-sm text-gray-600 mt-1">{selectedTemplate.description || 'No description'}</p>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-medium mb-2">Zones ({selectedTemplate.zones?.length || 0}):</h4>
-              <div className="space-y-2 max-h-[300px] overflow-auto">
-                {selectedTemplate.zones?.map((zone, i) => (
-                  <div
-                    key={i}
-                    className="p-2 border rounded text-sm"
-                    style={{ borderLeftColor: zoneColors[i % zoneColors.length].border, borderLeftWidth: '4px' }}
-                  >
-                    <div className="font-medium">{zone.name}</div>
-                    <div className="text-xs text-gray-500">
-                      ({zone.x0}%, {zone.y0}%) - ({zone.x1}%, {zone.y1}%)
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      Fields: {zone.fields?.map(f => f.key).join(', ') || 'none'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Zone Text Preview */}
-            {zonePreview && (
-              <div>
-                <h4 className="text-sm font-medium mb-2">Zone Text Preview:</h4>
-                <div className="space-y-2 max-h-[200px] overflow-auto">
-                  {zonePreview.zones?.map((z, i) => (
-                    <div key={i} className="p-2 bg-gray-50 rounded text-xs">
-                      <div className="font-medium" style={{ color: zoneColors[i % zoneColors.length].border }}>
-                        {z.name}
-                      </div>
-                      <pre className="whitespace-pre-wrap text-gray-600 mt-1 max-h-20 overflow-auto">
-                        {z.text || '(empty)'}
-                      </pre>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center text-gray-400 py-8">
-            Select a template to see details
-          </div>
-        )}
-      </div>
     </div>
   )
 }

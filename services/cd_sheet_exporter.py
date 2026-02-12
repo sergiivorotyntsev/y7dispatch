@@ -1,29 +1,29 @@
 """
-Central Dispatch Sheet Exporter
+Central Dispatch Sheet Exporter - CD Listings API V2 Payload Builder
 
-Exports READY rows from Google Sheets to CD Listings API V2.
+This module builds CD Listings API V2 payloads from Google Sheets data
+using the Source of Truth pattern.
 
-The Sheet is the Source of Truth - this exporter:
-1. Reads READY rows from Pickups sheet
-2. Builds ListingRequest payload from final values
-3. Calls CD API to create listings
-4. Updates sheet with results (cd_listing_id, status, etc.)
+Features:
+- externalId (dispatch_id) for tracking
+- Flat stops[] structure (address, city, state, postalCode, country)
+- vehicles[] with pickupStopNumber, dropoffStopNumber, isInoperable
+- price.total, cod{}, balance{} structure
+- marketplaces[] with marketplaceId (int) and boolean flags
+- Date fields: availableDate, expirationDate, desiredDeliveryDate
 
-Usage:
-    exporter = CDSheetExporter(sheets_config, cd_config)
-    results = exporter.export_ready_rows()
+Based on: CD Listings API V2 Create Listing endpoint
 """
 
 import json
 import logging
-from datetime import datetime
 from typing import Any, Optional
 
-from core.config import CentralDispatchConfig, SheetsConfig
-from schemas.sheets_schema_v2 import (
-    column_index_to_letter,
-    get_column_index,
-    get_final_value,
+from schemas.sheets_schema_v3 import (
+    OVERRIDE_MAPPINGS,
+    RowStatus,
+    apply_all_overrides,
+    validate_row_for_ready,
 )
 from services.sheets_exporter import SheetsExporter
 
@@ -32,496 +32,595 @@ logger = logging.getLogger(__name__)
 
 class CDSheetExporter:
     """
-    Export READY rows from Google Sheets to Central Dispatch.
+    Exports READY rows from Google Sheets to Central Dispatch Listings API V2.
+
+    Workflow:
+    1. Query sheet for READY/RETRY rows
+    2. Validate each row
+    3. Build CD V2 payload with override resolution
+    4. Call CD API (or dry-run)
+    5. Update sheet with results
     """
 
     def __init__(
         self,
-        sheets_config: SheetsConfig,
-        cd_config: CentralDispatchConfig,
+        sheets_config,
+        cd_config,
         sheet_name: str = "Pickups",
     ):
+        """
+        Initialize the exporter.
+
+        Args:
+            sheets_config: Sheets configuration
+            cd_config: Central Dispatch configuration
+            sheet_name: Name of the sheet tab
+        """
         self.sheets_config = sheets_config
         self.cd_config = cd_config
         self.sheet_name = sheet_name
         self.exporter = SheetsExporter(sheets_config, sheet_name)
         self._cd_client = None
 
-    def _get_cd_client(self):
-        """Get or create CD API client."""
-        if self._cd_client is not None:
-            return self._cd_client
+    @property
+    def sheets_exporter(self) -> SheetsExporter:
+        """Get sheets exporter."""
+        return self.exporter
 
-        from services.central_dispatch import CentralDispatchClient
+    @property
+    def cd_client(self):
+        """Get or create CD client."""
+        if self._cd_client is None and self.cd_config.enabled:
+            from services.central_dispatch import CentralDispatchClient
 
-        self._cd_client = CentralDispatchClient(
-            client_id=self.cd_config.client_id,
-            client_secret=self.cd_config.client_secret,
-            marketplace_id=self.cd_config.marketplace_id,
-        )
+            self._cd_client = CentralDispatchClient(
+                client_id=self.cd_config.client_id,
+                client_secret=self.cd_config.client_secret,
+                marketplace_id=self.cd_config.marketplace_id,
+            )
         return self._cd_client
 
-    def _row_to_listing_request(self, row: dict[str, Any]) -> dict[str, Any]:
+    def _get_final_value(self, row: dict[str, Any], base_field: str) -> Any:
         """
-        Convert a sheet row to CD Listings API V2 ListingRequest.
+        Get final value for a field, considering overrides.
 
-        Uses get_final_value() to respect overrides.
+        Order:
+        1. Check _final_{field} (pre-computed by apply_all_overrides)
+        2. Check override_{field}
+        3. Check base field
         """
+        # Pre-computed final
+        final_key = f"_final_{base_field}"
+        if final_key in row:
+            return row[final_key]
 
-        # Helper to get final value
-        def final(field: str, default=None):
-            val = get_final_value(row, field)
-            if val is None or (isinstance(val, str) and not val.strip()):
-                return default
-            return val
+        # Override field
+        override_field = OVERRIDE_MAPPINGS.get(base_field)
+        if override_field:
+            override_val = row.get(override_field)
+            if override_val and str(override_val).strip():
+                return override_val
 
-        # Build stops array
-        stops = []
+        # Base field
+        return row.get(base_field)
 
-        # Stop 0: Pickup
-        pickup_stop = {
-            "type": "PICKUP",
-            "location": {
-                "street1": final("pickup_street1"),
-                "city": final("pickup_city"),
-                "state": final("pickup_state"),
-                "postalCode": final("pickup_postal_code"),
-                "country": final("pickup_country", "US"),
-            },
-        }
+    def _to_bool(self, value: Any, default: bool = False) -> bool:
+        """Convert value to boolean."""
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        val_str = str(value).strip().upper()
+        return val_str in ("TRUE", "1", "YES", "Y")
 
-        # Optional pickup fields
-        if final("pickup_street2"):
-            pickup_stop["location"]["street2"] = final("pickup_street2")
-        if final("pickup_phone"):
-            pickup_stop["location"]["phone"] = final("pickup_phone")
-        if final("pickup_phone2"):
-            pickup_stop["location"]["phone2"] = final("pickup_phone2")
-        if final("pickup_phone3"):
-            pickup_stop["location"]["phone3"] = final("pickup_phone3")
-        if final("pickup_site_id"):
-            pickup_stop["siteId"] = final("pickup_site_id")
+    def _to_int(self, value: Any, default: Optional[int] = None) -> Optional[int]:
+        """Convert value to integer."""
+        if value is None or str(value).strip() == "":
+            return default
+        try:
+            return int(float(str(value).replace(",", "")))
+        except (ValueError, TypeError):
+            return default
 
-        # Pickup contact
-        if final("pickup_contact_name") or final("pickup_contact_phone"):
-            pickup_stop["contact"] = {}
-            if final("pickup_contact_name"):
-                pickup_stop["contact"]["name"] = final("pickup_contact_name")
-            if final("pickup_contact_phone"):
-                pickup_stop["contact"]["phone"] = final("pickup_contact_phone")
-            if final("pickup_contact_cell"):
-                pickup_stop["contact"]["cellPhone"] = final("pickup_contact_cell")
+    def _to_float(self, value: Any, default: Optional[float] = None) -> Optional[float]:
+        """Convert value to float."""
+        if value is None or str(value).strip() == "":
+            return default
+        try:
+            return float(str(value).replace(",", "").replace("$", ""))
+        except (ValueError, TypeError):
+            return default
 
-        if final("pickup_instructions"):
-            pickup_stop["instructions"] = final("pickup_instructions")
+    def _clean_string(self, value: Any) -> Optional[str]:
+        """Clean string value, return None if empty."""
+        if value is None:
+            return None
+        val_str = str(value).strip()
+        return val_str if val_str else None
 
-        stops.append(pickup_stop)
+    def row_to_cd_payload(self, row: dict[str, Any]) -> dict[str, Any]:
+        """
+        Convert a sheet row to CD Listings API V2 payload.
 
-        # Stop 1: Delivery
-        delivery_stop = {
-            "type": "DELIVERY",
-            "location": {
-                "street1": final("delivery_street1"),
-                "city": final("delivery_city"),
-                "state": final("delivery_state"),
-                "postalCode": final("delivery_postal_code"),
-                "country": final("delivery_country", "US"),
-            },
-        }
+        Applies all overrides and builds the exact CD V2 structure.
+        """
+        # Apply overrides first
+        row = apply_all_overrides(row)
 
-        if final("delivery_street2"):
-            delivery_stop["location"]["street2"] = final("delivery_street2")
-        if final("delivery_phone"):
-            delivery_stop["location"]["phone"] = final("delivery_phone")
+        payload = {}
 
-        if final("delivery_contact_name") or final("delivery_contact_phone"):
-            delivery_stop["contact"] = {}
-            if final("delivery_contact_name"):
-                delivery_stop["contact"]["name"] = final("delivery_contact_name")
-            if final("delivery_contact_phone"):
-                delivery_stop["contact"]["phone"] = final("delivery_contact_phone")
+        # =================================================================
+        # TOP-LEVEL FIELDS
+        # =================================================================
 
-        if final("delivery_instructions"):
-            delivery_stop["instructions"] = final("delivery_instructions")
+        # externalId (dispatch_id)
+        payload["externalId"] = self._clean_string(row.get("dispatch_id"))
 
-        stops.append(delivery_stop)
+        # Optional IDs
+        shipper_order_id = self._clean_string(row.get("shipper_order_id"))
+        if shipper_order_id:
+            payload["shipperOrderId"] = shipper_order_id
 
-        # Build vehicles array (single vehicle)
-        vehicle = {
-            "vin": final("vin"),
-        }
+        partner_ref_id = self._clean_string(row.get("partner_reference_id"))
+        if partner_ref_id:
+            payload["partnerReferenceId"] = partner_ref_id
 
-        if final("year"):
+        # Trailer type
+        trailer_type = self._get_final_value(row, "trailer_type")
+        if trailer_type:
+            payload["trailerType"] = str(trailer_type).upper()
+
+        # Flags
+        has_inop = self._to_bool(row.get("has_inop_vehicle"), False)
+        payload["hasInOpVehicle"] = has_inop
+
+        load_terms = self._clean_string(row.get("load_specific_terms"))
+        if load_terms:
+            payload["loadSpecificTerms"] = load_terms
+
+        # Dates (YYYY-MM-DD format)
+        available_date = self._get_final_value(row, "available_date")
+        if available_date:
+            payload["availableDate"] = str(available_date)[:10]
+
+        expiration_date = self._get_final_value(row, "expiration_date")
+        if expiration_date:
+            payload["expirationDate"] = str(expiration_date)[:10]
+
+        desired_delivery_date = self._get_final_value(row, "desired_delivery_date")
+        if desired_delivery_date:
+            payload["desiredDeliveryDate"] = str(desired_delivery_date)[:10]
+
+        # Transportation release notes
+        release_notes = self._get_final_value(row, "transportation_release_notes")
+        if release_notes:
+            payload["transportationReleaseNotes"] = str(release_notes)
+
+        # Tags
+        tags_json = row.get("tags_json")
+        if tags_json:
             try:
-                vehicle["year"] = int(final("year"))
-            except (ValueError, TypeError):
-                pass
-        if final("make"):
-            vehicle["make"] = final("make")
-        if final("model"):
-            vehicle["model"] = final("model")
-        if final("vehicle_type"):
-            vehicle["vehicleType"] = final("vehicle_type").upper()
-
-        # Operable
-        operable = final("operable")
-        if operable:
-            vehicle["operable"] = str(operable).upper() == "TRUE"
-
-        if final("notes_vehicle"):
-            vehicle["notes"] = final("notes_vehicle")
-
-        vehicles = [vehicle]
-
-        # Build price
-        price = {
-            "type": final("price_type", "TOTAL"),
-            "currency": final("price_currency", "USD"),
-        }
-
-        price_amount = final("price_amount")
-        if price_amount:
-            try:
-                price["amount"] = float(str(price_amount).replace(",", "").replace("$", ""))
-            except (ValueError, TypeError):
-                price["amount"] = 0
-
-        # COD (optional)
-        if final("cod_type") and final("cod_amount"):
-            price["cod"] = {
-                "type": final("cod_type"),
-                "amount": float(final("cod_amount")),
-            }
-            if final("cod_payment_method"):
-                price["cod"]["paymentMethod"] = final("cod_payment_method")
-            if final("cod_payment_note"):
-                price["cod"]["paymentMethodNote"] = final("cod_payment_note")
-            if final("cod_aux_payment_method"):
-                price["cod"]["auxiliaryPaymentMethod"] = final("cod_aux_payment_method")
-            if final("cod_aux_payment_note"):
-                price["cod"]["auxiliaryPaymentMethodNote"] = final("cod_aux_payment_note")
-
-        # Balance (optional)
-        if final("balance_type") and final("balance_amount"):
-            price["balance"] = {
-                "type": final("balance_type"),
-                "amount": float(final("balance_amount")),
-            }
-            if final("balance_payment_method"):
-                price["balance"]["paymentMethod"] = final("balance_payment_method")
-            if final("balance_payment_note"):
-                price["balance"]["paymentMethodNote"] = final("balance_payment_note")
-
-        # Build marketplaces array
-        marketplace_ids = final("marketplace_ids", "")
-        if isinstance(marketplace_ids, str):
-            # Could be JSON array or comma-separated
-            if marketplace_ids.startswith("["):
-                try:
-                    marketplaces = json.loads(marketplace_ids)
-                except json.JSONDecodeError:
-                    marketplaces = [marketplace_ids]
-            else:
-                marketplaces = [m.strip() for m in marketplace_ids.split(",") if m.strip()]
-        else:
-            marketplaces = [str(marketplace_ids)]
-
-        # Format as CD expects: [{"id": "..."}, ...]
-        marketplaces_list = [{"id": m} for m in marketplaces]
-
-        # Build listing request
-        listing_request = {
-            "stops": stops,
-            "vehicles": vehicles,
-            "price": price,
-            "marketplaces": marketplaces_list,
-            "trailerType": final("trailer_type", "OPEN").upper(),
-            "availableDateTime": final("available_datetime"),
-            "expirationDateTime": final("expiration_datetime"),
-            "companyName": final("company_name"),
-            "shipperReferenceNumber": row.get("dispatch_id"),
-        }
-
-        # Optional flags
-        allow_full = final("allow_full_load")
-        if allow_full:
-            listing_request["allowFullLoad"] = str(allow_full).upper() == "TRUE"
-
-        allow_ltl = final("allow_ltl")
-        if allow_ltl:
-            listing_request["allowLtl"] = str(allow_ltl).upper() == "TRUE"
-
-        # SLA (optional)
-        if final("sla_duration"):
-            listing_request["sla"] = {
-                "duration": final("sla_duration"),
-            }
-            if final("sla_timezone_offset"):
-                listing_request["sla"]["timeZoneOffset"] = final("sla_timezone_offset")
-            if final("sla_rollover_time"):
-                listing_request["sla"]["rolloverTime"] = final("sla_rollover_time")
-            if final("sla_include_current_day"):
-                listing_request["sla"]["includeCurrentDayAfterRollOver"] = (
-                    str(final("sla_include_current_day")).upper() == "TRUE"
-                )
-
-        # Tags (optional)
-        if final("tags_json"):
-            tags_str = final("tags_json")
-            try:
-                listing_request["tags"] = json.loads(tags_str)
+                if isinstance(tags_json, str):
+                    tags = json.loads(tags_json)
+                else:
+                    tags = tags_json
+                if tags:
+                    payload["tags"] = tags
             except json.JSONDecodeError:
                 pass
 
-        # Notes (release notes)
-        if final("release_notes"):
-            listing_request["notes"] = final("release_notes")
+        # =================================================================
+        # PRICE STRUCTURE
+        # =================================================================
 
-        return listing_request
+        price = {}
 
-    def _update_export_result(
-        self,
-        row_number: int,
-        success: bool,
-        listing_id: str = None,
-        error: str = None,
-        payload: dict = None,
-    ):
-        """Update the sheet with export results."""
-        from pathlib import Path
+        price_total = self._get_final_value(row, "price_total")
+        if price_total:
+            price["total"] = self._to_float(price_total)
 
-        from google.oauth2 import service_account
-        from googleapiclient.discovery import build
+        # COD
+        cod_amount = self._to_float(row.get("cod_amount"))
+        if cod_amount:
+            cod = {"amount": cod_amount}
 
-        creds_path = Path(self.sheets_config.credentials_file)
-        creds = service_account.Credentials.from_service_account_file(
-            str(creds_path),
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
-        )
-        service = build("sheets", "v4", credentials=creds)
+            cod_method = self._clean_string(row.get("cod_payment_method"))
+            if cod_method:
+                cod["paymentMethod"] = cod_method.upper()
 
-        now = datetime.now().isoformat()
-        updates = []
+            cod_location = self._clean_string(row.get("cod_payment_location"))
+            if cod_location:
+                cod["paymentLocation"] = cod_location.upper()
 
-        # row_status
-        status_idx = get_column_index("row_status")
-        if status_idx >= 0:
-            col_letter = column_index_to_letter(status_idx)
-            status_value = "EXPORTED" if success else "ERROR"
-            updates.append(
-                {
-                    "range": f"{self.sheet_name}!{col_letter}{row_number}",
-                    "values": [[status_value]],
-                }
-            )
+            price["cod"] = cod
 
-        # cd_last_attempt_at
-        attempt_idx = get_column_index("cd_last_attempt_at")
-        if attempt_idx >= 0:
-            col_letter = column_index_to_letter(attempt_idx)
-            updates.append(
-                {
-                    "range": f"{self.sheet_name}!{col_letter}{row_number}",
-                    "values": [[now]],
-                }
-            )
+        # Balance
+        balance_amount = self._to_float(row.get("balance_amount"))
+        if balance_amount:
+            balance = {"amount": balance_amount}
 
-        if success:
-            # cd_listing_id
-            if listing_id:
-                listing_id_idx = get_column_index("cd_listing_id")
-                if listing_id_idx >= 0:
-                    col_letter = column_index_to_letter(listing_id_idx)
-                    updates.append(
-                        {
-                            "range": f"{self.sheet_name}!{col_letter}{row_number}",
-                            "values": [[listing_id]],
-                        }
-                    )
+            balance_time = self._clean_string(row.get("balance_payment_time"))
+            if balance_time:
+                balance["paymentTime"] = balance_time.upper()
 
-            # cd_exported_at
-            exported_idx = get_column_index("cd_exported_at")
-            if exported_idx >= 0:
-                col_letter = column_index_to_letter(exported_idx)
-                updates.append(
-                    {
-                        "range": f"{self.sheet_name}!{col_letter}{row_number}",
-                        "values": [[now]],
-                    }
-                )
+            balance_terms = self._clean_string(row.get("balance_terms_begin_on"))
+            if balance_terms:
+                balance["balancePaymentTermsBeginOn"] = balance_terms.upper()
 
-            # Clear error
-            error_idx = get_column_index("cd_last_error")
-            if error_idx >= 0:
-                col_letter = column_index_to_letter(error_idx)
-                updates.append(
-                    {
-                        "range": f"{self.sheet_name}!{col_letter}{row_number}",
-                        "values": [[""]],
-                    }
-                )
-        else:
-            # cd_last_error
-            if error:
-                error_idx = get_column_index("cd_last_error")
-                if error_idx >= 0:
-                    col_letter = column_index_to_letter(error_idx)
-                    updates.append(
-                        {
-                            "range": f"{self.sheet_name}!{col_letter}{row_number}",
-                            "values": [[error[:500]]],
-                        }
-                    )
+            balance_method = self._clean_string(row.get("balance_payment_method"))
+            if balance_method:
+                balance["balancePaymentMethod"] = balance_method.upper()
 
-        # cd_payload_snapshot
-        if payload:
-            payload_idx = get_column_index("cd_payload_snapshot")
-            if payload_idx >= 0:
-                col_letter = column_index_to_letter(payload_idx)
-                updates.append(
-                    {
-                        "range": f"{self.sheet_name}!{col_letter}{row_number}",
-                        "values": [[json.dumps(payload)[:10000]]],
-                    }
-                )
+            price["balance"] = balance
 
-        if updates:
-            service.spreadsheets().values().batchUpdate(
-                spreadsheetId=self.sheets_config.spreadsheet_id,
-                body={
-                    "valueInputOption": "USER_ENTERED",
-                    "data": updates,
-                },
-            ).execute()
+        if price:
+            payload["price"] = price
 
-    def export_row(self, row: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
-        """
-        Export a single row to CD.
+        # =================================================================
+        # SLA STRUCTURE
+        # =================================================================
 
-        Args:
-            row: Row dict from sheet
-            dry_run: If True, don't actually call CD API
+        sla = {}
 
-        Returns:
-            {
-                "success": bool,
-                "dispatch_id": str,
-                "listing_id": str (if success),
-                "error": str (if failure),
-                "payload": dict (the listing request),
-            }
-        """
-        dispatch_id = row.get("dispatch_id")
-        row_number = row.get("_row_number")
+        sla_duration = self._to_int(row.get("sla_duration"))
+        if sla_duration:
+            sla["duration"] = sla_duration
 
-        # Build payload
-        payload = self._row_to_listing_request(row)
+        sla_tz = self._clean_string(row.get("sla_time_zone_offset"))
+        if sla_tz:
+            sla["timeZoneOffset"] = sla_tz
 
-        result = {
-            "dispatch_id": dispatch_id,
-            "payload": payload,
+        sla_rollover = self._clean_string(row.get("sla_rollover_time"))
+        if sla_rollover:
+            sla["rolloverTime"] = sla_rollover
+
+        sla_include_day = row.get("sla_include_current_day_after_rollover")
+        if sla_include_day:
+            sla["includeCurrentDayAfterRollOver"] = self._to_bool(sla_include_day)
+
+        if sla:
+            payload["sla"] = sla
+
+        # =================================================================
+        # STOPS ARRAY (Flat structure per CD V2)
+        # =================================================================
+
+        stops = []
+
+        # Pickup stop (stop 0, stopNumber=1)
+        pickup_stop = {
+            "stopNumber": self._to_int(row.get("pickup_stop_number"), 1),
         }
 
-        if dry_run:
-            result["success"] = True
-            result["listing_id"] = f"DRY-RUN-{dispatch_id}"
-            result["dry_run"] = True
-            logger.info(f"[DRY RUN] Would export {dispatch_id}")
-            return result
+        pickup_name = self._clean_string(row.get("pickup_location_name"))
+        if pickup_name:
+            pickup_stop["locationName"] = pickup_name
 
-        # Call CD API
-        try:
-            cd_client = self._get_cd_client()
-            response = cd_client.create_listing(payload)
+        pickup_address = self._get_final_value(row, "pickup_address")
+        if pickup_address:
+            pickup_stop["address"] = str(pickup_address)
 
-            listing_id = response.get("id") or response.get("listingId")
+        pickup_city = self._get_final_value(row, "pickup_city")
+        if pickup_city:
+            pickup_stop["city"] = str(pickup_city)
 
-            result["success"] = True
-            result["listing_id"] = listing_id
+        pickup_state = self._get_final_value(row, "pickup_state")
+        if pickup_state:
+            pickup_stop["state"] = str(pickup_state).upper()[:2]
 
-            # Update sheet
-            if row_number:
-                self._update_export_result(
-                    row_number,
-                    success=True,
-                    listing_id=listing_id,
-                    payload=payload,
-                )
+        pickup_postal = self._get_final_value(row, "pickup_postal_code")
+        if pickup_postal:
+            pickup_stop["postalCode"] = str(pickup_postal)
 
-            logger.info(f"Exported {dispatch_id} -> CD listing {listing_id}")
+        pickup_country = self._clean_string(row.get("pickup_country")) or "US"
+        pickup_stop["country"] = pickup_country.upper()[:2]
 
-        except Exception as e:
-            result["success"] = False
-            result["error"] = str(e)
+        pickup_phone = self._clean_string(row.get("pickup_phone"))
+        if pickup_phone:
+            pickup_stop["phone"] = pickup_phone
 
-            # Update sheet
-            if row_number:
-                self._update_export_result(
-                    row_number,
-                    success=False,
-                    error=str(e),
-                    payload=payload,
-                )
+        pickup_contact_name = self._clean_string(row.get("pickup_contact_name"))
+        if pickup_contact_name:
+            pickup_stop["contactName"] = pickup_contact_name
 
-            logger.error(f"Failed to export {dispatch_id}: {e}")
+        pickup_contact_phone = self._clean_string(row.get("pickup_contact_phone"))
+        if pickup_contact_phone:
+            pickup_stop["contactPhone"] = pickup_contact_phone
 
-        return result
+        pickup_loc_type = self._clean_string(row.get("pickup_location_type"))
+        if pickup_loc_type:
+            pickup_stop["locationType"] = pickup_loc_type.upper()
 
-    def export_ready_rows(self, dry_run: bool = False, limit: int = None) -> dict[str, Any]:
+        stops.append(pickup_stop)
+
+        # Dropoff stop (stop 1, stopNumber=2)
+        dropoff_stop = {
+            "stopNumber": self._to_int(row.get("dropoff_stop_number"), 2),
+        }
+
+        dropoff_name = self._clean_string(row.get("dropoff_location_name"))
+        if dropoff_name:
+            dropoff_stop["locationName"] = dropoff_name
+
+        dropoff_address = self._get_final_value(row, "dropoff_address")
+        if dropoff_address:
+            dropoff_stop["address"] = str(dropoff_address)
+
+        dropoff_city = self._get_final_value(row, "dropoff_city")
+        if dropoff_city:
+            dropoff_stop["city"] = str(dropoff_city)
+
+        dropoff_state = self._get_final_value(row, "dropoff_state")
+        if dropoff_state:
+            dropoff_stop["state"] = str(dropoff_state).upper()[:2]
+
+        dropoff_postal = self._get_final_value(row, "dropoff_postal_code")
+        if dropoff_postal:
+            dropoff_stop["postalCode"] = str(dropoff_postal)
+
+        dropoff_country = self._clean_string(row.get("dropoff_country")) or "US"
+        dropoff_stop["country"] = dropoff_country.upper()[:2]
+
+        dropoff_phone = self._clean_string(row.get("dropoff_phone"))
+        if dropoff_phone:
+            dropoff_stop["phone"] = dropoff_phone
+
+        dropoff_contact_name = self._clean_string(row.get("dropoff_contact_name"))
+        if dropoff_contact_name:
+            dropoff_stop["contactName"] = dropoff_contact_name
+
+        dropoff_contact_phone = self._clean_string(row.get("dropoff_contact_phone"))
+        if dropoff_contact_phone:
+            dropoff_stop["contactPhone"] = dropoff_contact_phone
+
+        dropoff_loc_type = self._clean_string(row.get("dropoff_location_type"))
+        if dropoff_loc_type:
+            dropoff_stop["locationType"] = dropoff_loc_type.upper()
+
+        stops.append(dropoff_stop)
+
+        payload["stops"] = stops
+
+        # =================================================================
+        # VEHICLES ARRAY (Per CD V2 structure)
+        # =================================================================
+
+        vehicle = {
+            "pickupStopNumber": self._to_int(row.get("pickup_stop_number"), 1),
+            "dropoffStopNumber": self._to_int(row.get("dropoff_stop_number"), 2),
+        }
+
+        ext_vehicle_id = self._clean_string(row.get("vehicle_external_vehicle_id"))
+        if ext_vehicle_id:
+            vehicle["externalVehicleId"] = ext_vehicle_id
+
+        vin = self._get_final_value(row, "vehicle_vin")
+        if vin:
+            vehicle["vin"] = str(vin).strip().upper()
+
+        year = self._get_final_value(row, "vehicle_year")
+        if year:
+            vehicle["year"] = self._to_int(year)
+
+        make = self._get_final_value(row, "vehicle_make")
+        if make:
+            vehicle["make"] = str(make)
+
+        model = self._get_final_value(row, "vehicle_model")
+        if model:
+            vehicle["model"] = str(model)
+
+        trim = self._clean_string(row.get("vehicle_trim"))
+        if trim:
+            vehicle["trim"] = trim
+
+        vehicle_type = self._clean_string(row.get("vehicle_type"))
+        if vehicle_type:
+            vehicle["vehicleType"] = vehicle_type.upper()
+
+        color = self._clean_string(row.get("vehicle_color"))
+        if color:
+            vehicle["color"] = color
+
+        license_plate = self._clean_string(row.get("vehicle_license_plate"))
+        if license_plate:
+            vehicle["licensePlate"] = license_plate
+
+        license_plate_state = self._clean_string(row.get("vehicle_license_plate_state"))
+        if license_plate_state:
+            vehicle["licensePlateState"] = license_plate_state.upper()[:2]
+
+        lot_number = self._clean_string(row.get("vehicle_lot_number"))
+        if lot_number:
+            vehicle["lotNumber"] = lot_number
+
+        # isInoperable (with override)
+        is_inop = self._get_final_value(row, "vehicle_is_inoperable")
+        vehicle["isInoperable"] = self._to_bool(is_inop, False)
+
+        tariff = self._to_float(row.get("vehicle_tariff"))
+        if tariff:
+            vehicle["tariff"] = tariff
+
+        additional_info = self._clean_string(row.get("vehicle_additional_info"))
+        if additional_info:
+            vehicle["additionalInfo"] = additional_info
+
+        payload["vehicles"] = [vehicle]
+
+        # =================================================================
+        # MARKETPLACES ARRAY (Per CD V2 structure)
+        # =================================================================
+
+        marketplace = {}
+
+        marketplace_id = self._to_int(row.get("marketplace_id"))
+        if marketplace_id:
+            marketplace["marketplaceId"] = marketplace_id
+
+        digital_offers = row.get("digital_offers_enabled")
+        if digital_offers is not None:
+            marketplace["digitalOffersEnabled"] = self._to_bool(digital_offers, True)
+
+        searchable = row.get("searchable")
+        if searchable is not None:
+            marketplace["searchable"] = self._to_bool(searchable, True)
+
+        auto_accept = row.get("offers_auto_accept_enabled")
+        if auto_accept is not None:
+            marketplace["offersAutoAcceptEnabled"] = self._to_bool(auto_accept, False)
+
+        auto_dispatch = row.get("auto_dispatch_on_offer_accepted")
+        if auto_dispatch is not None:
+            marketplace["autoDispatchOnOfferAccepted"] = self._to_bool(auto_dispatch, False)
+
+        predispatch_notes = self._clean_string(row.get("predispatch_notes"))
+        if predispatch_notes:
+            marketplace["predispatchNotes"] = predispatch_notes
+
+        excluded_json = row.get("customers_excluded_from_offers_json")
+        if excluded_json:
+            try:
+                if isinstance(excluded_json, str):
+                    excluded = json.loads(excluded_json)
+                else:
+                    excluded = excluded_json
+                if excluded:
+                    marketplace["customersExcludedFromOffers"] = excluded
+            except json.JSONDecodeError:
+                pass
+
+        if marketplace:
+            payload["marketplaces"] = [marketplace]
+
+        return payload
+
+    def preview_payload(self, dispatch_id: str) -> Optional[dict[str, Any]]:
         """
-        Export all READY rows to CD.
+        Preview the CD payload for a specific row.
+
+        Returns:
+            The CD payload dict, or None if row not found.
+        """
+        row = self.sheets_exporter.get_row_by_dispatch_id(dispatch_id)
+        if not row:
+            return None
+        return self.row_to_cd_payload(row)
+
+    def export_ready_rows(
+        self,
+        dry_run: bool = False,
+        limit: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """
+        Export READY and RETRY rows to Central Dispatch.
 
         Args:
             dry_run: If True, don't actually call CD API
             limit: Maximum number of rows to export
 
         Returns:
-            {
-                "total": int,
-                "exported": int,
-                "failed": int,
-                "results": list,
-            }
+            Dict with:
+            - total: Total rows found
+            - exported: Successfully exported count
+            - failed: Failed count
+            - results: List of per-row results
         """
-        # Get READY rows
-        ready_rows = self.exporter.list_by_status("READY")
+        # Get READY and RETRY rows
+        statuses = [RowStatus.READY, RowStatus.RETRY]
+        rows = self.sheets_exporter.get_rows_by_status(statuses, limit=limit)
 
-        # Also get RETRY rows
-        retry_rows = self.exporter.list_by_status("RETRY")
-        ready_rows.extend(retry_rows)
-
-        if limit:
-            ready_rows = ready_rows[:limit]
-
-        logger.info(f"Found {len(ready_rows)} rows to export (READY + RETRY)")
-
-        exported = 0
-        failed = 0
-        results = []
-
-        for row in ready_rows:
-            result = self.export_row(row, dry_run=dry_run)
-            results.append(result)
-
-            if result["success"]:
-                exported += 1
-            else:
-                failed += 1
-
-        return {
-            "total": len(ready_rows),
-            "exported": exported,
-            "failed": failed,
-            "dry_run": dry_run,
-            "results": results,
+        results = {
+            "total": len(rows),
+            "exported": 0,
+            "failed": 0,
+            "results": [],
         }
 
-    def preview_payload(self, dispatch_id: str) -> Optional[dict[str, Any]]:
-        """
-        Preview the CD payload for a row without exporting.
-        """
-        row = self.exporter.get_row(dispatch_id)
-        if not row:
-            return None
+        for row in rows:
+            dispatch_id = row.get("dispatch_id")
+            row_result = {
+                "dispatch_id": dispatch_id,
+                "success": False,
+                "listing_id": None,
+                "error": None,
+            }
 
-        return self._row_to_listing_request(row)
+            try:
+                # Validate
+                errors = validate_row_for_ready(row)
+                if errors:
+                    row_result["error"] = f"Validation failed: {'; '.join(errors)}"
+                    row_result["success"] = False
+                    results["failed"] += 1
+
+                    if not dry_run:
+                        self.sheets_exporter.update_row_status(
+                            dispatch_id,
+                            RowStatus.ERROR,
+                            error_message=row_result["error"],
+                        )
+
+                    results["results"].append(row_result)
+                    continue
+
+                # Build payload
+                payload = self.row_to_cd_payload(row)
+
+                # Save snapshot
+                if not dry_run:
+                    self.sheets_exporter.save_payload_snapshot(dispatch_id, payload)
+
+                if dry_run:
+                    # Dry run - simulate success
+                    row_result["success"] = True
+                    row_result["listing_id"] = f"DRY_RUN_{dispatch_id}"
+                    results["exported"] += 1
+                    logger.info(f"[DRY RUN] Would export: {dispatch_id}")
+                else:
+                    # Actually call CD API
+                    if self.cd_client:
+                        try:
+                            response = self.cd_client.create_listing(payload)
+                            listing_id = response.get("id") or response.get("listingId")
+
+                            row_result["success"] = True
+                            row_result["listing_id"] = listing_id
+                            results["exported"] += 1
+
+                            # Update status to EXPORTED
+                            self.sheets_exporter.update_row_status(
+                                dispatch_id,
+                                RowStatus.EXPORTED,
+                                cd_listing_id=listing_id,
+                            )
+
+                            logger.info(f"Exported: {dispatch_id} -> {listing_id}")
+
+                        except Exception as e:
+                            row_result["error"] = str(e)
+                            row_result["success"] = False
+                            results["failed"] += 1
+
+                            # Update status to ERROR
+                            self.sheets_exporter.update_row_status(
+                                dispatch_id,
+                                RowStatus.ERROR,
+                                error_message=str(e),
+                            )
+
+                            logger.error(f"Export failed: {dispatch_id} - {e}")
+                    else:
+                        row_result["error"] = "CD client not configured"
+                        row_result["success"] = False
+                        results["failed"] += 1
+
+            except Exception as e:
+                row_result["error"] = str(e)
+                row_result["success"] = False
+                results["failed"] += 1
+                logger.exception(f"Error exporting {dispatch_id}: {e}")
+
+            results["results"].append(row_result)
+
+        return results

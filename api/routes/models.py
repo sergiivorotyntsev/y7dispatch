@@ -2,9 +2,15 @@
 Models API Routes
 
 Manage ML model versions and training jobs.
+
+NOTE: ML training endpoints are DISABLED in MVP (data collection phase).
+Only training-stats/overview is active for the Test Lab dashboard.
+The correction workflow (training.py) remains fully active for learning
+extraction rules from user corrections.
 """
 
 import time
+from functools import wraps
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -17,6 +23,35 @@ from api.models import (
 )
 
 router = APIRouter(prefix="/api/models", tags=["Models"])
+
+# =============================================================================
+# ML TRAINING DISABLED - DATA COLLECTION PHASE
+# =============================================================================
+
+ML_DISABLED_MESSAGE = {
+    "message": "ML model training is not implemented in MVP",
+    "phase": "data_collection",
+    "roadmap": (
+        "PEFT/LoRA fine-tuning will be implemented when sufficient training data "
+        "is collected (100+ examples per auction type). Currently using rule-based "
+        "extraction with learning from user corrections."
+    ),
+    "active_features": [
+        "Correction rules learning (POST /api/training/submit-corrections)",
+        "Extraction rules (GET /api/training/rules/*)",
+        "Training stats overview (GET /api/models/training-stats/overview)",
+    ],
+}
+
+
+def ml_training_disabled(func):
+    """Decorator to disable ML training endpoints with 501 response."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        raise HTTPException(status_code=501, detail=ML_DISABLED_MESSAGE)
+
+    return wrapper
 
 
 # =============================================================================
@@ -351,33 +386,9 @@ async def start_training(
     Start a new training job.
 
     NOTE: ML training is NOT IMPLEMENTED in MVP.
-    This endpoint is for data collection phase only.
-
-    The review workflow collects training examples that will be used
-    for future PEFT/LoRA fine-tuning once sufficient data is gathered.
+    This endpoint is disabled - uses decorator for consistent 501 response.
     """
-    # MVP: Return 501 Not Implemented with roadmap link
-    # Training is disabled - this is data collection phase only
-    from api.database import get_connection
-
-    # Still provide stats about training data availability
-    with get_connection() as conn:
-        example_count = conn.execute(
-            "SELECT COUNT(*) FROM training_examples WHERE auction_type_id = ?",
-            (data.auction_type_id,),
-        ).fetchone()[0]
-
-    raise HTTPException(
-        status_code=501,
-        detail={
-            "message": "ML training is not implemented in MVP",
-            "phase": "data_collection",
-            "training_examples_collected": example_count,
-            "minimum_required": 100,
-            "roadmap": "PEFT/LoRA fine-tuning will be implemented when sufficient training data is collected (100+ examples per auction type)",
-            "current_status": "Use the review workflow to collect and validate training examples. Rule-based extraction is active.",
-        },
-    )
+    pass  # Decorator returns 501
 
 
 # DISABLED 2026-02-11: ML training disabled per directive v3.1

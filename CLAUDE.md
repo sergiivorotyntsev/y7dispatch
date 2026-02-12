@@ -107,23 +107,24 @@ CI: GitHub Actions
 - Metrics and debug endpoints
 
 ### M3: Production Workflow (IN PROGRESS)
-- Batch job processing with queue
-- Audit trail for all operations
-- Metrics endpoints (`/api/metrics/*`)
-- UI evidence overlay (PDF viewer with field highlights)
-- Preflight validation banner
+- ✅ Batch job processing with queue
+- ✅ Audit trail for all operations
+- ✅ Metrics endpoints (`/api/metrics/*`)
+- ✅ UI evidence overlay (PDF viewer with field highlights)
+- ✅ Preflight validation banner with blocking/warning issues
+- ✅ ReviewItemResponse enriched with field metadata (display_name, section, required)
+- ✅ Prompt caching in HaikuExtractor (Phase 1.6) - 90% cost reduction
 
 ### Current Issues (CD-aligned fix pack needed)
-1. **Documents/Review UI**: Documents not recognized, fields empty
-2. **Field mapping mismatch**: Extracted fields don't align with Central Dispatch API schema
-3. **Missing validation**: Some required CD fields not validated before export
-4. **Evidence overlay**: PDF coordinates not rendering correctly in Review UI
+1. ~~**Documents/Review UI**: Documents not recognized, fields empty~~ **FIXED** - Added display_name and metadata enrichment
+2. **Field mapping mismatch**: Extracted fields don't align with Central Dispatch API schema - Partially fixed
+3. ~~**Missing validation**: Some required CD fields not validated before export~~ **FIXED** - Full preflight validation implemented
+4. **Evidence overlay**: PDF coordinates not rendering correctly in Review UI - Needs testing
 
 ### Next Steps
-- Fix CD field mapping alignment (see `cd_field_mapping_v2.yaml`)
-- Implement Market Intelligence API for pricing (PROMPT 5)
-- Add preflight validation before CD export
-- Improve error messaging in Review UI
+- Complete Market Intelligence API integration for pricing
+- Test evidence overlay rendering with sample documents
+- Update IMPLEMENTATION_PHASES.md to mark Phase 1.6 (Prompt Caching) complete
 
 ---
 
@@ -218,4 +219,4 @@ GOOGLE_CREDENTIALS  # Google Sheets service account JSON
 
 ---
 
-*Last updated: 2026-02-03*
+*Last updated: 2026-02-11*

@@ -266,16 +266,16 @@ class TestExtractionPipeline:
                 assert "pickup_state" in keys
 
 
-class TestTrainingService:
-    """Tests for the training service."""
+class TestCorrectionRulesService:
+    """Tests for the correction rules service."""
 
     def test_find_preceding_label(self):
         """Test finding labels that precede values."""
         from unittest.mock import MagicMock
 
-        from services.training_service import TrainingService
+        from services.correction_rules_service import CorrectionRulesService
 
-        service = TrainingService(MagicMock())
+        service = CorrectionRulesService(MagicMock())
 
         text = """
 PHYSICAL ADDRESS OF LOT:
@@ -290,9 +290,9 @@ Dallas TX 75001
         """Test pattern extraction from context."""
         from unittest.mock import MagicMock
 
-        from services.training_service import TrainingService
+        from services.correction_rules_service import CorrectionRulesService
 
-        service = TrainingService(MagicMock())
+        service = CorrectionRulesService(MagicMock())
 
         text = """
 PHYSICAL ADDRESS OF LOT:

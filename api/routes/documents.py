@@ -27,6 +27,67 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def find_vin_duplicate(vin: str, exclude_run_id: int = None) -> Optional[dict]:
+    """
+    Check if VIN already exists in another extraction run.
+
+    Returns info about the duplicate if found, None otherwise.
+    """
+    if not vin or len(vin) < 10:  # Skip invalid VINs
+        return None
+
+    from api.database import get_connection
+
+    with get_connection() as conn:
+        # Search for the VIN in other extraction runs' outputs
+        query = """
+            SELECT
+                er.id as run_id,
+                er.document_id,
+                d.filename as document_filename,
+                er.outputs_json,
+                er.created_at
+            FROM extraction_runs er
+            JOIN documents d ON d.id = er.document_id
+            WHERE er.outputs_json LIKE ?
+              AND er.status NOT IN ('failed', 'cancelled')
+        """
+        params = [f'%"vehicle_vin": "{vin}"%']
+
+        if exclude_run_id:
+            query += " AND er.id != ?"
+            params.append(exclude_run_id)
+
+        query += " ORDER BY er.created_at DESC LIMIT 1"
+
+        row = conn.execute(query, params).fetchone()
+
+        if row:
+            outputs = {}
+            if row["outputs_json"]:
+                try:
+                    outputs = (
+                        json.loads(row["outputs_json"])
+                        if isinstance(row["outputs_json"], str)
+                        else row["outputs_json"]
+                    )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            return {
+                "run_id": row["run_id"],
+                "document_id": row["document_id"],
+                "document_filename": row["document_filename"],
+                "vin": vin,
+                "vehicle_year": outputs.get("vehicle_year"),
+                "vehicle_make": outputs.get("vehicle_make"),
+                "vehicle_model": outputs.get("vehicle_model"),
+                "created_at": row["created_at"],
+            }
+
+    return None
+
+
 # =============================================================================
 # REQUEST/RESPONSE MODELS
 # =============================================================================
@@ -63,6 +124,19 @@ class DocumentListResponse(BaseModel):
     test_count: int = 0
 
 
+class VinDuplicateInfo(BaseModel):
+    """Info about a duplicate VIN found in another document."""
+
+    run_id: int
+    document_id: int
+    document_filename: str
+    vin: str
+    vehicle_year: Optional[str] = None
+    vehicle_make: Optional[str] = None
+    vehicle_model: Optional[str] = None
+    created_at: Optional[str] = None
+
+
 class DocumentUploadResponse(BaseModel):
     """Response model for document upload."""
 
@@ -79,6 +153,9 @@ class DocumentUploadResponse(BaseModel):
     # Classification info
     detected_source: Optional[str] = None
     classification_score: Optional[float] = None
+
+    # VIN duplicate detection
+    vin_duplicate: Optional[VinDuplicateInfo] = None
 
 
 class DocumentStatsResponse(BaseModel):
@@ -346,6 +423,22 @@ async def upload_document(
                 )
                 run_status = "failed"
 
+    # Check for VIN duplicates after extraction
+    vin_duplicate_info = None
+    if run_id and run_status not in ("failed", "manual_required"):
+        run = ExtractionRunRepository.get_by_id(run_id)
+        if run and run.outputs_json:
+            outputs = (
+                json.loads(run.outputs_json)
+                if isinstance(run.outputs_json, str)
+                else run.outputs_json
+            )
+            vin = outputs.get("vehicle_vin")
+            if vin:
+                dup = find_vin_duplicate(vin, exclude_run_id=run_id)
+                if dup:
+                    vin_duplicate_info = VinDuplicateInfo(**dup)
+
     return DocumentUploadResponse(
         document=DocumentResponse(
             **doc.__dict__,
@@ -359,7 +452,21 @@ async def upload_document(
         text_length=text_length,
         detected_source=detected_source,
         classification_score=classification_score,
+        vin_duplicate=vin_duplicate_info,
     )
+
+
+@router.get("/check-vin-duplicate/{vin}")
+async def check_vin_duplicate(vin: str, exclude_run_id: Optional[int] = None):
+    """
+    Check if a VIN already exists in another extraction run.
+
+    Returns duplicate info if found, null otherwise.
+    """
+    dup = find_vin_duplicate(vin, exclude_run_id=exclude_run_id)
+    if dup:
+        return {"is_duplicate": True, "duplicate": VinDuplicateInfo(**dup)}
+    return {"is_duplicate": False, "duplicate": None}
 
 
 @router.get("/", response_model=DocumentListResponse)
@@ -432,6 +539,55 @@ async def list_documents(
         train_count=counts.get("train", 0),
         test_count=counts.get("test", 0),
     )
+
+
+@router.get("/training/list")
+async def list_training_documents(
+    auction_type_id: Optional[int] = None,
+    limit: int = Query(default=50, le=100),
+    offset: int = 0,
+):
+    """
+    List documents for training/testing purposes only.
+
+    Returns documents that are marked as test or from test_lab source.
+    These are separate from production documents and used for
+    zone configuration, extraction testing, and model training.
+    """
+    from api.database import get_connection
+
+    sql = "SELECT * FROM documents WHERE (is_test = 1 OR source = 'test_lab')"
+    params = []
+
+    if auction_type_id:
+        sql += " AND auction_type_id = ?"
+        params.append(auction_type_id)
+
+    sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        docs = [Document(**dict(row)) for row in rows]
+
+        total = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE (is_test = 1 OR source = 'test_lab')"
+        ).fetchone()[0]
+
+    items = []
+    for doc in docs:
+        at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
+        items.append(
+            DocumentResponse(
+                **doc.__dict__,
+                auction_type_code=at.code if at else None,
+            )
+        )
+
+    return {
+        "items": items,
+        "total": total,
+    }
 
 
 @router.get("/{id}", response_model=DocumentResponse)
@@ -789,3 +945,78 @@ async def clear_all_test_lab_documents():
         "deleted_count": deleted_count,
         "message": f"Deleted {deleted_count} test documents",
     }
+
+
+@router.get("/{id}/page/{page_num}/image")
+async def get_document_page_image(
+    id: int,
+    page_num: int = 1,
+    dpi: int = Query(default=150, ge=72, le=300, description="Resolution in DPI"),
+):
+    """
+    Get a specific page of a PDF document as a PNG image.
+
+    Used by the visual zone editor to display the document background.
+
+    Args:
+        id: Document ID
+        page_num: Page number (1-indexed)
+        dpi: Image resolution (default 150)
+
+    Returns:
+        PNG image of the requested page
+    """
+    import io
+
+    from fastapi.responses import Response
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.file_path:
+        raise HTTPException(status_code=404, detail="Document file path not found")
+
+    if not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail=f"Document file not found on disk: {doc.file_path}")
+
+    try:
+        # Try pdf2image first (requires poppler)
+        from pdf2image import convert_from_path
+
+        images = convert_from_path(
+            doc.file_path,
+            dpi=dpi,
+            first_page=page_num,
+            last_page=page_num,
+        )
+
+        if not images:
+            raise HTTPException(status_code=404, detail=f"Page {page_num} not found in document")
+
+        # Convert to PNG bytes
+        img_buffer = io.BytesIO()
+        images[0].save(img_buffer, format="PNG")
+        img_buffer.seek(0)
+
+        return Response(
+            content=img_buffer.getvalue(),
+            media_type="image/png",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "Content-Disposition": f'inline; filename="page_{page_num}.png"',
+            },
+        )
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="pdf2image is not installed. Run: pip install pdf2image"
+        )
+    except Exception as e:
+        error_msg = str(e)
+        if "poppler" in error_msg.lower() or "pdftoppm" in error_msg.lower():
+            raise HTTPException(
+                status_code=500,
+                detail="Poppler is not installed. On Ubuntu: apt-get install poppler-utils. On macOS: brew install poppler"
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to render page: {error_msg}")

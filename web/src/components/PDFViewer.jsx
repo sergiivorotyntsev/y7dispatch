@@ -14,10 +14,22 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../api'
+import ZoneVisualization from './ZoneVisualization'
 
 // Default PDF page dimensions (Letter size at 72 DPI)
+// These are used to convert absolute PDF coordinates to percentages
 const DEFAULT_PAGE_WIDTH = 612
 const DEFAULT_PAGE_HEIGHT = 792
+
+// Convert absolute PDF coordinates to percentage-based (0-100)
+function toPercentCoords(bbox, pageWidth = DEFAULT_PAGE_WIDTH, pageHeight = DEFAULT_PAGE_HEIGHT) {
+  return {
+    x0: (bbox.x0 / pageWidth) * 100,
+    y0: (bbox.y0 / pageHeight) * 100,
+    x1: (bbox.x1 / pageWidth) * 100,
+    y1: (bbox.y1 / pageHeight) * 100,
+  }
+}
 
 function PDFViewer({
   pdfUrl,
@@ -25,14 +37,16 @@ function PDFViewer({
   highlightedField = null,
   onBlockClick = null,
   showAllBlocks = false,
+  auctionTypeId = null,  // For loading zone templates
+  showZones = true,      // Toggle zone visualization
 }) {
   const [evidence, setEvidence] = useState(null)
   const [blocks, setBlocks] = useState([])
+  const [zones, setZones] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
-  const [scale, setScale] = useState(1.0)
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
+  const [showZoneOverlay, setShowZoneOverlay] = useState(showZones)
 
   const containerRef = useRef(null)
   const iframeRef = useRef(null)
@@ -66,32 +80,38 @@ function PDFViewer({
     fetchEvidence()
   }, [runId])
 
-  // Update container size on resize
+  // Fetch zone templates for the auction type
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!auctionTypeId) return
 
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.offsetWidth,
-          height: containerRef.current.offsetHeight,
-        })
+    const fetchZones = async () => {
+      try {
+        // First, get the auction type code from the ID
+        const auctionTypes = await api.listAuctionTypes()
+        const auctionType = auctionTypes.items?.find(at => at.id === auctionTypeId)
+
+        if (!auctionType) {
+          console.warn('Auction type not found:', auctionTypeId)
+          setZones([])
+          return
+        }
+
+        // Then get templates filtered by auction type code
+        const templates = await api.listZoneTemplates({ auction_type: auctionType.code })
+        if (templates.items?.length > 0) {
+          // Use the first (active) template for this auction type
+          setZones(templates.items[0].zones || [])
+        } else {
+          setZones([])
+        }
+      } catch (err) {
+        console.error('Failed to fetch zone template:', err)
+        setZones([])
       }
     }
 
-    updateSize()
-    window.addEventListener('resize', updateSize)
-    return () => window.removeEventListener('resize', updateSize)
-  }, [])
-
-  // Calculate scale factor based on container width
-  useEffect(() => {
-    if (containerSize.width > 0) {
-      // Assume standard PDF width, calculate scale to fit container
-      const newScale = containerSize.width / DEFAULT_PAGE_WIDTH
-      setScale(newScale)
-    }
-  }, [containerSize.width])
+    fetchZones()
+  }, [auctionTypeId])
 
   // Get blocks for current page
   const currentPageBlocks = blocks.filter(b => (b.page_num || 1) === currentPage)
@@ -101,15 +121,17 @@ function PDFViewer({
     ? evidence[highlightedField] || []
     : []
 
-  // Convert PDF coordinates to screen coordinates
-  const toScreenCoords = useCallback((bbox) => {
+  // Convert PDF coordinates to percentage-based overlay coordinates
+  // Using percentages ensures proper alignment regardless of iframe rendering scale
+  const toOverlayCoords = useCallback((bbox) => {
+    const pct = toPercentCoords(bbox)
     return {
-      left: bbox.x0 * scale,
-      top: bbox.y0 * scale,
-      width: (bbox.x1 - bbox.x0) * scale,
-      height: (bbox.y1 - bbox.y0) * scale,
+      left: `${pct.x0}%`,
+      top: `${pct.y0}%`,
+      width: `${pct.x1 - pct.x0}%`,
+      height: `${pct.y1 - pct.y0}%`,
     }
-  }, [scale])
+  }, [])
 
   // Handle page navigation
   const goToPage = (page) => {
@@ -165,6 +187,20 @@ function PDFViewer({
             </button>
           </div>
 
+          {zones.length > 0 && (
+            <button
+              onClick={() => setShowZoneOverlay(!showZoneOverlay)}
+              className={`text-xs px-2 py-1 rounded ${
+                showZoneOverlay
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+              title={showZoneOverlay ? 'Hide extraction zones' : 'Show extraction zones'}
+            >
+              {showZoneOverlay ? 'Zones: ON' : 'Zones: OFF'}
+            </button>
+          )}
+
           <a
             href={pdfUrl}
             target="_blank"
@@ -190,14 +226,26 @@ function PDFViewer({
           title="Document PDF"
         />
 
-        {/* Overlay for bboxes */}
+        {/* Overlay for bboxes and zones */}
         <div
           className="absolute inset-0 pointer-events-none overflow-hidden"
           style={{ pointerEvents: 'none' }}
         >
+          {/* Zone visualization overlay */}
+          {showZoneOverlay && zones.length > 0 && (
+            <ZoneVisualization
+              zones={zones.filter(z => (z.page_num || 1) === currentPage)}
+              highlightedField={highlightedField}
+              onZoneClick={(zone) => {
+                console.log('Zone clicked:', zone)
+                // Could scroll to first field in zone
+              }}
+            />
+          )}
+
           {/* Show all blocks if enabled */}
           {showAllBlocks && currentPageBlocks.map((block, idx) => {
-            const coords = toScreenCoords(block.bbox)
+            const coords = toOverlayCoords(block.bbox)
             return (
               <div
                 key={`block-${idx}`}
@@ -216,7 +264,7 @@ function PDFViewer({
           {highlightedEvidence
             .filter(ev => (ev.page_num || 1) === currentPage && ev.bbox)
             .map((ev, idx) => {
-              const coords = toScreenCoords(ev.bbox)
+              const coords = toOverlayCoords(ev.bbox)
               return (
                 <div
                   key={`evidence-${idx}`}
@@ -258,17 +306,26 @@ function PDFViewer({
         )}
       </div>
 
-      {/* Evidence summary footer */}
-      {evidence && Object.keys(evidence).length > 0 && (
-        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
-          {Object.keys(evidence).length} fields with evidence
-          {highlightedField && highlightedEvidence.length > 0 && (
-            <span className="ml-2 text-blue-600">
-              | {highlightedEvidence.length} evidence block{highlightedEvidence.length > 1 ? 's' : ''} for {highlightedField.replace(/_/g, ' ')}
-            </span>
+      {/* Evidence and zones summary footer */}
+      {(evidence && Object.keys(evidence).length > 0) || zones.length > 0 ? (
+        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
+          <div>
+            {evidence && Object.keys(evidence).length > 0 && (
+              <span>{Object.keys(evidence).length} fields with evidence</span>
+            )}
+            {highlightedField && highlightedEvidence.length > 0 && (
+              <span className="ml-2 text-blue-600">
+                | {highlightedEvidence.length} evidence block{highlightedEvidence.length > 1 ? 's' : ''} for {highlightedField.replace(/_/g, ' ')}
+              </span>
+            )}
+          </div>
+          {zones.length > 0 && (
+            <div className="text-gray-400">
+              {zones.length} extraction zone{zones.length > 1 ? 's' : ''} defined
+            </div>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

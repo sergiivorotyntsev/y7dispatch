@@ -1,17 +1,22 @@
 """Settings management endpoints."""
 
 import json
+import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from api.database import get_connection
 from api.listing_fields import (
     FieldCategory,
     FieldSourceType,
     get_registry,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -628,3 +633,228 @@ async def get_extracted_fields():
             for f in fields
         ],
     }
+
+
+# =============================================================================
+# FIELD CONFIGURATION PERSISTENCE
+# =============================================================================
+
+
+class FieldConfigUpdate(BaseModel):
+    """Single field config update."""
+
+    field_key: str
+    source_type: Optional[str] = None
+    default_value: Optional[str] = None
+    is_required: Optional[bool] = None
+    is_editable: Optional[bool] = None
+
+
+class FieldConfigsBatchUpdate(BaseModel):
+    """Batch update for field configs."""
+
+    updates: dict[str, dict[str, Any]]  # field_key -> {source_type, default_value, ...}
+
+
+class FieldConfigResponse(BaseModel):
+    """Field config response."""
+
+    field_key: str
+    source_type: str
+    default_value: Optional[str] = None
+    is_required: bool = False
+    is_editable: bool = True
+    updated_at: Optional[str] = None
+
+
+def _init_field_configs_table():
+    """Initialize field_configs table for storing user overrides."""
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS field_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                field_key TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL DEFAULT 'extracted',
+                default_value TEXT,
+                is_required BOOLEAN DEFAULT FALSE,
+                is_editable BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_field_configs_key ON field_configs(field_key)")
+        conn.commit()
+
+
+@router.get("/fields/configs")
+async def get_field_configs():
+    """
+    Get all user-configured field overrides.
+
+    Returns field configurations that override the default taxonomy.
+    """
+    _init_field_configs_table()
+
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM field_configs ORDER BY field_key").fetchall()
+
+    return {
+        "configs": [
+            FieldConfigResponse(
+                field_key=row["field_key"],
+                source_type=row["source_type"],
+                default_value=row["default_value"],
+                is_required=bool(row["is_required"]),
+                is_editable=bool(row["is_editable"]),
+                updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+    }
+
+
+@router.put("/fields/configs")
+async def update_field_configs(data: FieldConfigsBatchUpdate):
+    """
+    Batch update field configurations.
+
+    Accepts a dict of field_key -> config updates.
+    Creates new configs or updates existing ones.
+    """
+    _init_field_configs_table()
+
+    now = datetime.utcnow().isoformat()
+    updated = 0
+    created = 0
+
+    with get_connection() as conn:
+        for field_key, updates in data.updates.items():
+            # Check if exists
+            existing = conn.execute(
+                "SELECT id FROM field_configs WHERE field_key = ?", (field_key,)
+            ).fetchone()
+
+            if existing:
+                # Build update
+                set_parts = ["updated_at = ?"]
+                params = [now]
+
+                if "source_type" in updates:
+                    set_parts.append("source_type = ?")
+                    params.append(updates["source_type"])
+                if "default_value" in updates:
+                    set_parts.append("default_value = ?")
+                    params.append(updates["default_value"])
+                if "is_required" in updates or "required" in updates:
+                    set_parts.append("is_required = ?")
+                    params.append(updates.get("is_required", updates.get("required", False)))
+                if "is_editable" in updates or "editable_in_review" in updates:
+                    set_parts.append("is_editable = ?")
+                    params.append(
+                        updates.get("is_editable", updates.get("editable_in_review", True))
+                    )
+
+                params.append(field_key)
+                conn.execute(
+                    f"UPDATE field_configs SET {', '.join(set_parts)} WHERE field_key = ?", params
+                )
+                updated += 1
+            else:
+                # Insert new
+                conn.execute(
+                    """
+                    INSERT INTO field_configs
+                    (field_key, source_type, default_value, is_required, is_editable, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        field_key,
+                        updates.get("source_type", "extracted"),
+                        updates.get("default_value"),
+                        updates.get("is_required", updates.get("required", False)),
+                        updates.get("is_editable", updates.get("editable_in_review", True)),
+                        now,
+                        now,
+                    ),
+                )
+                created += 1
+
+        conn.commit()
+
+    logger.info(f"Field configs: updated={updated}, created={created}")
+    return {"status": "ok", "updated": updated, "created": created}
+
+
+@router.put("/fields/configs/{field_key}")
+async def update_single_field_config(field_key: str, data: FieldConfigUpdate):
+    """
+    Update a single field configuration.
+    """
+    _init_field_configs_table()
+
+    now = datetime.utcnow().isoformat()
+
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT id FROM field_configs WHERE field_key = ?", (field_key,)
+        ).fetchone()
+
+        if existing:
+            set_parts = ["updated_at = ?"]
+            params = [now]
+
+            if data.source_type is not None:
+                set_parts.append("source_type = ?")
+                params.append(data.source_type)
+            if data.default_value is not None:
+                set_parts.append("default_value = ?")
+                params.append(data.default_value)
+            if data.is_required is not None:
+                set_parts.append("is_required = ?")
+                params.append(data.is_required)
+            if data.is_editable is not None:
+                set_parts.append("is_editable = ?")
+                params.append(data.is_editable)
+
+            params.append(field_key)
+            conn.execute(
+                f"UPDATE field_configs SET {', '.join(set_parts)} WHERE field_key = ?", params
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO field_configs
+                (field_key, source_type, default_value, is_required, is_editable, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    field_key,
+                    data.source_type or "extracted",
+                    data.default_value,
+                    data.is_required or False,
+                    data.is_editable if data.is_editable is not None else True,
+                    now,
+                    now,
+                ),
+            )
+
+        conn.commit()
+
+    return {"status": "ok", "field_key": field_key}
+
+
+@router.delete("/fields/configs/{field_key}")
+async def delete_field_config(field_key: str):
+    """
+    Delete a field configuration (revert to default).
+    """
+    _init_field_configs_table()
+
+    with get_connection() as conn:
+        result = conn.execute("DELETE FROM field_configs WHERE field_key = ?", (field_key,))
+        conn.commit()
+
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Config for {field_key} not found")
+
+    return {"status": "ok", "deleted": field_key}

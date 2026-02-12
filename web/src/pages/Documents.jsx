@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
+import ExportPreviewModal from '../components/ExportPreviewModal'
 
 /**
  * Documents Page - Production Workflow
@@ -32,11 +33,20 @@ function Documents() {
   const [batchPosting, setBatchPosting] = useState(false)
   const [batchResult, setBatchResult] = useState(null)
 
-  // Filters
+  // Filters and pagination
   const [filter, setFilter] = useState({
     auction_type_id: '',
     status: '',
     export_status: '',
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 25,
+    total: 0,
+  })
+  const [sortConfig, setSortConfig] = useState({
+    sortBy: 'created_at',
+    sortOrder: 'desc',
   })
 
   // Stats
@@ -59,17 +69,31 @@ function Documents() {
     setLoading(true)
     setError(null)
     try {
-      const params = { dataset_split: 'train' } // Only production docs, not test
+      const params = {
+        dataset_split: 'train',
+        limit: pagination.limit,
+        offset: (pagination.page - 1) * pagination.limit,
+      }
       if (filter.auction_type_id) params.auction_type_id = filter.auction_type_id
 
       const result = await api.listDocuments(params)
       // Filter out test documents
       const prodDocs = (result.items || []).filter(d => !d.is_test)
-      setDocuments(prodDocs)
+
+      // Sort documents client-side
+      const sorted = [...prodDocs].sort((a, b) => {
+        const aVal = a[sortConfig.sortBy] || ''
+        const bVal = b[sortConfig.sortBy] || ''
+        const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0
+        return sortConfig.sortOrder === 'desc' ? -cmp : cmp
+      })
+
+      setDocuments(sorted)
+      setPagination(p => ({ ...p, total: result.total || prodDocs.length }))
 
       // Calculate stats
       setStats({
-        total: prodDocs.length,
+        total: result.total || prodDocs.length,
         needs_review: 0,
         ready_to_export: 0,
         exported: 0,
@@ -79,7 +103,7 @@ function Documents() {
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [filter, pagination.page, pagination.limit, sortConfig])
 
   // Fetch auction types and warehouses
   useEffect(() => {
@@ -102,22 +126,30 @@ function Documents() {
     fetchDocuments()
   }, [fetchDocuments])
 
-  // Fetch latest extraction status for each document
+  // Fetch latest extraction status for each document (production only)
   const fetchDocExtractions = useCallback(async () => {
     try {
-      const result = await api.listExtractions({ limit: 200 })
+      // Only load extractions from production documents (is_test=false)
+      // This ensures Documents page doesn't show Test Lab extractions
+      const result = await api.listExtractions({ limit: 200, is_test: false })
       const extractionsByDoc = {}
       let needsReview = 0
       let readyToExport = 0
       let exported = 0
 
+      // Get set of production document IDs (additional client-side filter)
+      const prodDocIds = new Set(documents.map(d => d.id))
+
       for (const run of (result.items || [])) {
+        // Skip extraction runs from test/training documents
+        if (!prodDocIds.has(run.document_id)) continue
+
         // Keep the latest extraction per document
         if (!extractionsByDoc[run.document_id] || run.id > extractionsByDoc[run.document_id].id) {
           extractionsByDoc[run.document_id] = run
         }
 
-        // Count stats
+        // Count stats (only for production documents)
         if (run.status === 'needs_review') needsReview++
         else if (run.status === 'reviewed' || run.status === 'approved') readyToExport++
         else if (run.status === 'exported') exported++
@@ -133,7 +165,7 @@ function Documents() {
     } catch (err) {
       console.error('Failed to fetch extractions:', err)
     }
-  }, [])
+  }, [documents])
 
   useEffect(() => {
     fetchDocExtractions()
@@ -157,6 +189,8 @@ function Documents() {
         classificationScore: result.classification_score,
         isDuplicate: result.is_duplicate,
         runStatus: result.run_status,
+        runId: result.run_id,
+        vinDuplicate: result.vin_duplicate,
       })
 
       setUploadFile(null)
@@ -177,12 +211,15 @@ function Documents() {
   const [editingPrice, setEditingPrice] = useState({ docId: null, value: '' })
   const [exportingDocId, setExportingDocId] = useState(null)
 
+  // Export preview modal
+  const [showExportPreview, setShowExportPreview] = useState(null) // { extractionId, documentId }
+
   // Run extraction on document
   async function handleRunExtraction(docId, forceNew = false) {
     const existingExtraction = docExtractions[docId]
     if (existingExtraction && !forceNew) {
       if (existingExtraction.status === 'needs_review') {
-        navigate(`/listing/${existingExtraction.id}`)
+        navigate(`/review/${existingExtraction.id}`)
         return
       } else if (['reviewed', 'approved'].includes(existingExtraction.status)) {
         if (!confirm('Document already processed. Run extraction again?')) return
@@ -191,9 +228,14 @@ function Documents() {
 
     setExtractingDocId(docId)
     try {
-      await api.runExtraction(docId)
-      fetchDocuments()
-      fetchDocExtractions()
+      const result = await api.runExtraction(docId)
+      // Navigate to review page after extraction
+      if (result?.run_id) {
+        navigate(`/review/${result.run_id}`)
+      } else {
+        fetchDocuments()
+        fetchDocExtractions()
+      }
     } catch (err) {
       setError(`Extraction failed: ${err.message}`)
     } finally {
@@ -201,21 +243,38 @@ function Documents() {
     }
   }
 
-  // Update warehouse for document
+  // Update warehouse for document - also populates delivery fields
   async function handleWarehouseChange(docId, warehouseId, e) {
     e.stopPropagation()
     const extraction = docExtractions[docId]
     if (!extraction) return
 
     try {
-      // Update extraction with warehouse (convert to int)
       const whId = warehouseId ? parseInt(warehouseId, 10) : null
       if (whId) {
-        await api.updateExtraction(extraction.id, { warehouse_id: whId })
+        // Find selected warehouse to get delivery info
+        const selectedWarehouse = warehouses.find(w => w.id === whId)
+
+        // Update extraction with warehouse AND delivery fields from warehouse
+        const updateData = {
+          warehouse_id: whId,
+          outputs_json: {
+            ...(extraction.outputs || {}),
+            warehouse_id: whId,
+            delivery_name: selectedWarehouse?.name || '',
+            delivery_address: selectedWarehouse?.address || '',
+            delivery_city: selectedWarehouse?.city || '',
+            delivery_state: selectedWarehouse?.state || '',
+            delivery_zip: selectedWarehouse?.zip_code || '',
+          }
+        }
+
+        await api.updateExtraction(extraction.id, updateData)
         fetchDocExtractions()
       }
     } catch (err) {
       console.error('Failed to update warehouse:', err)
+      setError(`Failed to update warehouse: ${err.message}`)
     }
   }
 
@@ -378,13 +437,14 @@ function Documents() {
     return { label: extraction.status, color: 'bg-gray-100 text-gray-600' }
   }
 
-  // Navigate to listing review page
+  // Navigate to listing review page or run extraction
   function handleRowClick(doc) {
     const extraction = docExtractions[doc.id]
     if (extraction) {
-      navigate(`/listing/${extraction.id}`)
+      navigate(`/review/${extraction.id}`)
     } else {
-      navigate(`/documents/${doc.id}`)
+      // No extraction yet - run extraction first
+      handleRunExtraction(doc.id)
     }
   }
 
@@ -445,12 +505,12 @@ function Documents() {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Auction Type</label>
             <select
               value={filter.auction_type_id}
-              onChange={(e) => setFilter({ ...filter, auction_type_id: e.target.value })}
+              onChange={(e) => { setFilter({ ...filter, auction_type_id: e.target.value }); setPagination(p => ({ ...p, page: 1 })) }}
               className="form-select"
             >
               <option value="">All Types</option>
@@ -463,7 +523,7 @@ function Documents() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
               value={filter.status}
-              onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+              onChange={(e) => { setFilter({ ...filter, status: e.target.value }); setPagination(p => ({ ...p, page: 1 })) }}
               className="form-select"
             >
               <option value="">All Status</option>
@@ -473,11 +533,38 @@ function Documents() {
               <option value="failed">Failed</option>
             </select>
           </div>
-          <div className="flex items-end">
-            <button onClick={fetchDocuments} className="btn btn-secondary">
-              Refresh
-            </button>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+            <select
+              value={`${sortConfig.sortBy}-${sortConfig.sortOrder}`}
+              onChange={(e) => {
+                const [sortBy, sortOrder] = e.target.value.split('-')
+                setSortConfig({ sortBy, sortOrder })
+              }}
+              className="form-select"
+            >
+              <option value="created_at-desc">Newest First</option>
+              <option value="created_at-asc">Oldest First</option>
+              <option value="filename-asc">Filename A-Z</option>
+              <option value="filename-desc">Filename Z-A</option>
+            </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Per Page</label>
+            <select
+              value={pagination.limit}
+              onChange={(e) => setPagination(p => ({ ...p, limit: parseInt(e.target.value), page: 1 }))}
+              className="form-select"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          <button onClick={fetchDocuments} className="btn btn-secondary">
+            Refresh
+          </button>
         </div>
       </div>
 
@@ -515,14 +602,52 @@ function Documents() {
             </div>
 
             {uploadResult && (
-              <div className={`mb-4 p-3 rounded-lg ${uploadResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+              <div className={`mb-4 p-3 rounded-lg ${
+                uploadResult.vinDuplicate ? 'bg-orange-50 border border-orange-200' :
+                uploadResult.success ? 'bg-green-50 border border-green-200' :
+                'bg-red-50 border border-red-200'
+              }`}>
                 {uploadResult.success ? (
                   <div>
-                    <p className="font-medium text-green-800">Upload successful!</p>
+                    <p className={`font-medium ${uploadResult.vinDuplicate ? 'text-orange-800' : 'text-green-800'}`}>
+                      {uploadResult.vinDuplicate ? '⚠️ Upload successful - Duplicate VIN detected!' : 'Upload successful!'}
+                    </p>
                     {uploadResult.detectedSource && (
                       <p className="text-sm text-green-700 mt-1">
                         Detected: <strong>{uploadResult.detectedSource}</strong>
                       </p>
+                    )}
+                    {uploadResult.vinDuplicate && (
+                      <div className="mt-2 p-2 bg-orange-100 rounded text-sm text-orange-800">
+                        <p className="font-medium">This VIN already exists in another document:</p>
+                        <p className="mt-1">
+                          VIN: <code className="font-mono bg-orange-200 px-1 rounded">{uploadResult.vinDuplicate.vin}</code>
+                        </p>
+                        <p>
+                          Vehicle: {uploadResult.vinDuplicate.vehicle_year} {uploadResult.vinDuplicate.vehicle_make} {uploadResult.vinDuplicate.vehicle_model}
+                        </p>
+                        <p>File: {uploadResult.vinDuplicate.document_filename}</p>
+                        <button
+                          onClick={() => {
+                            setShowUpload(false)
+                            navigate(`/review/${uploadResult.vinDuplicate.run_id}`)
+                          }}
+                          className="mt-2 text-orange-700 underline hover:text-orange-900"
+                        >
+                          View existing listing →
+                        </button>
+                      </div>
+                    )}
+                    {uploadResult.runId && !uploadResult.vinDuplicate && (
+                      <button
+                        onClick={() => {
+                          setShowUpload(false)
+                          navigate(`/review/${uploadResult.runId}`)
+                        }}
+                        className="mt-2 text-green-700 underline hover:text-green-900"
+                      >
+                        Review extracted data →
+                      </button>
                     )}
                   </div>
                 ) : (
@@ -571,6 +696,7 @@ function Documents() {
           </button>
         </div>
       ) : (
+        <>
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -584,7 +710,13 @@ function Documents() {
                   />
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Order ID
+                  Load ID
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Make
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Model
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Auction
@@ -593,7 +725,7 @@ function Documents() {
                   Pickup
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Delivery
+                  Warehouse
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Price
@@ -629,11 +761,31 @@ function Documents() {
                     : rawOutputs
                 ) : {}
 
-                const orderId = outputs.vehicle_lot || outputs.lot_number || outputs.stock_number || outputs.order_id || '-'
+                // Build Load ID from Year + Make + Model (like in Test Lab)
+                const vehicleYear = outputs.vehicle_year || ''
+                const vehicleMake = outputs.vehicle_make || ''
+                const vehicleModel = outputs.vehicle_model || ''
+                // F2 fix: vehicle_lot is canonical, fallbacks for backward compat with old data
+                const lotNumber = outputs.vehicle_lot || outputs.lot_number || outputs.stock_number || ''
+
+                // Load ID format: "YEAR MAKE MODEL" or fallback to lot number
+                const loadId = vehicleYear && vehicleMake && vehicleModel
+                  ? `${vehicleYear} ${vehicleMake} ${vehicleModel}`.trim()
+                  : lotNumber || '-'
+
                 const pickupState = outputs.pickup_state || '-'
                 const pickupZip = outputs.pickup_zip || ''
-                const pickupLocation = pickupState !== '-' ? `${pickupState} ${pickupZip}`.trim() : '-'
+                const pickupCity = outputs.pickup_city || ''
+                const pickupLocation = pickupCity || pickupState !== '-'
+                  ? `${pickupCity ? pickupCity + ', ' : ''}${pickupState} ${pickupZip}`.trim()
+                  : '-'
                 const priceTotal = outputs.price_total || null
+
+                // Warehouse/Delivery info - from warehouse selection
+                const warehouseName = warehouses.find(w => w.id === (extraction?.warehouse_id || outputs.warehouse_id))?.name || ''
+                const deliveryCity = outputs.delivery_city || ''
+                const deliveryState = outputs.delivery_state || ''
+                const deliveryInfo = warehouseName || (deliveryCity ? `${deliveryCity}, ${deliveryState}` : '-')
 
                 const sourceDisplay = getSourceDisplay(doc)
                 const exportStatus = getExportStatus(extraction)
@@ -655,9 +807,20 @@ function Documents() {
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-sm font-medium text-gray-900">
-                        {orderId}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="font-mono text-sm font-medium text-gray-900">
+                          {loadId}
+                        </span>
+                        {lotNumber && loadId !== lotNumber && (
+                          <span className="text-xs text-gray-500">Lot: {lotNumber}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-900">{vehicleMake || '-'}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-900">{vehicleModel || '-'}</span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 text-xs font-medium rounded ${
@@ -673,34 +836,30 @@ function Documents() {
                       <span className="text-sm text-gray-700">{pickupLocation}</span>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      {outputs.delivery_state ? (
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">
-                            {outputs.delivery_state} {outputs.delivery_zip || ''}
-                          </span>
-                          {outputs.delivery_name && (
-                            <span className="text-xs text-gray-500 truncate max-w-[120px]" title={outputs.delivery_name}>
-                              {outputs.delivery_name}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
+                      {/* Warehouse selector - sets delivery destination */}
+                      <div className="flex flex-col gap-1">
                         <select
-                          value={outputs.warehouse_id || ''}
+                          value={extraction?.warehouse_id || outputs.warehouse_id || ''}
                           onChange={(e) => handleWarehouseChange(doc.id, e.target.value, e)}
                           disabled={isExported || !extraction}
                           className={`form-select form-select-sm text-xs ${
                             isExported ? 'bg-gray-100 cursor-not-allowed' : ''
-                          }`}
+                          } ${!extraction?.warehouse_id && !outputs.warehouse_id ? 'border-orange-300' : ''}`}
                         >
-                          <option value="">Select...</option>
+                          <option value="">Select Warehouse...</option>
                           {warehouses.map((wh) => (
                             <option key={wh.id} value={wh.id}>
-                              {wh.name} - {wh.city}, {wh.state}
+                              {wh.state} - {wh.name} ({wh.city})
                             </option>
                           ))}
                         </select>
-                      )}
+                        {/* Show delivery info below dropdown if available */}
+                        {outputs.delivery_state && (
+                          <span className="text-xs text-gray-500" title={`${outputs.delivery_city || ''}, ${outputs.delivery_state} ${outputs.delivery_zip || ''}`}>
+                            {outputs.delivery_city}, {outputs.delivery_state} {outputs.delivery_zip || ''}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {editingPrice.docId === doc.id ? (
@@ -716,22 +875,36 @@ function Documents() {
                             if (e.key === 'Escape') setEditingPrice({ docId: null, value: '' })
                           }}
                           autoFocus
-                          className="form-input w-20 text-sm px-1 py-0.5"
+                          className="form-input w-24 text-sm px-2 py-1 border-primary-500"
+                          placeholder="0.00"
                         />
                       ) : (
-                        <span
-                          className={`text-sm cursor-pointer hover:underline ${
-                            priceTotal ? 'text-gray-900 font-medium' : 'text-gray-400'
-                          } ${isExported ? 'cursor-default' : ''}`}
+                        <button
+                          className={`group flex items-center gap-1.5 px-2 py-1 rounded text-sm transition-colors ${
+                            isExported
+                              ? 'cursor-default text-gray-500'
+                              : extraction
+                                ? 'hover:bg-gray-100 cursor-pointer'
+                                : 'cursor-not-allowed text-gray-400'
+                          }`}
                           onClick={(e) => {
                             if (!isExported && extraction) {
                               e.stopPropagation()
                               setEditingPrice({ docId: doc.id, value: priceTotal || '' })
                             }
                           }}
+                          disabled={isExported || !extraction}
+                          title={isExported ? 'Cannot edit exported document' : extraction ? 'Click to edit price' : 'Run extraction first'}
                         >
-                          {priceTotal ? `$${parseFloat(priceTotal).toFixed(2)}` : '-'}
-                        </span>
+                          <span className={priceTotal ? 'font-medium text-gray-900' : 'text-gray-400'}>
+                            {priceTotal ? `$${parseFloat(priceTotal).toFixed(2)}` : '—'}
+                          </span>
+                          {!isExported && extraction && (
+                            <span className="text-gray-400 group-hover:text-primary-600 transition-colors">
+                              ✏️
+                            </span>
+                          )}
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -793,18 +966,20 @@ function Documents() {
                         {extraction ? (
                           <>
                             <button
-                              onClick={() => navigate(`/listing/${extraction.id}`)}
+                              onClick={() => navigate(`/review/${extraction.id}`)}
                               className="text-sm text-blue-600 hover:text-blue-800"
                             >
                               {extraction.status === 'needs_review' ? 'Review' : 'View'}
                             </button>
                             {isReady && !isExported && (
                               <button
-                                onClick={(e) => handleExportToCD(doc.id, e)}
-                                disabled={exportingDocId === doc.id}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setShowExportPreview({ extractionId: extraction.id, documentId: doc.id })
+                                }}
                                 className="text-sm text-green-600 hover:text-green-800 font-medium"
                               >
-                                {exportingDocId === doc.id ? '...' : 'Export'}
+                                Export
                               </button>
                             )}
                             {!isExported && (
@@ -840,6 +1015,50 @@ function Documents() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {pagination.total > pagination.limit && (
+          <div className="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+            <div className="text-sm text-gray-600">
+              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} documents
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setPagination(p => ({ ...p, page: Math.max(1, p.page - 1) }))}
+                disabled={pagination.page === 1}
+                className="btn btn-sm btn-secondary disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="px-3 py-1 bg-white border rounded text-sm">
+                Page {pagination.page} of {Math.ceil(pagination.total / pagination.limit)}
+              </span>
+              <button
+                onClick={() => setPagination(p => ({ ...p, page: Math.min(Math.ceil(p.total / p.limit), p.page + 1) }))}
+                disabled={pagination.page >= Math.ceil(pagination.total / pagination.limit)}
+                className="btn btn-sm btn-secondary disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+        </>
+      )}
+
+      {/* Export Preview Modal */}
+      {showExportPreview && (
+        <ExportPreviewModal
+          extractionId={showExportPreview.extractionId}
+          documentId={showExportPreview.documentId}
+          onClose={() => setShowExportPreview(null)}
+          onExport={(result) => {
+            fetchDocExtractions()
+            if (result.posted > 0) {
+              setShowExportPreview(null)
+            }
+          }}
+        />
       )}
 
       {/* Batch Post Modal */}
