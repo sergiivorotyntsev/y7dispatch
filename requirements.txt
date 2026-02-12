@@ -27,6 +27,9 @@ pytest>=7.0.0
 pytest-cov>=4.0.0
 pytest-mock>=3.10.0
 
+# Claude AI extraction
+anthropic>=0.79.0
+
 # Encryption & Auth
 cryptography>=41.0.0
 msal>=1.24.0

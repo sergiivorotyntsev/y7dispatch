@@ -246,13 +246,25 @@ class TestZoneFallback:
         assert sources == {}
 
     def test_get_haiku_extractor_singleton(self):
-        """get_haiku_extractor should return singleton."""
+        """get_haiku_extractor should return singleton when api_key is set."""
+        from services.haiku_extractor import get_haiku_extractor
+
+        with patch("services.haiku_extractor._haiku_extractor", None):
+            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-test-key"}):
+                e1 = get_haiku_extractor()
+                e2 = get_haiku_extractor()
+                assert e1 is e2
+
+    def test_get_haiku_extractor_retries_without_key(self):
+        """get_haiku_extractor re-creates instance if api_key is missing."""
         from services.haiku_extractor import get_haiku_extractor
 
         with patch("services.haiku_extractor._haiku_extractor", None):
             e1 = get_haiku_extractor()
+            assert not e1.api_key
+            # Should re-create since api_key is None
             e2 = get_haiku_extractor()
-            assert e1 is e2
+            assert e1 is not e2
 
 
 # =============================================================================

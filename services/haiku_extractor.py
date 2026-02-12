@@ -161,6 +161,25 @@ Auction detection:
 - IAA: "Insurance Auto Auctions", "IAA", "iaai.com"
 - MANHEIM: "Manheim", "manheim.com"
 
+Here are 3 verified correct extractions as examples:
+
+Example 1 (Copart):
+Document begins: "Sales Receipt/Bill of Sale Date: 12/31/25 ... MEMBER:535527 ... GEICO - HOME OFFICE ... BROADWAY MOTORING INC ... 12020 US HIGHWAY 301 SOUTH SOLD THROUGH COPART ... RIVERVIEW FL 33578 ... LOT# 95541835 ... JTDKAMFU6N3164401 ... 2022 TOYOTA PRIUS ..."
+Correct extraction:
+{{"auction_type":"COPART","vehicle_vin":"JTDKAMFU6N3164401","vehicle_year":2022,"vehicle_make":"TOYOTA","vehicle_model":"PRIUS","vehicle_color":"RED","vehicle_type":"CAR","vehicle_lot":"95541835","pickup_name":"Copart Riverview","pickup_address":"12020 US HIGHWAY 301 SOUTH","pickup_city":"RIVERVIEW","pickup_state":"FL","pickup_zip":"33578","pickup_phone":null,"buyer_id":"535527","buyer_name":"BROADWAY MOTORING INC","seller_name":"GEICO - HOME OFFICE","sale_date":"2025-12-30","total_amount":7275}}
+
+Example 2 (IAA):
+Document begins: "Buyer Receipt ... Insurance Auto Auctions Corp ... Sold At Branch 332 - East Bay ... Pick-Up Location: East Bay 2780 Willow Pass Road Bay Point California 94565 (925) 458-7610 ... Buyer # 593509 ... Broadway Motoring Inc ... WA1CCAFP4GA133227 2016 AUDI SQ5 ..."
+Correct extraction:
+{{"auction_type":"IAA","vehicle_vin":"WA1CCAFP4GA133227","vehicle_year":2016,"vehicle_make":"AUDI","vehicle_model":"SQ5","vehicle_color":"Black","vehicle_type":"SUV","vehicle_lot":"43666048","pickup_name":"East Bay","pickup_address":"2780 Willow Pass Road","pickup_city":"Bay Point","pickup_state":"CA","pickup_zip":"94565","pickup_phone":"(925) 458-7610","buyer_id":"593509","buyer_name":"Broadway Motoring Inc","seller_name":"Insurance Auto Auctions Corp","sale_date":"2025-12-24","total_amount":8955}}
+
+Example 3 (Manheim):
+Document begins: "BILL OF SALE ... myCentralAuction Sale Date Vehicle Purchase Price ... 15-DEC-2025 ... Sale Price $ 6,500.00 ... 2025-51-94-275 ... Seller: CARVANA, LLC ... Manheim Portland 3000 N Hayden Island Dr Portland, OR 97217 ... YV4A22PMXG1037898 2016 Volvo XC90 ..."
+Correct extraction:
+{{"auction_type":"MANHEIM","vehicle_vin":"YV4A22PMXG1037898","vehicle_year":2016,"vehicle_make":"Volvo","vehicle_model":"XC90","vehicle_color":"Silver","vehicle_type":"SUV","vehicle_lot":"2025-51-94-275","pickup_name":"Manheim Portland","pickup_address":"3000 N Hayden Island Dr","pickup_city":"Portland","pickup_state":"OR","pickup_zip":"97217","pickup_phone":"(503) 286-3000","buyer_id":"5515588","buyer_name":"BROADWAY MOTORING INC","seller_name":"CARVANA, LLC","sale_date":"2025-12-15","total_amount":6832}}
+
+IMPORTANT for IAA: The lot number often appears as "000-XXXXXXXX". Extract ONLY the numeric part after "000-" (e.g., "000-43666048" → "43666048").
+
 Return JSON only, no markdown, no explanation:
 {{
   "auction_type": "...",
@@ -436,6 +455,17 @@ Prices: Extract as numbers only (no $ or commas)"""
                                 source=FieldSource.EXTRACTED
                             )
 
+                # Post-processing: IAA lot number cleanup
+                # IAA invoices prefix lot numbers with "000-" (e.g., "000-43699659")
+                # Strip the prefix to get the actual lot number (e.g., "43699659")
+                if (
+                    result.auction_type == "IAA"
+                    and "vehicle_lot" in result.fields
+                    and isinstance(result.fields["vehicle_lot"].value, str)
+                    and result.fields["vehicle_lot"].value.startswith("000-")
+                ):
+                    result.fields["vehicle_lot"].value = result.fields["vehicle_lot"].value.replace("000-", "", 1)
+
                 # Calculate overall confidence
                 if result.fields:
                     confidences = [f.confidence for f in result.fields.values()]
@@ -541,9 +571,13 @@ _haiku_extractor: Optional[HaikuExtractor] = None
 
 
 def get_haiku_extractor() -> HaikuExtractor:
-    """Get or create the HaikuExtractor singleton."""
+    """Get or create the HaikuExtractor singleton.
+
+    Re-creates the singleton if api_key is missing (handles the case where
+    credentials are added via Settings UI after server startup).
+    """
     global _haiku_extractor
-    if _haiku_extractor is None:
+    if _haiku_extractor is None or not _haiku_extractor.api_key:
         _haiku_extractor = HaikuExtractor()
     return _haiku_extractor
 

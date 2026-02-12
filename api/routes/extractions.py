@@ -1057,6 +1057,9 @@ def run_extraction(
                             "method": f"zone_extractor:{metrics.get('zone_extraction', {}).get('template_id', 'unknown')}",
                         }
 
+        # Store extraction method in outputs for UI display
+        outputs["extraction_method"] = extraction_method
+
         # Calculate field metrics
         metrics["fields_extracted_count"] = len(outputs)
         metrics["fields_filled_count"] = sum(

@@ -986,7 +986,24 @@ function Review() {
             {/* Fields List */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="font-medium text-gray-900">Extracted Fields</h2>
+                <div className="flex items-center space-x-2">
+                  <h2 className="font-medium text-gray-900">Extracted Fields</h2>
+                  {run?.outputs?.extraction_method && (
+                    <span className={
+                      'text-xs px-2 py-0.5 rounded-full font-medium ' +
+                      (run.outputs.extraction_method === 'haiku'
+                        ? 'bg-blue-100 text-blue-700'
+                        : run.outputs.extraction_method === 'zone_fallback'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-gray-100 text-gray-600')
+                    }>
+                      {run.outputs.extraction_method === 'haiku' ? 'Claude Haiku'
+                        : run.outputs.extraction_method === 'zone_fallback' ? 'Zone Fallback'
+                        : run.outputs.extraction_method === 'all_failed' ? 'Pattern Only'
+                        : run.outputs.extraction_method}
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={markAllCorrect}
                   className="text-xs text-primary-600 hover:text-primary-800"

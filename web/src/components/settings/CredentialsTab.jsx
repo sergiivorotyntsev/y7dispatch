@@ -64,6 +64,8 @@ export default function CredentialsTab() {
       } else {
         showMessage('error', result.message)
       }
+      // Reload credentials so DB status (green/red dot) persists in StatusSummary
+      loadCredentials()
     } catch (err) {
       setTestResults(prev => ({ ...prev, [service]: { status: 'failed', message: err.message } }))
       showMessage('error', err.message)
@@ -109,6 +111,7 @@ export default function CredentialsTab() {
         onToggle={() => setExpandedCard(expandedCard === 'email' ? null : 'email')}
         configured={!!(credentials.email_imap || credentials.email_forwarding || credentials.email_oauth)}
         testStatus={testResults[emailProvider]}
+        dbTestStatus={credentials[emailProvider]?.last_test_status}
       >
         <div className="mb-4">
           <label className="form-label">Provider</label>
@@ -170,6 +173,7 @@ export default function CredentialsTab() {
         onToggle={() => setExpandedCard(expandedCard === 'cd' ? null : 'cd')}
         configured={!!credentials.cd_api}
         testStatus={testResults.cd_api}
+        dbTestStatus={credentials.cd_api?.last_test_status}
       >
         <CdForm
           initial={credentials.cd_api?.config || {}}
@@ -190,6 +194,7 @@ export default function CredentialsTab() {
         onToggle={() => setExpandedCard(expandedCard === 'sheets' ? null : 'sheets')}
         configured={!!credentials.sheets}
         testStatus={testResults.sheets}
+        dbTestStatus={credentials.sheets?.last_test_status}
       >
         <SheetsForm
           initial={credentials.sheets?.config || {}}
@@ -210,6 +215,7 @@ export default function CredentialsTab() {
         onToggle={() => setExpandedCard(expandedCard === 'anthropic' ? null : 'anthropic')}
         configured={!!credentials.anthropic}
         testStatus={testResults.anthropic}
+        dbTestStatus={credentials.anthropic?.last_test_status}
       >
         <AnthropicForm
           initial={credentials.anthropic?.config || {}}
@@ -266,7 +272,9 @@ function StatusSummary({ credentials }) {
   )
 }
 
-function CredentialCard({ title, expanded, onToggle, configured, testStatus, children }) {
+function CredentialCard({ title, expanded, onToggle, configured, testStatus, dbTestStatus, children }) {
+  // Use session test result if available, otherwise fall back to DB status
+  const effectiveStatus = testStatus?.status || dbTestStatus
   return (
     <div className="border rounded-lg">
       <button
@@ -276,8 +284,8 @@ function CredentialCard({ title, expanded, onToggle, configured, testStatus, chi
         <div className="flex items-center space-x-3">
           <span className={
             'w-3 h-3 rounded-full ' +
-            (testStatus?.status === 'ok' ? 'bg-green-500' :
-             testStatus?.status === 'failed' ? 'bg-red-500' :
+            (effectiveStatus === 'ok' ? 'bg-green-500' :
+             effectiveStatus === 'failed' ? 'bg-red-500' :
              configured ? 'bg-yellow-500' : 'bg-gray-300')
           } />
           <h4 className="font-medium">{title}</h4>
