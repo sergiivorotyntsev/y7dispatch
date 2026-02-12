@@ -711,132 +711,102 @@ def run_extraction(
         evidence_list = []
 
         # =================================================================
-        # ZONE-BASED EXTRACTION (PRIMARY - highest accuracy)
-        # Uses template zones from DATABASE to extract from correct regions
-        # Always loads fresh template from DB, not from singleton cache
+        # HAIKU EXTRACTION (PRIMARY — Claude Haiku LLM)
+        # Uses Claude Haiku API for accurate field extraction.
+        # Falls back to zone_extractor if Claude API is unavailable.
         # =================================================================
-        zone_outputs = {}
+        import logging
+
+        logger = logging.getLogger(__name__)
+        haiku_outputs = {}
+        extraction_method = "none"
 
         if doc.file_path:
+            # --- PRIMARY: HaikuExtractor ---
             try:
-                from extractors.zone_extractor import get_zone_extractor
-                import logging
+                from services.haiku_extractor import get_haiku_extractor, normalize_haiku_result
 
-                logger = logging.getLogger(__name__)
-                zone_extractor = get_zone_extractor()
+                haiku = get_haiku_extractor()
 
-                # Use extract_with_logging() which ALWAYS loads from DB
-                logger.info(f"ZONE EXTRACTION: Loading template from DB for {auction_type.code}")
-                zone_result = zone_extractor.extract_with_logging(doc.file_path, auction_type.code)
+                if not haiku.api_key:
+                    raise RuntimeError("ANTHROPIC_API_KEY not configured")
 
-                zone_outputs = zone_result.fields
-                metrics["zone_extraction"] = {
-                    "template_id": zone_result.template_id,
-                    "confidence": zone_result.confidence,
-                    "fields_count": len(zone_result.fields),
-                    "warnings": zone_result.warnings,
-                    "source": "database" if zone_result.template_id != "none" else "none",
+                logger.info(f"HAIKU EXTRACTION: Running Claude Haiku for doc {document_id}")
+                haiku_result = haiku.extract(doc.file_path)
+
+                if haiku_result.error:
+                    raise RuntimeError(f"Haiku extraction error: {haiku_result.error}")
+
+                haiku_outputs, haiku_sources = normalize_haiku_result(haiku_result)
+                field_sources.update(haiku_sources)
+
+                extraction_method = "haiku"
+                metrics["extraction_method"] = "haiku"
+                metrics["haiku_extraction"] = {
+                    "model": haiku.MODEL,
+                    "fields_count": len(haiku_outputs),
+                    "confidence": haiku_result.confidence,
+                    "cost_usd": haiku_result.cost_usd,
+                    "tokens_input": haiku_result.tokens_used.input_tokens,
+                    "tokens_output": haiku_result.tokens_used.output_tokens,
+                    "cache_read_tokens": haiku_result.tokens_used.cache_read_tokens,
+                    "cache_efficiency": haiku_result.tokens_used.cache_efficiency,
                 }
 
-                # Track zone-extracted fields
-                for key, value in zone_outputs.items():
-                    if value is not None:
-                        field_sources[key] = {
-                            "value": value,
-                            "source": "ZONE_EXTRACTED",
-                            "confidence": zone_result.confidence,
-                            "method": f"zone_extractor:{zone_result.template_id}",
-                        }
-
                 logger.info(
-                    f"Zone extraction: {len(zone_outputs)} fields, confidence={zone_result.confidence}"
+                    f"Haiku extraction: {len(haiku_outputs)} fields, "
+                    f"confidence={haiku_result.confidence:.2f}, "
+                    f"cost=${haiku_result.cost_usd:.4f}"
                 )
 
-                # =================================================================
-                # APPLY TRAINING RULES (learned from user corrections)
-                # Training rules can provide additional patterns for extraction
-                # =================================================================
+            except Exception as haiku_err:
+                logger.warning(f"Haiku extraction failed, falling back to zone: {haiku_err}")
+                metrics["haiku_extraction_error"] = str(haiku_err)
+
+                # --- FALLBACK: Zone extractor ---
                 try:
-                    from services.correction_rules_service import CorrectionRulesService
-                    from api.training_db import SessionContext
+                    from extractors.zone_extractor import get_zone_extractor
 
-                    with SessionContext() as session:
-                        rules_service = CorrectionRulesService(session)
-                        learned_rules = rules_service.get_rules_for_extractor(auction_type.code)
+                    zone_extractor = get_zone_extractor()
+                    logger.info(f"ZONE FALLBACK: Loading template from DB for {auction_type.code}")
+                    zone_result = zone_extractor.extract_with_logging(doc.file_path, auction_type.code)
 
-                        if learned_rules:
-                            metrics["training_rules_applied"] = len(learned_rules)
-                            logger.info(f"Training: {len(learned_rules)} learned rules available")
+                    haiku_outputs = zone_result.fields
+                    extraction_method = "zone_fallback"
+                    metrics["extraction_method"] = "zone_fallback"
+                    metrics["zone_extraction"] = {
+                        "template_id": zone_result.template_id,
+                        "confidence": zone_result.confidence,
+                        "fields_count": len(zone_result.fields),
+                        "warnings": zone_result.warnings,
+                        "source": "database" if zone_result.template_id != "none" else "none",
+                    }
 
-                            # Apply learned patterns to improve extraction
-                            for field_key, rule_info in learned_rules.items():
-                                if not rule_info.get("label_patterns"):
-                                    continue
+                    for key, value in haiku_outputs.items():
+                        if value is not None:
+                            field_sources[key] = {
+                                "value": value,
+                                "source": "ZONE_EXTRACTED",
+                                "confidence": zone_result.confidence,
+                                "method": f"zone_extractor:{zone_result.template_id}",
+                            }
 
-                                current_value = zone_outputs.get(field_key)
-                                current_source = field_sources.get(field_key, {})
-                                current_confidence = current_source.get("confidence", 0)
-                                rule_confidence = rule_info.get("confidence", 0.5)
-                                rule_validations = rule_info.get("validation_count", 0)
+                    logger.info(
+                        f"Zone fallback: {len(haiku_outputs)} fields, "
+                        f"confidence={zone_result.confidence}"
+                    )
 
-                                # Criteria for applying training rule:
-                                # 1. Field is missing, OR
-                                # 2. Rule has high confidence (>0.7) AND many validations (>3) AND current extraction has lower confidence
-                                should_apply = (
-                                    not current_value or
-                                    (rule_confidence > 0.7 and rule_validations >= 3 and rule_confidence > current_confidence)
-                                )
+                except Exception as zone_err:
+                    logger.error(f"Zone fallback also failed: {zone_err}")
+                    metrics["zone_extraction_error"] = str(zone_err)
+                    metrics["extraction_method"] = "all_failed"
 
-                                if not should_apply:
-                                    continue
-
-                                # Try to find value using learned label patterns
-                                for pattern in rule_info["label_patterns"][:3]:  # Top 3 patterns
-                                    import re
-                                    # More specific pattern matching for different field types
-                                    if "lot" in field_key.lower() or "stock" in field_key.lower():
-                                        value_pattern = r"[\dA-Z]+-?\d+|\d{5,}"
-                                    elif "vin" in field_key.lower():
-                                        value_pattern = r"[A-HJ-NPR-Z0-9]{17}"
-                                    else:
-                                        value_pattern = r"\S+(?:\s+\S+)*"
-
-                                    match = re.search(
-                                        f"{pattern}[:\\s]*({value_pattern})",
-                                        raw_text,
-                                        re.IGNORECASE
-                                    )
-                                    if match:
-                                        value = match.group(1).strip()
-                                        if value and len(value) > 2:
-                                            # Log if overriding existing value
-                                            if current_value and current_value != value:
-                                                logger.info(
-                                                    f"Training rule OVERRIDE {field_key}: "
-                                                    f"'{current_value}' -> '{value}' "
-                                                    f"(rule_confidence={rule_confidence:.2f}, validations={rule_validations})"
-                                                )
-                                            zone_outputs[field_key] = value
-                                            field_sources[field_key] = {
-                                                "value": value,
-                                                "source": "TRAINING_RULE",
-                                                "confidence": rule_confidence,
-                                                "method": f"training_pattern:{pattern[:30]}",
-                                                "overrode_value": current_value if current_value else None,
-                                            }
-                                            break
-                except Exception as te:
-                    logger.debug(f"Training rules not applied: {te}")
-
-            except Exception as e:
-                import logging
-
-                logging.getLogger(__name__).warning(f"Zone extraction error: {e}")
-                metrics["zone_extraction_error"] = str(e)
+        # Rename for downstream compatibility (was zone_outputs)
+        zone_outputs = haiku_outputs
 
         # =================================================================
-        # BLOCK EXTRACTION (FALLBACK - only for fields not found by zone)
-        # Run layout-aware extraction as fallback for zone extraction
+        # BLOCK EXTRACTION (FALLBACK - only for fields not found by haiku/zone)
+        # Run layout-aware extraction as fallback
         # =================================================================
         block_outputs = {}
 
@@ -1054,16 +1024,13 @@ def run_extraction(
                             ExtractionRunRepository.update(run_id, auction_type_id=detected_type.id)
 
         # =================================================================
-        # FINAL MERGE: ZONE EXTRACTION OVERRIDE (HIGHEST PRIORITY)
+        # FINAL MERGE: HAIKU/ZONE OVERRIDE (HIGHEST PRIORITY)
         #
         # Priority order (highest to lowest):
-        # 1. ZONE_EXTRACTED - From database templates, most accurate
-        # 2. TRAINING_RULE - Learned from user corrections
-        # 3. BLOCK_EXTRACTED - Fallback layout-aware extraction
-        # 4. PATTERN_EXTRACTED - Last resort regex patterns
-        #
-        # Zone extraction is definitive for location fields because
-        # it extracts from the correct column/region of the document.
+        # 1. HAIKU_EXTRACTED - Claude Haiku LLM (primary)
+        #    or ZONE_EXTRACTED - Zone templates (fallback)
+        # 2. BLOCK_EXTRACTED - Fallback layout-aware extraction
+        # 3. PATTERN_EXTRACTED - Last resort regex patterns
         # =================================================================
         if zone_outputs:
             import logging

@@ -11,6 +11,7 @@ import base64
 import json
 import logging
 import os
+import time as _time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -301,7 +302,10 @@ Prices: Extract as numbers only (no $ or commas)"""
             result.error = "Insufficient text extracted from document"
             return result
 
-        # Call Claude Haiku with prompt caching (Phase 1.6)
+        # Call Claude Haiku with prompt caching (Phase 1.6) and retry logic
+        MAX_RETRIES = 3
+        RETRY_DELAYS = [1, 3, 10]  # seconds backoff
+
         try:
             # Build user message with document text
             user_message = EXTRACTION_PROMPT.format(document_text=text)
@@ -326,7 +330,23 @@ Prices: Extract as numbers only (no $ or commas)"""
             else:
                 api_kwargs["system"] = self.SYSTEM_PROMPT
 
-            response = self.client.messages.create(**api_kwargs)
+            response = None
+            for attempt in range(MAX_RETRIES):
+                try:
+                    response = self.client.messages.create(**api_kwargs)
+                    break
+                except Exception as api_err:
+                    logger.warning(
+                        f"Claude API attempt {attempt + 1}/{MAX_RETRIES} failed: {api_err}"
+                    )
+                    if attempt == MAX_RETRIES - 1:
+                        logger.error(f"Claude API failed after {MAX_RETRIES} retries: {api_err}")
+                        raise
+                    _time.sleep(RETRY_DELAYS[attempt])
+
+            if response is None:
+                result.error = "Claude API returned no response"
+                return result
 
             # Track tokens including cache stats
             cache_read = getattr(response.usage, 'cache_read_input_tokens', 0)
@@ -476,6 +496,44 @@ Prices: Extract as numbers only (no $ or commas)"""
                 progress_callback(i + 1, total, result)
 
         return results
+
+
+def normalize_haiku_result(haiku_result: ExtractionResult) -> tuple[dict, dict]:
+    """
+    Convert HaikuExtractor output to standard extraction format.
+
+    Returns:
+        (outputs, field_sources) — flat dicts compatible with DB storage.
+        outputs: {field_name: value}
+        field_sources: {field_name: {"value", "source", "confidence", "method"}}
+    """
+    outputs = {}
+    field_sources = {}
+
+    for field_name, extracted_field in haiku_result.fields.items():
+        value = extracted_field.value
+        if value is not None:
+            outputs[field_name] = value
+            field_sources[field_name] = {
+                "value": value,
+                "source": "HAIKU_EXTRACTED",
+                "confidence": extracted_field.confidence,
+                "method": f"haiku:{HaikuExtractor.MODEL}",
+            }
+
+    return outputs, field_sources
+
+
+# Singleton instance for reuse across requests (keeps prompt cache warm)
+_haiku_extractor: Optional[HaikuExtractor] = None
+
+
+def get_haiku_extractor() -> HaikuExtractor:
+    """Get or create the HaikuExtractor singleton."""
+    global _haiku_extractor
+    if _haiku_extractor is None:
+        _haiku_extractor = HaikuExtractor()
+    return _haiku_extractor
 
 
 # Convenience function for testing
