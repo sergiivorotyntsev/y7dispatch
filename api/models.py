@@ -1792,6 +1792,18 @@ class ExportJobRepository:
             return None
 
     @staticmethod
+    def get_by_dispatch_id(dispatch_id: str) -> Optional["ExportJob"]:
+        """Get export job by Central Dispatch dispatch_id."""
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM export_jobs WHERE dispatch_id = ? ORDER BY created_at DESC LIMIT 1",
+                (dispatch_id,),
+            ).fetchone()
+            if row:
+                return ExportJobRepository._row_to_job(row)
+            return None
+
+    @staticmethod
     def update(id: int, **kwargs) -> bool:
         """Update export job."""
         if not kwargs:

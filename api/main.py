@@ -51,6 +51,7 @@ from api.routes import (
     reviews,
     runs,
     settings,
+    sheets,
     templates,
     test,
     training,
@@ -134,6 +135,7 @@ app.include_router(cd_listings.router)  # CD Listings API v2 preview + push
 app.include_router(templates.router)  # Zone-based extraction templates
 app.include_router(pricing.router)  # Pricing recommendations via CD Market Intelligence
 app.include_router(dlq.router, prefix="/api", tags=["DLQ"])  # Dead Letter Queue (Phase 0.7)
+app.include_router(sheets.router)  # Sheets webhook override endpoint
 
 
 # =============================================================================
@@ -223,6 +225,20 @@ async def startup():
     from api.warehouse_constants import init_warehouse_constants_schema
 
     init_warehouse_constants_schema()
+    # Wire DLQ alert callback for failed processing notifications
+    from api.dlq import get_dlq_service
+    from services.alerting import Severity, send_alert
+
+    def _dlq_alert(entry):
+        send_alert(
+            f"DLQ: {entry.failure_reason.value} — {entry.email_subject}",
+            Severity.HIGH,
+            context={"dlq_id": entry.id, "email_id": entry.email_id,
+                      "reason": entry.failure_reason.value,
+                      "details": entry.failure_details},
+        )
+
+    get_dlq_service().register_alert_callback(_dlq_alert)
 
 
 # Serve frontend (simple HTML for now)
