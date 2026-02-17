@@ -1,0 +1,153 @@
+{
+  "title": "M3 Staging Gate Report",
+  "generated_at": "2026-02-03T23:39:41.109510",
+  "git_commit": "10cea4312e1e8607ecd3a27f2d5aa7abfb3e89fe",
+  "overall_passed": false,
+  "sections": [
+    {
+      "name": "1. Static Analysis & Code Quality",
+      "passed": false,
+      "checks": [
+        {
+          "name": "Ruff lint (Python)",
+          "passed": false,
+          "message": "Linting errors found",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.0014913082122802734
+        },
+        {
+          "name": "Black format check",
+          "passed": false,
+          "message": "Formatting issues found",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.0009827613830566406
+        },
+        {
+          "name": "Mypy typecheck",
+          "passed": true,
+          "message": "Typecheck completed (warnings allowed)",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified",
+            "strict": false
+          },
+          "duration_seconds": 0.0011551380157470703
+        },
+        {
+          "name": "Frontend build (TS check)",
+          "passed": false,
+          "message": "Build failed",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.0007109642028808594
+        },
+        {
+          "name": "No hardcoded secrets",
+          "passed": true,
+          "message": "No secrets found",
+          "details": {
+            "matches": ""
+          },
+          "duration_seconds": 0.0013587474822998047
+        }
+      ]
+    },
+    {
+      "name": "2. Backend Tests",
+      "passed": false,
+      "checks": [
+        {
+          "name": "Unit tests",
+          "passed": false,
+          "message": "Unit test failures",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.0014121532440185547
+        },
+        {
+          "name": "Integration tests",
+          "passed": false,
+          "message": "Integration test failures",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.001104116439819336
+        },
+        {
+          "name": "Regression/Golden tests",
+          "passed": false,
+          "message": "Regression failures",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.0011026859283447266
+        },
+        {
+          "name": "M3-specific tests",
+          "passed": false,
+          "message": "M3 test failures",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.0009114742279052734
+        }
+      ]
+    },
+    {
+      "name": "3. E2E Smoke Tests",
+      "passed": false,
+      "checks": [
+        {
+          "name": "E2E smoke tests (Playwright)",
+          "passed": false,
+          "message": "E2E failures",
+          "details": {
+            "output": "[WinError 2] The system cannot find the file specified"
+          },
+          "duration_seconds": 0.0010869503021240234
+        }
+      ]
+    },
+    {
+      "name": "4. Database Migrations",
+      "passed": true,
+      "checks": [
+        {
+          "name": "Migration on empty DB",
+          "passed": true,
+          "message": "Empty DB migration OK",
+          "details": {
+            "output": ""
+          },
+          "duration_seconds": 0.08010125160217285
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_checks": 11,
+    "passed_checks": 3,
+    "sections_passed": 1,
+    "sections_total": 4
+  },
+  "artifacts": {
+    "regression_report": "C:\\dev\\y7\\y7dispatch\\regression_report.json"
+  },
+  "known_limitations": [
+    "OCR: Max processing time 5 minutes per document",
+    "CD Sandbox: Rate limited to 100 requests/minute",
+    "Batch: Max 100 documents per batch job",
+    "Edge cases: Multi-vehicle invoices not fully supported"
+  ],
+  "next_steps": [
+    "Review E2E report for visual verification",
+    "Check regression report for field-level accuracy",
+    "Verify load test p95 meets targets",
+    "Manual UAT on staging environment"
+  ]
+}

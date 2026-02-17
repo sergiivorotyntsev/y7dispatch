@@ -1,0 +1,14 @@
+{
+  "run_id": "a346544d",
+  "run_at": "2026-02-04T04:39:41.085226",
+  "dataset_name": "sample_docs",
+  "summary": {
+    "total_documents": 0,
+    "successful_extractions": 0,
+    "failed_extractions": 0,
+    "overall_accuracy": 0.0
+  },
+  "field_accuracy": {},
+  "duration_ms": 0,
+  "documents": []
+}

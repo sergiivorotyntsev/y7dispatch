@@ -1,0 +1,15 @@
+﻿node_modules/
+web/node_modules/
+tests/sample_docs/*.pdf
+tests/golden_set/**/*.pdf
+__pycache__/
+*.pyc
+*.db
+.git/
+web/dist/
+static/
+_archive/
+data/
+uploads/
+*.log
+*.pickle
