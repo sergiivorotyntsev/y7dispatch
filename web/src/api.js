@@ -393,6 +393,9 @@ export const api = {
   getPricingRecommendation: (runId) => request(`/exports/pricing/${runId}`),
   getFullPricing: (runId, urgency = 'STANDARD') => request(`/pricing/recommend/${runId}?urgency=${urgency}`),
 
+  // Load ID Generation
+  generateLoadId: (make, model) => request(`/listings/generate-load-id?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`),
+
   // CD Listings API v2 — Preview & Push
   getCDPayload: (docId, warehouseCode = null) => {
     const qs = warehouseCode ? `?warehouse_code=${warehouseCode}` : ''

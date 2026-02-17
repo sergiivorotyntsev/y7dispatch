@@ -46,6 +46,7 @@ from api.routes import (
     field_mappings,
     health,
     integrations,
+    listings,
     metrics,
     models,
     pricing,
@@ -138,6 +139,7 @@ app.include_router(pricing.router)  # Pricing recommendations via CD Market Inte
 app.include_router(dlq.router, prefix="/api", tags=["DLQ"])  # Dead Letter Queue (Phase 0.7)
 app.include_router(sheets.router)  # Sheets webhook override endpoint
 app.include_router(credentials.router, prefix="/api/credentials", tags=["Credentials"])
+app.include_router(listings.router)  # Load ID generation + listing management
 
 
 # =============================================================================

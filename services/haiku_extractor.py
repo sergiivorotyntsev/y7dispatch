@@ -144,6 +144,7 @@ Fields to extract:
 - vehicle_color: Color if mentioned, else null
 - vehicle_type: "CAR" | "SUV" | "TRUCK" | "VAN" | "MOTORCYCLE"
 - vehicle_lot: Lot/Stock number
+- vehicle_is_inoperable: true if vehicle is inoperable/non-running, false otherwise (default false)
 - pickup_name: Location name (e.g., "Copart Dallas")
 - pickup_address: Street address
 - pickup_city: City name
@@ -155,28 +156,51 @@ Fields to extract:
 - seller_name: Seller/Insurance company
 - sale_date: Date in YYYY-MM-DD format
 - total_amount: Total in USD (number only)
+- manheim_release_date: For MANHEIM docs only (null for others). See Manheim rules below.
+- manheim_offsite: For MANHEIM docs only (null for others). true if vehicle is not at a Manheim facility.
+- offsite_pickup_address: If manheim_offsite is true, the offsite street address. null otherwise.
+- offsite_pickup_city: If manheim_offsite is true, the offsite city. null otherwise.
+- offsite_pickup_state: If manheim_offsite is true, the offsite 2-letter state. null otherwise.
+- offsite_pickup_zip: If manheim_offsite is true, the offsite ZIP. null otherwise.
 
 Auction detection:
 - COPART: "Copart", "SOLD THROUGH COPART", "copart.com"
 - IAA: "Insurance Auto Auctions", "IAA", "iaai.com"
 - MANHEIM: "Manheim", "manheim.com"
 
+Inoperable detection:
+- Default: false (vehicle is operable)
+- Set true if document contains: "INOP", "INOPERABLE", "NON-RUNNING", "NON-RUN", "DOES NOT RUN"
+- Set false if document contains: "RUN AND DRIVE", "RUNS AND DRIVES", "OPERABLE"
+- The explicit operable keywords override inoperable keywords if both appear
+
+Manheim release date rules:
+- Look for "ONSITE VEHICLE RELEASE" section in the document
+- If found with a date like "Vehicle is releasable on Feb 03, 2026 at 12:00 CST":
+  Extract as manheim_release_date in YYYY-MM-DD format (e.g., "2026-02-03")
+- If "ONSITE VEHICLE RELEASE" section exists but NO specific release date mentioned:
+  Set manheim_release_date = "AVAILABLE_NOW"
+- If NO "ONSITE VEHICLE RELEASE" section at all in the document:
+  Set manheim_release_date = "NO_RELEASE_DOCUMENT"
+- If document says "This vehicle is not located at a Manheim facility" or "OFFSITE VEHICLE RELEASE":
+  Set manheim_offsite = true and extract the offsite address fields separately
+
 Here are 3 verified correct extractions as examples:
 
 Example 1 (Copart):
 Document begins: "Sales Receipt/Bill of Sale Date: 12/31/25 ... MEMBER:535527 ... GEICO - HOME OFFICE ... BROADWAY MOTORING INC ... 12020 US HIGHWAY 301 SOUTH SOLD THROUGH COPART ... RIVERVIEW FL 33578 ... LOT# 95541835 ... JTDKAMFU6N3164401 ... 2022 TOYOTA PRIUS ..."
 Correct extraction:
-{{"auction_type":"COPART","vehicle_vin":"JTDKAMFU6N3164401","vehicle_year":2022,"vehicle_make":"TOYOTA","vehicle_model":"PRIUS","vehicle_color":"RED","vehicle_type":"CAR","vehicle_lot":"95541835","pickup_name":"Copart Riverview","pickup_address":"12020 US HIGHWAY 301 SOUTH","pickup_city":"RIVERVIEW","pickup_state":"FL","pickup_zip":"33578","pickup_phone":null,"buyer_id":"535527","buyer_name":"BROADWAY MOTORING INC","seller_name":"GEICO - HOME OFFICE","sale_date":"2025-12-30","total_amount":7275}}
+{{"auction_type":"COPART","vehicle_vin":"JTDKAMFU6N3164401","vehicle_year":2022,"vehicle_make":"TOYOTA","vehicle_model":"PRIUS","vehicle_color":"RED","vehicle_type":"CAR","vehicle_lot":"95541835","vehicle_is_inoperable":false,"pickup_name":"Copart Riverview","pickup_address":"12020 US HIGHWAY 301 SOUTH","pickup_city":"RIVERVIEW","pickup_state":"FL","pickup_zip":"33578","pickup_phone":null,"buyer_id":"535527","buyer_name":"BROADWAY MOTORING INC","seller_name":"GEICO - HOME OFFICE","sale_date":"2025-12-30","total_amount":7275,"manheim_release_date":null,"manheim_offsite":null,"offsite_pickup_address":null,"offsite_pickup_city":null,"offsite_pickup_state":null,"offsite_pickup_zip":null}}
 
 Example 2 (IAA):
 Document begins: "Buyer Receipt ... Insurance Auto Auctions Corp ... Sold At Branch 332 - East Bay ... Pick-Up Location: East Bay 2780 Willow Pass Road Bay Point California 94565 (925) 458-7610 ... Buyer # 593509 ... Broadway Motoring Inc ... WA1CCAFP4GA133227 2016 AUDI SQ5 ..."
 Correct extraction:
-{{"auction_type":"IAA","vehicle_vin":"WA1CCAFP4GA133227","vehicle_year":2016,"vehicle_make":"AUDI","vehicle_model":"SQ5","vehicle_color":"Black","vehicle_type":"SUV","vehicle_lot":"43666048","pickup_name":"East Bay","pickup_address":"2780 Willow Pass Road","pickup_city":"Bay Point","pickup_state":"CA","pickup_zip":"94565","pickup_phone":"(925) 458-7610","buyer_id":"593509","buyer_name":"Broadway Motoring Inc","seller_name":"Insurance Auto Auctions Corp","sale_date":"2025-12-24","total_amount":8955}}
+{{"auction_type":"IAA","vehicle_vin":"WA1CCAFP4GA133227","vehicle_year":2016,"vehicle_make":"AUDI","vehicle_model":"SQ5","vehicle_color":"Black","vehicle_type":"SUV","vehicle_lot":"43666048","vehicle_is_inoperable":false,"pickup_name":"East Bay","pickup_address":"2780 Willow Pass Road","pickup_city":"Bay Point","pickup_state":"CA","pickup_zip":"94565","pickup_phone":"(925) 458-7610","buyer_id":"593509","buyer_name":"Broadway Motoring Inc","seller_name":"Insurance Auto Auctions Corp","sale_date":"2025-12-24","total_amount":8955,"manheim_release_date":null,"manheim_offsite":null,"offsite_pickup_address":null,"offsite_pickup_city":null,"offsite_pickup_state":null,"offsite_pickup_zip":null}}
 
 Example 3 (Manheim):
-Document begins: "BILL OF SALE ... myCentralAuction Sale Date Vehicle Purchase Price ... 15-DEC-2025 ... Sale Price $ 6,500.00 ... 2025-51-94-275 ... Seller: CARVANA, LLC ... Manheim Portland 3000 N Hayden Island Dr Portland, OR 97217 ... YV4A22PMXG1037898 2016 Volvo XC90 ..."
+Document begins: "BILL OF SALE ... myCentralAuction Sale Date Vehicle Purchase Price ... 15-DEC-2025 ... Sale Price $ 6,500.00 ... 2025-51-94-275 ... Seller: CARVANA, LLC ... Manheim Portland 3000 N Hayden Island Dr Portland, OR 97217 ... YV4A22PMXG1037898 2016 Volvo XC90 ... ONSITE VEHICLE RELEASE ... Vehicle is releasable on Feb 03, 2026 at 12:00 CST"
 Correct extraction:
-{{"auction_type":"MANHEIM","vehicle_vin":"YV4A22PMXG1037898","vehicle_year":2016,"vehicle_make":"Volvo","vehicle_model":"XC90","vehicle_color":"Silver","vehicle_type":"SUV","vehicle_lot":"2025-51-94-275","pickup_name":"Manheim Portland","pickup_address":"3000 N Hayden Island Dr","pickup_city":"Portland","pickup_state":"OR","pickup_zip":"97217","pickup_phone":"(503) 286-3000","buyer_id":"5515588","buyer_name":"BROADWAY MOTORING INC","seller_name":"CARVANA, LLC","sale_date":"2025-12-15","total_amount":6832}}
+{{"auction_type":"MANHEIM","vehicle_vin":"YV4A22PMXG1037898","vehicle_year":2016,"vehicle_make":"Volvo","vehicle_model":"XC90","vehicle_color":"Silver","vehicle_type":"SUV","vehicle_lot":"2025-51-94-275","vehicle_is_inoperable":false,"pickup_name":"Manheim Portland","pickup_address":"3000 N Hayden Island Dr","pickup_city":"Portland","pickup_state":"OR","pickup_zip":"97217","pickup_phone":"(503) 286-3000","buyer_id":"5515588","buyer_name":"BROADWAY MOTORING INC","seller_name":"CARVANA, LLC","sale_date":"2025-12-15","total_amount":6832,"manheim_release_date":"2026-02-03","manheim_offsite":false,"offsite_pickup_address":null,"offsite_pickup_city":null,"offsite_pickup_state":null,"offsite_pickup_zip":null}}
 
 IMPORTANT for IAA: The lot number often appears as "000-XXXXXXXX". Extract ONLY the numeric part after "000-" (e.g., "000-43666048" → "43666048").
 
@@ -190,6 +214,7 @@ Return JSON only, no markdown, no explanation:
   "vehicle_color": "...",
   "vehicle_type": "...",
   "vehicle_lot": "...",
+  "vehicle_is_inoperable": false,
   "pickup_name": "...",
   "pickup_address": "...",
   "pickup_city": "...",
@@ -200,7 +225,13 @@ Return JSON only, no markdown, no explanation:
   "buyer_name": "...",
   "seller_name": "...",
   "sale_date": "YYYY-MM-DD",
-  "total_amount": 0.00
+  "total_amount": 0.00,
+  "manheim_release_date": null,
+  "manheim_offsite": null,
+  "offsite_pickup_address": null,
+  "offsite_pickup_city": null,
+  "offsite_pickup_state": null,
+  "offsite_pickup_zip": null
 }}
 
 Document:
@@ -235,7 +266,19 @@ Key identification patterns:
 VIN validation: 17 alphanumeric characters, no I, O, Q
 State codes: 2-letter US state abbreviations
 Dates: Extract as YYYY-MM-DD format
-Prices: Extract as numbers only (no $ or commas)"""
+Prices: Extract as numbers only (no $ or commas)
+
+Manheim-specific rules:
+- Look for "ONSITE VEHICLE RELEASE" or "VEHICLE RELEASE" sections
+- Extract release dates when available (format: "Vehicle is releasable on Mon DD, YYYY")
+- Detect offsite vs onsite release: "not located at a Manheim facility" means offsite
+- For offsite releases, extract the offsite pickup address separately
+
+Vehicle operability detection:
+- Default to operable (vehicle_is_inoperable=false)
+- Keywords for inoperable: INOP, INOPERABLE, NON-RUNNING, NON-RUN, DOES NOT RUN
+- Keywords for operable: RUN AND DRIVE, RUNS AND DRIVES, OPERABLE
+- Explicit operable keywords override inoperable keywords"""
 
     def __init__(self, api_key: Optional[str] = None, enable_caching: bool = True):
         """
