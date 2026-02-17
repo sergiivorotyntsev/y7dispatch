@@ -60,7 +60,7 @@ function FieldRow({ field, value, source, category, isValid, error }) {
   )
 }
 
-export default function ExportPreviewModal({ extractionId, documentId, onClose, onExport }) {
+export default function ExportPreviewModal({ extractionId, documentId, onClose, onExport, overrides }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [previewData, setPreviewData] = useState(null)
@@ -76,8 +76,8 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     setLoading(true)
     setError(null)
     try {
-      // Load preview data from API
-      const preview = await api.previewCDPayload(extractionId)
+      // Load preview data from API with operator overrides
+      const preview = await api.previewCDPayload(extractionId, overrides || null)
       setPreviewData(preview)
 
       // Try to get field sources from extraction
@@ -97,7 +97,7 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
   async function handleExport(dryRun = false) {
     setExporting(true)
     try {
-      const result = await api.exportToCD([extractionId], dryRun, true)
+      const result = await api.exportToCD([extractionId], dryRun, true, false, overrides || null)
       if (onExport) {
         onExport(result)
       }
@@ -215,19 +215,35 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
 
     // Pricing
     if (payload.price) {
-      fields.push({ key: 'price_total', value: payload.price.total?.toString(), category: 'cd_optional', group: 'Pricing' })
-      fields.push({ key: 'carrier_pay', value: payload.price.cod?.amount?.toString(), category: 'cd_optional', group: 'Pricing' })
+      fields.push({ key: 'price_total', value: payload.price.total?.toString(), category: 'cd_required', group: 'Pricing' })
+      fields.push({ key: 'cod_amount', value: payload.price.cod?.amount?.toString(), category: 'cd_required', group: 'Pricing' })
+      fields.push({ key: 'cod_payment_method', value: payload.price.cod?.paymentMethod, category: 'cd_required', group: 'Pricing' })
+      fields.push({ key: 'cod_payment_location', value: payload.price.cod?.paymentLocation, category: 'cd_required', group: 'Pricing' })
+      if (payload.price.balance) {
+        fields.push({ key: 'balance_amount', value: payload.price.balance?.amount?.toString(), category: 'cd_required', group: 'Pricing' })
+        fields.push({ key: 'balance_payment_method', value: payload.price.balance?.paymentMethod, category: 'cd_required', group: 'Pricing' })
+        fields.push({ key: 'balance_payment_time', value: payload.price.balance?.paymentTime, category: 'cd_required', group: 'Pricing' })
+        fields.push({ key: 'balance_terms_begin_on', value: payload.price.balance?.balancePaymentTermsBeginOn, category: 'cd_required', group: 'Pricing' })
+      }
     }
 
     // Dates
     fields.push({ key: 'available_date', value: payload.availableDate, category: 'cd_required', group: 'Dates' })
-    fields.push({ key: 'expiration_date', value: payload.expirationDate, category: 'cd_optional', group: 'Dates' })
+    fields.push({ key: 'expiration_date', value: payload.expirationDate, category: 'cd_required', group: 'Dates' })
+    if (payload.desiredDeliveryDate) {
+      fields.push({ key: 'desired_delivery_date', value: payload.desiredDeliveryDate, category: 'cd_optional', group: 'Dates' })
+    }
 
-    // Reference info
+    // Reference / Config
     fields.push({ key: 'external_id', value: payload.externalId, category: 'cd_optional', group: 'Reference' })
-    fields.push({ key: 'trailer_type', value: payload.trailerType, category: 'cd_optional', group: 'Reference' })
+    fields.push({ key: 'trailer_type', value: payload.trailerType, category: 'cd_required', group: 'Reference' })
+    fields.push({ key: 'has_inop_vehicle', value: payload.hasInOpVehicle ? 'Yes' : 'No', category: 'cd_required', group: 'Reference' })
+    fields.push({ key: 'requires_inspection', value: payload.requiresInspection ? 'Yes' : 'No', category: 'cd_optional', group: 'Reference' })
 
-    // Notes
+    // Terms & Notes
+    if (payload.loadSpecificTerms) {
+      fields.push({ key: 'load_specific_terms', value: payload.loadSpecificTerms, category: 'cd_optional', group: 'Notes' })
+    }
     if (payload.transportationReleaseNotes) {
       fields.push({ key: 'transport_special_instructions', value: payload.transportationReleaseNotes, category: 'cd_optional', group: 'Notes' })
     }

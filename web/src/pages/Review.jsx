@@ -749,6 +749,27 @@ function Review() {
           documentId={run?.document_id}
           onClose={() => setShowExportModal(false)}
           onExport={handleExport}
+          overrides={{
+            warehouse_id: selectedWarehouse ? parseInt(selectedWarehouse) : null,
+            load_id: loadId || null,
+            trailer_type: trailerType,
+            available_date: availableDate || null,
+            expiration_date: expirationDate || null,
+            desired_delivery_date: desiredDeliveryDate || null,
+            final_price: finalPrice ? parseFloat(finalPrice) : (pricing?.suggested_price || null),
+            cod_amount: parseFloat(codAmount) || 0,
+            cod_payment_method: codPaymentMethod,
+            cod_payment_location: codPaymentLocation,
+            balance_payment_method: balancePaymentMethod,
+            balance_payment_time: balancePaymentTime,
+            balance_terms_begin_on: balanceTermsBeginOn,
+            requires_inspection: requiresInspection,
+            load_specific_terms: loadSpecificTerms || null,
+            transport_special_instructions: transportSpecialInstructions || null,
+            vehicle_is_inoperable: fields.vehicle_is_inoperable?.corrected === 'true' || fields.vehicle_is_inoperable?.corrected === true,
+            vehicle_color: fields.vehicle_color?.corrected || null,
+            vehicle_additional_info: fields.vehicle_additional_info?.corrected || null,
+          }}
         />
       )}
     </div>

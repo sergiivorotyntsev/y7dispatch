@@ -744,23 +744,26 @@ class TestPreflightPriceValidation:
             f"Expected 'Price required' error, got: {errors}"
         )
 
-    def test_extracted_price_used_when_present(self, client, sample_pdf_bytes, auction_type_id):
-        """When extraction outputs include total_amount, payload uses it."""
+    def test_final_price_used_when_present(self, client, sample_pdf_bytes, auction_type_id):
+        """When final_price is set via overrides, payload uses it (not total_amount)."""
         doc_id, run_id = _upload_document(client, sample_pdf_bytes, auction_type_id)
         if not run_id:
             run_id = _ensure_run(client, doc_id, auction_type_id)
         if not run_id:
             pytest.skip("Could not create extraction run")
 
-        # Manually set price in extraction outputs
+        # Set total_amount (purchase price) in extraction — should NOT be used as carrier pay
         from api.models import ExtractionRunRepository
         run = ExtractionRunRepository.get_by_id(run_id)
         if run:
             outputs = run.outputs_json or {}
-            outputs["total_amount"] = "675.00"
+            outputs["total_amount"] = "6500.00"
             ExtractionRunRepository.update(run_id, outputs_json=outputs)
 
-            resp = client.get(f"/api/exports/central-dispatch/preview/{run_id}")
+            # Use operator overrides with final_price (carrier transport price)
+            resp = client.post(f"/api/exports/central-dispatch/preview/{run_id}", json={
+                "final_price": 675.00,
+            })
             assert resp.status_code == 200
             data = resp.json()
             payload = data["payload"]

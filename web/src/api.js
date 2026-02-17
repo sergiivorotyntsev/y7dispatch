@@ -346,11 +346,19 @@ export const api = {
   stopEmailWorker: () => request('/email/worker/stop', { method: 'POST' }),
 
   // Exports
-  exportToCD: (runIds, dryRun = true, sandbox = true, force = false) => request(`/exports/central-dispatch?force=${force}`, {
+  exportToCD: (runIds, dryRun = true, sandbox = true, force = false, overrides = null) => request(`/exports/central-dispatch?force=${force}`, {
     method: 'POST',
-    body: JSON.stringify({ run_ids: runIds, dry_run: dryRun, sandbox }),
+    body: JSON.stringify({ run_ids: runIds, dry_run: dryRun, sandbox, overrides }),
   }),
-  previewCDPayload: (runId) => request(`/exports/central-dispatch/preview/${runId}`),
+  previewCDPayload: (runId, overrides = null) => {
+    if (overrides) {
+      return request(`/exports/central-dispatch/preview/${runId}`, {
+        method: 'POST',
+        body: JSON.stringify(overrides),
+      })
+    }
+    return request(`/exports/central-dispatch/preview/${runId}`)
+  },
   listExportJobs: (params = {}) => {
     const query = new URLSearchParams(params).toString()
     return request(`/exports/jobs${query ? `?${query}` : ''}`)

@@ -57,12 +57,37 @@ router = APIRouter(prefix="/api/exports", tags=["Exports"])
 # =============================================================================
 
 
+class OperatorOverrides(BaseModel):
+    """Operator overrides from Review UI (Day 10 CD-aligned layout)."""
+
+    warehouse_id: Optional[int] = None
+    load_id: Optional[str] = None
+    trailer_type: Optional[str] = None
+    available_date: Optional[str] = None
+    expiration_date: Optional[str] = None
+    desired_delivery_date: Optional[str] = None
+    final_price: Optional[float] = None
+    cod_amount: Optional[float] = 0
+    cod_payment_method: Optional[str] = "CASH_CERTIFIED_FUNDS"
+    cod_payment_location: Optional[str] = "DELIVERY"
+    balance_payment_method: Optional[str] = "CERTIFIED_FUNDS"
+    balance_payment_time: Optional[str] = "2_BUSINESS_DAYS_QUICK_PAY"
+    balance_terms_begin_on: Optional[str] = "RECEIVING_SIGNED_BOL"
+    requires_inspection: Optional[bool] = True
+    load_specific_terms: Optional[str] = None
+    transport_special_instructions: Optional[str] = None
+    vehicle_is_inoperable: Optional[bool] = None
+    vehicle_color: Optional[str] = None
+    vehicle_additional_info: Optional[str] = None
+
+
 class CDExportRequest(BaseModel):
     """Request to export to Central Dispatch."""
 
     run_ids: list[int] = Field(..., description="Extraction run IDs to export")
     dry_run: bool = Field(True, description="Preview only, don't actually send")
     sandbox: bool = Field(True, description="Use CD sandbox environment")
+    overrides: Optional[OperatorOverrides] = None
 
 
 class CDPayloadPreview(BaseModel):
@@ -200,16 +225,27 @@ def _get_mi_recommended_price(
 # =============================================================================
 
 
-def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, list[str]]:
+def build_cd_payload(
+    run_id: int,
+    warehouse_code: str = None,
+    overrides: Optional[OperatorOverrides] = None,
+) -> tuple[dict, list[str]]:
     """
     Build Central Dispatch API V2 payload from extraction run.
 
     Uses FieldResolver (M3.P0.2) to apply precedence chain:
     USER_OVERRIDE > WAREHOUSE_CONST > AUCTION_CONST > EXTRACTED > DEFAULT
 
+    Operator overrides (from Review UI) take highest priority for:
+    - Pricing (final_price, COD, balance)
+    - Dates (available, expiration)
+    - Delivery (warehouse_id lookup)
+    - Load ID, trailer type, terms, etc.
+
     Args:
         run_id: Extraction run ID
         warehouse_code: Optional warehouse code for constants
+        overrides: Operator overrides from Review UI
 
     Returns (payload, validation_errors).
     """
@@ -249,7 +285,6 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
                 extracted_values[key] = value
         # Check for warehouse_id in outputs
         if not warehouse_code and outputs.get("warehouse_id"):
-            # Try to get warehouse code from warehouse_id
             from api.database import get_connection
 
             with get_connection() as conn:
@@ -260,8 +295,18 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
                     warehouse_code = wh_row["code"]
 
     # =================================================================
+    # WAREHOUSE LOOKUP from operator overrides
+    # =================================================================
+    warehouse_data = None
+    if overrides and overrides.warehouse_id:
+        from api.routes.warehouses import _get_warehouse_by_id
+
+        warehouse_data = _get_warehouse_by_id(overrides.warehouse_id)
+        if warehouse_data and not warehouse_code:
+            warehouse_code = warehouse_data.get("code")
+
+    # =================================================================
     # M3.P0.2: FIELD RESOLUTION WITH PRECEDENCE
-    # Use FieldResolver to combine values from multiple sources
     # =================================================================
     from extractors.field_resolver import FieldResolver, ResolutionContext
 
@@ -271,30 +316,22 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
         warehouse_code=warehouse_code,
         user_overrides=user_overrides,
         default_values={
-            # Defaults for CD payload fields
             "trailer_type": "OPEN",
             "dropoff_country": "US",
             "pickup_country": "US",
         },
     )
 
-    # Resolve all fields with precedence
     resolved = resolver.resolve_all(extracted_values, context)
 
-    # Build item_map from resolved values (for backward compatibility)
-    # CRITICAL: FieldResolver returns canonical keys (e.g., pickup_postal_code)
-    # but validation/payload expects aliases (e.g., pickup_zip).
-    # We populate item_map with BOTH canonical and alias keys.
     from extractors.field_resolver import get_all_key_variants
 
     item_map = {}
-    field_sources_info = {}  # Track where each field value came from
+    field_sources_info = {}
     for field_key, resolved_field in resolved.items():
         if resolved_field.value is not None:
-            # Add canonical key
             item_map[field_key] = resolved_field.value
             field_sources_info[field_key] = resolved_field.source.value
-            # Add all alias variants so lookup works by any key
             for variant in get_all_key_variants(field_key):
                 if variant not in item_map:
                     item_map[variant] = resolved_field.value
@@ -303,22 +340,24 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     errors = []
     warnings = []
 
-    # Build dispatch_id (externalId) - CD API limit: 50 characters
-    dispatch_id = f"DC-{datetime.now().strftime('%Y%m%d')}-{at.code}-{run.uuid[:8].upper()}"
+    def get_field(key: str, default=None):
+        return item_map.get(key, default)
+
+    # =================================================================
+    # EXTERNAL ID: Use Load ID from operator overrides, fallback to generated
+    # =================================================================
+    if overrides and overrides.load_id:
+        dispatch_id = overrides.load_id
+    else:
+        dispatch_id = f"DC-{datetime.now().strftime('%Y%m%d')}-{at.code}-{run.uuid[:8].upper()}"
     if len(dispatch_id) > 50:
         original_len = len(dispatch_id)
         dispatch_id = dispatch_id[:50]
         warnings.append(f"externalId truncated from {original_len} to 50 characters")
-        logger.warning(f"externalId truncated: {original_len} -> 50 chars for run {run_id}")
 
-    # Build partnerReferenceId for retry-safe POST (CD API limit: 50 chars)
     partner_ref_id = f"CD-RUN-{run_id}"
     if len(partner_ref_id) > 50:
         partner_ref_id = partner_ref_id[:50]
-
-    # Get field values with defaults
-    def get_field(key: str, default=None):
-        return item_map.get(key, default)
 
     # Validate required fields
     required = ["vehicle_vin", "pickup_address", "pickup_city", "pickup_state", "pickup_zip"]
@@ -326,13 +365,30 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
         if not get_field(field):
             errors.append(f"Missing required field: {field}")
 
-    # Validate warehouse/delivery fields
-    # If no warehouse was selected, delivery fields will have placeholder values
-    delivery_city = get_field("delivery_city") or get_field("dropoff_city")
+    # =================================================================
+    # DELIVERY STOP: from warehouse lookup or resolved fields
+    # =================================================================
+    if warehouse_data:
+        delivery_name = warehouse_data.get("name", "")
+        delivery_address = warehouse_data.get("address", "")
+        delivery_city = warehouse_data.get("city", "")
+        delivery_state = warehouse_data.get("state", "")
+        delivery_zip = warehouse_data.get("zip_code", "")
+        delivery_phone = warehouse_data.get("phone", "")
+        delivery_contact = warehouse_data.get("contact_name", "")
+        delivery_location_type = "BUSINESS"
+    else:
+        delivery_name = get_field("delivery_name") or get_field("dropoff_name") or ""
+        delivery_address = get_field("delivery_address") or get_field("dropoff_address") or ""
+        delivery_city = get_field("delivery_city") or get_field("dropoff_city") or ""
+        delivery_state = get_field("delivery_state") or get_field("dropoff_state") or ""
+        delivery_zip = get_field("delivery_zip") or get_field("dropoff_zip") or ""
+        delivery_phone = get_field("delivery_phone") or ""
+        delivery_contact = get_field("delivery_contact") or ""
+        delivery_location_type = "BUSINESS"
+
     if not delivery_city or delivery_city in ("TBD", ""):
         errors.append("Missing delivery location: Please select a warehouse in Review before export")
-
-    delivery_address = get_field("delivery_address") or get_field("dropoff_address")
     if not delivery_address or delivery_address in ("TBD", ""):
         errors.append("Missing delivery address: Warehouse not properly configured")
 
@@ -341,17 +397,37 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
     if vin and len(vin) != 17:
         errors.append(f"VIN must be 17 characters, got {len(vin)}")
 
-    # Calculate dates
-    available_date = datetime.now().strftime("%Y-%m-%d")
-    expiration_date = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+    # =================================================================
+    # DATES: from operator overrides, default today + 30 days
+    # =================================================================
+    if overrides and overrides.available_date:
+        available_date = overrides.available_date
+    else:
+        available_date = datetime.now().strftime("%Y-%m-%d")
 
-    # Determine trailer type
-    is_inop = get_field("vehicle_is_inoperable", False)
-    if isinstance(is_inop, str):
-        is_inop = is_inop.lower() in ("true", "yes", "1", "inoperable")
-    trailer_type = "OPEN"
+    if overrides and overrides.expiration_date:
+        expiration_date = overrides.expiration_date
+    else:
+        # Default: available_date + 30 days
+        try:
+            av_dt = datetime.strptime(available_date, "%Y-%m-%d")
+        except ValueError:
+            av_dt = datetime.now()
+        expiration_date = (av_dt + timedelta(days=30)).strftime("%Y-%m-%d")
 
-    # Build stops
+    # =================================================================
+    # VEHICLE: inoperable, trailer type, color
+    # =================================================================
+    if overrides and overrides.vehicle_is_inoperable is not None:
+        is_inop = overrides.vehicle_is_inoperable
+    else:
+        is_inop = get_field("vehicle_is_inoperable", False)
+        if isinstance(is_inop, str):
+            is_inop = is_inop.lower() in ("true", "yes", "1", "inoperable")
+
+    trailer_type = (overrides.trailer_type if overrides and overrides.trailer_type else "OPEN")
+
+    # Build pickup stop
     pickup_stop = {
         "stopNumber": 1,
         "locationName": get_field("pickup_name") or f"{at.name} Pickup",
@@ -360,28 +436,34 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
         "state": get_field("pickup_state", ""),
         "postalCode": get_field("pickup_zip", ""),
         "country": "US",
-        "locationType": "AUCTION",
+        "locationType": get_field("pickup_location_type", "AUCTION"),
     }
 
-    # Build delivery stop (M3.P0.2: uses resolved values from FieldResolver)
-    # Delivery address MUST come from warehouse constants - no placeholders
+    pickup_phone = get_field("pickup_phone")
+    if pickup_phone:
+        pickup_stop["phone"] = pickup_phone
+
+    pickup_contact = get_field("pickup_contact")
+    if pickup_contact:
+        pickup_stop["contactName"] = pickup_contact
+
+    buyer_ref = get_field("buyer_id")
+    if buyer_ref:
+        pickup_stop["buyerReferenceNumber"] = str(buyer_ref)
+
+    # Build delivery stop
     dropoff_stop = {
         "stopNumber": 2,
-        "locationName": get_field("delivery_name") or get_field("dropoff_name") or "",
-        "address": get_field("delivery_address") or get_field("dropoff_address") or "",
-        "city": get_field("delivery_city") or get_field("dropoff_city") or "",
-        "state": get_field("delivery_state") or get_field("dropoff_state") or "",
-        "postalCode": get_field("delivery_zip") or get_field("dropoff_zip") or "",
+        "locationName": delivery_name,
+        "address": delivery_address,
+        "city": delivery_city,
+        "state": delivery_state,
+        "postalCode": delivery_zip,
         "country": "US",
-        "locationType": "BUSINESS",
+        "locationType": delivery_location_type,
     }
-
-    # Add delivery phone and contact if available
-    delivery_phone = get_field("delivery_phone")
     if delivery_phone:
         dropoff_stop["phone"] = delivery_phone
-
-    delivery_contact = get_field("delivery_contact")
     if delivery_contact:
         dropoff_stop["contactName"] = delivery_contact
 
@@ -396,108 +478,153 @@ def build_cd_payload(run_id: int, warehouse_code: str = None) -> tuple[dict, lis
         "isInoperable": is_inop,
     }
 
+    # Add optional vehicle fields
+    vehicle_color = (
+        (overrides.vehicle_color if overrides and overrides.vehicle_color else None)
+        or get_field("vehicle_color")
+    )
+    if vehicle_color:
+        vehicle["color"] = vehicle_color
+
+    vehicle_type = get_field("vehicle_type")
+    if vehicle_type:
+        vehicle["vehicleType"] = vehicle_type
+
     if get_field("vehicle_lot"):
         vehicle["lotNumber"] = str(get_field("vehicle_lot"))
 
-    # Build price with Market Intelligence integration
-    total_amount = get_field("total_amount")
-    price_source = "extracted"
-    try:
-        price_total = float(total_amount) if total_amount else 0.0
-    except (ValueError, TypeError):
-        price_total = 0.0
+    vehicle_additional_info = (
+        (overrides.vehicle_additional_info if overrides and overrides.vehicle_additional_info else None)
+        or get_field("vehicle_additional_info")
+    )
+    if vehicle_additional_info:
+        vehicle["additionalInfo"] = vehicle_additional_info
 
-    # Check for user-confirmed final_price or suggested_price from review items
-    final_price = get_field("final_price") or get_field("price_final")
-    suggested_price = get_field("suggested_price")
+    # =================================================================
+    # PRICING: operator override > suggested > MI > fallback
+    # =================================================================
+    price_total = 0.0
+    price_source = "none"
 
-    if final_price:
-        try:
-            price_total = float(final_price)
-            price_source = "user_override"
-        except (ValueError, TypeError):
-            pass
+    # Priority 1: Operator-set final_price from Review UI
+    if overrides and overrides.final_price and overrides.final_price > 0:
+        price_total = overrides.final_price
+        price_source = "operator_override"
+    else:
+        # Priority 2: final_price from review items
+        final_price = get_field("final_price") or get_field("price_final")
+        if final_price:
+            try:
+                price_total = float(final_price)
+                price_source = "user_override"
+            except (ValueError, TypeError):
+                pass
 
-    if price_total <= 0 and suggested_price:
-        try:
-            price_total = float(suggested_price)
-            price_source = "suggested"
-        except (ValueError, TypeError):
-            pass
+        # Priority 3: suggested_price
+        if price_total <= 0:
+            suggested_price = get_field("suggested_price")
+            if suggested_price:
+                try:
+                    price_total = float(suggested_price)
+                    price_source = "suggested"
+                except (ValueError, TypeError):
+                    pass
 
-    if price_total <= 0:
-        # Try Market Intelligence API for recommended pricing
-        mi_price = _get_mi_recommended_price(
-            pickup_city=get_field("pickup_city"),
-            pickup_state=get_field("pickup_state"),
-            pickup_zip=get_field("pickup_zip"),
-            delivery_city=get_field("delivery_city") or get_field("dropoff_city"),
-            delivery_state=get_field("delivery_state") or get_field("dropoff_state"),
-            delivery_zip=get_field("delivery_zip") or get_field("dropoff_zip"),
-            vehicle_vin=get_field("vehicle_vin"),
-            vehicle_year=get_field("vehicle_year"),
-            vehicle_make=get_field("vehicle_make"),
-            vehicle_model=get_field("vehicle_model"),
-            is_inop=is_inop,
-        )
-        if mi_price and mi_price > 0:
-            price_total = mi_price
-            price_source = "market_intelligence"
+        # Priority 4: Market Intelligence API
+        if price_total <= 0:
+            mi_price = _get_mi_recommended_price(
+                pickup_city=get_field("pickup_city"),
+                pickup_state=get_field("pickup_state"),
+                pickup_zip=get_field("pickup_zip"),
+                delivery_city=delivery_city,
+                delivery_state=delivery_state,
+                delivery_zip=delivery_zip,
+                vehicle_vin=get_field("vehicle_vin"),
+                vehicle_year=get_field("vehicle_year"),
+                vehicle_make=get_field("vehicle_make"),
+                vehicle_model=get_field("vehicle_model"),
+                is_inop=is_inop,
+            )
+            if mi_price and mi_price > 0:
+                price_total = mi_price
+                price_source = "market_intelligence"
 
     if price_total <= 0:
         errors.append("Price required: no final_price, suggested_price, or MI price available")
-        price_source = "none"
+
+    # COD and balance from overrides with correct defaults
+    cod_amount = float(overrides.cod_amount) if overrides and overrides.cod_amount is not None else 0.0
+    cod_payment_method = (overrides.cod_payment_method if overrides and overrides.cod_payment_method else "CASH_CERTIFIED_FUNDS")
+    cod_payment_location = (overrides.cod_payment_location if overrides and overrides.cod_payment_location else "DELIVERY")
+    balance_amount = max(0, price_total - cod_amount)
+    balance_payment_method = (overrides.balance_payment_method if overrides and overrides.balance_payment_method else "CERTIFIED_FUNDS")
+    balance_payment_time = (overrides.balance_payment_time if overrides and overrides.balance_payment_time else "2_BUSINESS_DAYS_QUICK_PAY")
+    balance_terms_begin_on = (overrides.balance_terms_begin_on if overrides and overrides.balance_terms_begin_on else "RECEIVING_SIGNED_BOL")
 
     price = {
         "total": price_total if price_total > 0 else 0,
         "cod": {
-            "amount": price_total if price_total > 0 else 0,
-            "paymentMethod": "CASH",
-            "paymentLocation": "DELIVERY",
+            "amount": cod_amount,
+            "paymentMethod": cod_payment_method,
+            "paymentLocation": cod_payment_location,
+        },
+        "balance": {
+            "amount": balance_amount,
+            "paymentMethod": balance_payment_method,
+            "paymentTime": balance_payment_time,
+            "balancePaymentTermsBeginOn": balance_terms_begin_on,
         },
     }
-    # Track price source in field_sources_info
     field_sources_info["price_total"] = price_source
 
-    # Build notes
-    notes_parts = []
-    if get_field("reference_id"):
-        notes_parts.append(f"Ref: {get_field('reference_id')}")
-    if get_field("buyer_id"):
-        notes_parts.append(f"Buyer: {get_field('buyer_id')}")
-    notes = "; ".join(notes_parts) if notes_parts else ""
-
-    # Add warehouse special instructions (from warehouse constants)
-    transportation_notes = get_field("transportation_release_notes") or get_field(
-        "special_instructions"
+    # =================================================================
+    # TERMS AND NOTES
+    # =================================================================
+    load_specific_terms = (overrides.load_specific_terms if overrides and overrides.load_specific_terms else None)
+    transport_release_notes = (
+        (overrides.transport_special_instructions if overrides and overrides.transport_special_instructions else None)
+        or (warehouse_data.get("transport_special_instructions") if warehouse_data else None)
+        or get_field("transportation_release_notes")
+        or get_field("special_instructions")
+        or ""
     )
-    if transportation_notes:
-        if notes:
-            notes = f"{notes}; {transportation_notes}"
-        else:
-            notes = transportation_notes
 
-    # Full payload (CD Listings API V2)
+    requires_inspection = (overrides.requires_inspection if overrides and overrides.requires_inspection is not None else True)
+
+    # =================================================================
+    # FULL PAYLOAD (CD Listings API V2)
+    # =================================================================
     payload = {
         "externalId": dispatch_id,
-        "partnerReferenceId": partner_ref_id,  # For retry-safe POST (duplicate detection)
+        "partnerReferenceId": partner_ref_id,
         "trailerType": trailer_type,
         "hasInOpVehicle": is_inop,
-        "availableDate": available_date,
-        "expirationDate": expiration_date,
-        "transportationReleaseNotes": notes,
+        "requiresInspection": requires_inspection,
+        "availableDate": f"{available_date}T00:00:00Z",
+        "expirationDate": f"{expiration_date}T00:00:00Z",
         "price": price,
         "stops": [pickup_stop, dropoff_stop],
         "vehicles": [vehicle],
-        "marketplaces": [
-            {
-                "marketplaceId": 12345,  # Placeholder
-                "digitalOffersEnabled": True,
-                "searchable": True,
-                "offersAutoAcceptEnabled": False,
-            }
-        ],
     }
+
+    # Add optional fields only if they have values
+    if load_specific_terms:
+        payload["loadSpecificTerms"] = load_specific_terms[:500]
+    if transport_release_notes:
+        payload["transportationReleaseNotes"] = transport_release_notes
+
+    desired_delivery = (overrides.desired_delivery_date if overrides and overrides.desired_delivery_date else None)
+    if desired_delivery:
+        payload["desiredDeliveryDate"] = f"{desired_delivery}T00:00:00Z"
+
+    # Reference IDs
+    order_id = get_field("order_id")
+    if order_id:
+        payload["shipperOrderId"] = str(order_id)[:50]
+
+    reference_id = get_field("reference_id")
+    if reference_id:
+        payload["partnerReferenceId"] = str(reference_id)[:50]
 
     # Include warnings in errors (prefixed) for visibility
     for w in warnings:
@@ -1180,8 +1307,8 @@ async def export_to_cd(
                     skipped_count += 1
                     continue
 
-        # Build payload
-        payload, errors = build_cd_payload(run_id)
+        # Build payload with operator overrides
+        payload, errors = build_cd_payload(run_id, overrides=data.overrides)
         is_valid = len(errors) == 0
 
         preview = CDPayloadPreview(
@@ -1258,12 +1385,28 @@ async def export_to_cd(
 
 
 @router.get("/central-dispatch/preview/{run_id}", response_model=CDPayloadPreview)
-async def preview_cd_payload(run_id: int):
+async def preview_cd_payload_get(run_id: int):
     """
-    Preview the CD API V2 payload for a single run.
+    Preview the CD API V2 payload for a single run (GET, no overrides).
 
     Useful for debugging before export.
     """
+    return await _preview_cd_payload(run_id, overrides=None)
+
+
+@router.post("/central-dispatch/preview/{run_id}", response_model=CDPayloadPreview)
+async def preview_cd_payload_post(run_id: int, overrides: Optional[OperatorOverrides] = None):
+    """
+    Preview the CD API V2 payload with operator overrides from Review UI.
+
+    Accepts all operator overrides (pricing, warehouse, dates, etc.)
+    and builds a preview payload with those overrides applied.
+    """
+    return await _preview_cd_payload(run_id, overrides=overrides)
+
+
+async def _preview_cd_payload(run_id: int, overrides: Optional[OperatorOverrides] = None):
+    """Internal: build preview payload with optional overrides."""
     try:
         run = ExtractionRunRepository.get_by_id(run_id)
         if not run:
@@ -1271,7 +1414,6 @@ async def preview_cd_payload(run_id: int):
 
         doc = DocumentRepository.get_by_id(run.document_id)
 
-        # Check if run has required data
         if not run.auction_type_id:
             return CDPayloadPreview(
                 dispatch_id="",
@@ -1284,7 +1426,7 @@ async def preview_cd_payload(run_id: int):
                 is_valid=False,
             )
 
-        payload, errors = build_cd_payload(run_id)
+        payload, errors = build_cd_payload(run_id, overrides=overrides)
 
         return CDPayloadPreview(
             dispatch_id=payload.get("externalId", ""),
