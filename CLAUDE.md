@@ -1,222 +1,122 @@
-# CLAUDE.md — Persistent Context for Vehicle Transport / Control Panel
+# Y7Dispatch Development Rules
 
-> This file maintains project context for AI assistants. Update when architecture changes.
+## Team Structure
 
----
+You work as a 3-person team. For EVERY task, follow this workflow:
 
-## 1. Project Goal
+### Role 1: ARCHITECT (Team Lead)
+- Runs FIRST before any code changes
+- Reads relevant docs (DEVELOPMENT_JOURNAL.md, CD_FIELD_CONFIG_FINAL-COMPLETED.csv, WEEK3_DAYS10-12_PROMPTS.md)
+- Maps all affected files and traces code paths
+- Identifies potential conflicts with existing code
+- Writes a brief plan: "I will change X in file Y because Z"
+- Lists risks and edge cases
+- DOES NOT write code
 
-**Vehicle Transport Automation (y7dispatch)** — automate dispatcher document workflow:
-- **Input**: Documents from email or manual upload (PDF invoices, gate passes, auction sheets)
-- **Process**: Layout-aware extraction (blocks/spatial parsing) → Review UI with evidence overlay → Export
-- **Output**: Central Dispatch listings via CD API
+### Role 2: BACKEND DEVELOPER
+- Runs SECOND after architect approval
+- Handles: Python files (api/, services/, workers/, tests/)
+- Creates/modifies endpoints, DB tables, services
+- Writes backend tests FIRST (TDD), then implementation
+- Runs: python -m pytest tests/ -x -q after EVERY change
+- NEVER modifies web/src/ files
 
-**Key requirements**:
-- Layout-aware extraction preserving document structure (blocks, spatial coordinates)
-- Provenance/evidence: every extracted field links back to source PDF region
-- Auction profiles (Copart, IAA, Manheim) with specific parsing rules
-- Warehouse constants (delivery locations are constants, not extracted from PDF)
-- Async job queue for batch processing
-- Full audit trail for compliance
-- Metrics/observability endpoints
-- E2E test coverage with golden sets
+### Role 3: FRONTEND DEVELOPER
+- Runs THIRD after backend is stable and tests pass
+- Handles: React files (web/src/)
+- Creates/modifies components, pages, API client
+- Verifies: npm run dev compiles without errors
+- NEVER modifies api/ or services/ files
 
----
-
-## 2. Tech Stack
-
-### Backend (Python/FastAPI)
+## Workflow Per Task
 ```
-api/               # FastAPI routes, models, database
-  ├── routes/      # REST endpoints (documents, listings, jobs, metrics)
-  ├── models.py    # SQLModel entities (Document, Listing, AuditLog, BatchJob)
-  ├── database.py  # SQLite + migrations
-  ├── cd_client.py # Central Dispatch API client
-  ├── batch_jobs.py, batch_queue.py  # Async job processing
-  └── audit_log.py # Audit trail service
+STEP 1 — ARCHITECT:
+  - Read task requirements
+  - Trace affected code paths (grep, read files)
+  - Write plan with file list
+  - Identify risks
+  - Report findings BEFORE any code changes
 
-extractors/        # Document extraction pipeline
-  ├── base.py      # BaseExtractor interface
-  ├── block_extractor.py  # Layout-aware block extraction
-  ├── spatial_parser.py   # Coordinate-based field detection
-  ├── field_resolver.py   # Multi-source field resolution with precedence
-  ├── copart.py, iaa.py, manheim.py  # Auction-specific extractors
-  ├── ocr_strategy.py     # OCR fallback for scanned docs
-  └── address_parser.py   # US address normalization
+STEP 2 — BACKEND:
+  - Write tests first (test file)
+  - Implement backend changes
+  - Run pytest — ALL tests must pass
+  - Report: "Backend done, X tests pass, no regressions"
 
-services/          # Business logic layer
-  ├── orchestrator.py     # Pipeline orchestration
-  ├── cd_exporter.py      # Central Dispatch export logic
-  ├── warehouse.py        # Warehouse constants management
-  └── sheets_*.py         # Google Sheets integration
+STEP 3 — FRONTEND:
+  - Implement UI changes
+  - Verify npm run dev compiles
+  - Report: "Frontend done, no build errors"
 
-core/              # Shared utilities
-models/            # Pydantic schemas
-schemas/           # OpenAPI/JSON schemas
-```
-
-### Frontend (React + Vite + Tailwind)
-```
-web/src/
-  ├── components/   # React components
-  ├── pages/        # Route pages (Documents, Review, Listings)
-  └── services/     # API client hooks
-
-ui/                # Legacy/static UI assets
+STEP 4 — TEAM LEAD VERIFICATION:
+  - Run full test suite: python -m pytest tests/ -q
+  - Check git diff — review all changes
+  - Verify no unintended modifications
+  - Run the app if possible: python -m uvicorn api.main:app --port 8000
+  - Report: verification checklist with pass/fail
+  - If ALL pass → commit and push
+  - If ANY fail → back to developer for fix
 ```
 
-### Configuration
-```
-cd_field_mapping.yaml     # Central Dispatch field mapping
-cd_field_mapping_v2.yaml  # V2 mapping with validation rules
-cd_defaults.yaml          # Default values for CD fields
-warehouses.yaml           # Warehouse constants (addresses, codes)
-.env.example              # Environment variables template
-```
+## Commit Rules
 
-### Tests & QA
-```
-tests/             # pytest unit/integration tests
-e2e/               # Playwright E2E tests
-scripts/           # Utility scripts, load testing
-diagnostics/       # Debug tools, extraction diagnostics
+- NEVER commit with failing tests (except 28 pre-existing failures in test_api_contracts.py, test_extraction.py, test_m3_staging_gate.py)
+- Commit message format: "type: description"
+  - feat: new feature
+  - fix: bug fix
+  - chore: cleanup, deps
+  - docs: documentation
+- One logical change per commit
+- Always push after commit
 
-CI: GitHub Actions
-- pytest with coverage
-- Playwright E2E
-- Staging gate before prod deploy
-```
+## Code Rules
 
-### Key Dependencies
-- `pdfplumber` — PDF text/table extraction
-- `pytesseract` + `pdf2image` — OCR fallback
-- `fastapi` + `uvicorn` — API server
-- `sqlmodel` — ORM (SQLite backend)
-- `httpx` — Async HTTP client
-- `tenacity` — Retry logic
+### Backend (Python)
+- Use get_connection() as context manager: `with get_connection() as conn:`
+- NEVER bare get_connection().execute()
+- All new DB tables: create in init function called from api/main.py startup
+- Credential access: credential_store FIRST, then .env fallback
+- HaikuExtractor is PRIMARY extraction. Zone extractor is EMERGENCY FALLBACK only.
+- All prices in export = CARRIER TRANSPORT PRICE, never vehicle purchase price
 
----
+### Frontend (React/JSX)
+- Props-down pattern: state lives in page component (Review.jsx), sections receive props
+- No React Context for single-page state
+- API calls go through web/src/api.js — never direct fetch()
+- Native HTML inputs (no extra UI libraries): input, select, textarea
+- Tailwind NOT available — use inline styles or CSS modules
 
-## 3. Current Stage (M0–M3)
+### Testing
+- E2E tests in tests/e2e/
+- Test file naming: test_{feature}.py
+- Use TestClient from FastAPI for API tests
+- Use tmp_path fixture for SQLite test DBs
+- Target: 0 regressions after every change
 
-### M0–M2: Extraction Pipeline (COMPLETE)
-- Block-based extraction with spatial coordinates
-- OCR strategy for scanned documents
-- Auction-specific extractors (Copart, IAA, Manheim)
-- Field resolver with precedence rules
-- Metrics and debug endpoints
+## Key Business Rules (from CD_FIELD_CONFIG)
 
-### M3: Production Workflow (IN PROGRESS)
-- ✅ Batch job processing with queue
-- ✅ Audit trail for all operations
-- ✅ Metrics endpoints (`/api/metrics/*`)
-- ✅ UI evidence overlay (PDF viewer with field highlights)
-- ✅ Preflight validation banner with blocking/warning issues
-- ✅ ReviewItemResponse enriched with field metadata (display_name, section, required)
-- ✅ Prompt caching in HaikuExtractor (Phase 1.6) - 90% cost reduction
+- Load ID format: MDD + first3Make + first2Model + sequence (216TOYPR, 216TOYPR2)
+- Trailer Type: default OPEN
+- Inoperable: default false (OPERABLE)
+- Available Date: default today, Manheim exception if release date in document
+- Price COD: default 0
+- Balance Payment: CERTIFIED_FUNDS, 2_BUSINESS_DAYS_QUICK_PAY, RECEIVING_SIGNED_BOL
+- Requires Inspection (CD App): default true
+- Delivery: ALWAYS from warehouse database, never from document
+- Load-Specific Terms template: "TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY). Pick-up location - {pickup_name}, Delivery - {warehouse_name}"
 
-### Current Issues (CD-aligned fix pack needed)
-1. ~~**Documents/Review UI**: Documents not recognized, fields empty~~ **FIXED** - Added display_name and metadata enrichment
-2. **Field mapping mismatch**: Extracted fields don't align with Central Dispatch API schema - Partially fixed
-3. ~~**Missing validation**: Some required CD fields not validated before export~~ **FIXED** - Full preflight validation implemented
-4. **Evidence overlay**: PDF coordinates not rendering correctly in Review UI - Needs testing
+## File Reference
 
-### Next Steps
-- Complete Market Intelligence API integration for pricing
-- Test evidence overlay rendering with sample documents
-- Update IMPLEMENTATION_PHASES.md to mark Phase 1.6 (Prompt Caching) complete
-
----
-
-## 4. Domain Rules
-
-### Field Resolution Precedence (CRITICAL)
-```
-1. USER_OVERRIDE    — Manual edits in Review UI (highest priority)
-2. WAREHOUSE_CONST  — Warehouse constants (delivery addresses)
-3. AUCTION_CONST    — Auction profile defaults
-4. EXTRACTED        — Values from document extraction
-5. DEFAULT          — Fallback defaults from cd_defaults.yaml
-```
-
-### Key Business Rules
-
-**Delivery Location**:
-- ALWAYS from `warehouses.yaml` constants
-- NEVER extracted from PDF (user selects warehouse, system fills address)
-
-**Pickup Location**:
-- Extracted from document (auction address)
-- Normalized via `address_parser.py`
-
-**Pricing**:
-- Use Central Dispatch Market Intelligence API (see PROMPT 5)
-- Fallback to auction profile defaults if API unavailable
-
-**Vehicle Identification**:
-- VIN is primary key (17 chars, validated)
-- Year/Make/Model extracted, cross-validated against VIN decode
-
-**Dates**:
-- All dates normalized to ISO 8601
-- Pickup dates validated against auction schedule
-
-### Central Dispatch Field Categories
-```yaml
-Required:    VIN, Year, Make, Model, PickupCity, PickupState,
-             DeliveryCity, DeliveryState, VehicleType
-Recommended: PickupZip, DeliveryZip, Price, AvailableDate
-Optional:    Notes, SpecialInstructions, Operable, Enclosed
-```
-
----
-
-## 5. Quick Reference
-
-### Run Development
-```bash
-# Backend
-pip install -e ".[dev]"
-uvicorn api.main:app --reload --port 8000
-
-# Frontend
-cd web && npm install && npm run dev
-
-# Tests
-pytest tests/ -v
-cd e2e && npx playwright test
-```
-
-### Key API Endpoints
-```
-POST /api/documents/upload     # Upload document
-GET  /api/documents/{id}       # Get document with extraction
-POST /api/listings/export      # Export to Central Dispatch
-GET  /api/jobs/{id}            # Check job status
-GET  /api/metrics/extraction   # Extraction metrics
-```
-
-### Environment Variables
-```
-CD_API_KEY          # Central Dispatch API key
-CD_API_BASE_URL     # CD API base URL
-DATABASE_URL        # SQLite path (default: ./dispatch.db)
-GOOGLE_CREDENTIALS  # Google Sheets service account JSON
-```
-
----
-
-## 6. Files to Reference
-
-| Topic | Files |
-|-------|-------|
-| Field mapping | `cd_field_mapping.yaml`, `cd_field_mapping_v2.yaml` |
-| Warehouse constants | `warehouses.yaml`, `api/warehouse_constants.py` |
-| Extraction pipeline | `extractors/*.py`, especially `field_resolver.py` |
-| CD integration | `api/cd_client.py`, `services/cd_exporter.py` |
-| Audit/metrics | `api/audit_log.py`, `api/routes/metrics.py` |
-| UI components | `web/src/components/`, `web/src/pages/` |
-
----
-
-*Last updated: 2026-02-11*
+| Category | Key Files |
+|----------|-----------|
+| Backend entry | api/main.py |
+| Extraction | services/haiku_extractor.py |
+| Export | api/routes/exports.py |
+| Credentials | services/credential_store.py |
+| Pricing | services/pricing_engine.py |
+| Frontend pages | web/src/pages/Review.jsx, Settings.jsx, Documents.jsx |
+| Review sections | web/src/components/review/*.jsx |
+| Settings tabs | web/src/components/settings/*.jsx |
+| API client | web/src/api.js |
+| Tests | tests/e2e/ |
+| Docs | docs/DEVELOPMENT_JOURNAL.md, docs/CD_FIELD_CONFIG_FINAL-COMPLETED.csv |
