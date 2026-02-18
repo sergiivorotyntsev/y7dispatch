@@ -421,26 +421,28 @@ class TestCDIntegrationTest:
 
 
 class TestEnvironmentURLs:
-    """Test that environment setting maps to correct URLs."""
+    """Test that all environments use the same URLs (test vs prod differs by marketplace_id only)."""
 
     def test_test_environment_urls(self):
-        """'test' environment maps to sandbox URLs."""
+        """'test' environment uses the single CD API + token URL."""
         from api.cd_client import get_cd_urls
 
         urls = get_cd_urls("test")
-        assert "sandbox" in urls["api_base_url"]
-        assert "staging" in urls["token_url"]
+        assert urls["api_base_url"] == "https://marketplace-api.centraldispatch.com"
+        assert urls["token_url"] == "https://id.centraldispatch.com/connect/token"
 
     def test_production_environment_urls(self):
-        """'production' environment maps to production URLs."""
+        """'production' environment uses the same URLs as test."""
         from api.cd_client import get_cd_urls
 
         urls = get_cd_urls("production")
-        assert "sandbox" not in urls["api_base_url"]
+        assert urls["api_base_url"] == "https://marketplace-api.centraldispatch.com"
+        assert urls["token_url"] == "https://id.centraldispatch.com/connect/token"
 
-    def test_default_environment_is_test(self):
-        """Default environment is 'test' (sandbox)."""
+    def test_default_environment_is_same(self):
+        """Default/empty environment uses the same URLs."""
         from api.cd_client import get_cd_urls
 
         urls = get_cd_urls("")
-        assert "sandbox" in urls["api_base_url"]
+        assert urls["api_base_url"] == "https://marketplace-api.centraldispatch.com"
+        assert urls["token_url"] == "https://id.centraldispatch.com/connect/token"
