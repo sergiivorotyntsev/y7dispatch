@@ -295,7 +295,7 @@ class TestCDCredentialTest:
 
     @pytest.mark.asyncio
     async def test_cd_api_test_uses_oauth2(self):
-        """_test_cd_api acquires OAuth2 token and tests API call."""
+        """_test_cd_api succeeds when token acquisition returns 200."""
         from api.routes.credentials import _test_cd_api
 
         config = {
@@ -306,7 +306,6 @@ class TestCDCredentialTest:
             "scopes": "marketplace",
         }
 
-        # Mock httpx for both token and API call
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 200
         mock_token_resp.json.return_value = {
@@ -315,13 +314,8 @@ class TestCDCredentialTest:
             "expires_in": 3600,
         }
 
-        mock_api_resp = MagicMock()
-        mock_api_resp.status_code = 200
-        mock_api_resp.json.return_value = {"status": "ok"}
-
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_token_resp
-        mock_client.get.return_value = mock_api_resp
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -330,6 +324,9 @@ class TestCDCredentialTest:
             result = await _test_cd_api(config)
 
         assert result["status"] == "ok"
+        assert "3600" in result["message"]
+        # No .get call — token success IS the test
+        mock_client.get.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cd_api_test_missing_client_id(self):
@@ -362,10 +359,9 @@ class TestCDIntegrationTest:
 
     @pytest.mark.asyncio
     async def test_connection_uses_oauth2_token(self):
-        """test_cd_connection uses OAuth2 Bearer token, not Basic Auth."""
+        """test_cd_connection succeeds when token acquisition returns 200."""
         import httpx as httpx_mod
 
-        # Mock settings to return OAuth2 config
         mock_settings = {
             "cd": {
                 "client_id": "int-cid",
@@ -384,13 +380,8 @@ class TestCDIntegrationTest:
             "expires_in": 3600,
         }
 
-        mock_api_resp = MagicMock()
-        mock_api_resp.status_code = 200
-        mock_api_resp.json.return_value = {"username": "testuser"}
-
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_token_resp
-        mock_client.get.return_value = mock_api_resp
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -401,6 +392,9 @@ class TestCDIntegrationTest:
             result = await test_cd_connection()
 
         assert result.status == "ok"
+        assert "3600" in result.message
+        # No .get call — token success IS the test
+        mock_client.get.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_connection_fails_without_client_id(self):

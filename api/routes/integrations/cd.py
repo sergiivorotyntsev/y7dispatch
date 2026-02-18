@@ -84,9 +84,11 @@ async def test_cd_connection():
 
     try:
         import httpx
+        import logging
+        logger = logging.getLogger(__name__)
 
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # Step 1: Acquire OAuth2 token
+            logger.info("[CD Test] POST %s", token_url)
             token_resp = await client.post(
                 token_url,
                 data={
@@ -96,36 +98,13 @@ async def test_cd_connection():
                     "scope": scopes,
                 },
             )
-
-            if token_resp.status_code != 200:
-                duration_ms = int((time.time() - start_time) * 1000)
-                log_integration_action(
-                    "cd", "test", "failed",
-                    error=f"OAuth2 token failed: {token_resp.status_code}",
-                    duration_ms=duration_ms,
-                )
-                return TestConnectionResponse(
-                    status="error",
-                    message=f"OAuth2 token acquisition failed: {token_resp.status_code}",
-                    duration_ms=duration_ms,
-                )
-
-            token_data = token_resp.json()
-            access_token = token_data.get("access_token", "")
-
-            # Step 2: Test API call with Bearer token
-            response = await client.get(
-                f"{api_base_url}/user/profile",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/vnd.coxauto.v2+json",
-                },
-            )
+            logger.info("[CD Test] Token response: %d", token_resp.status_code)
 
         duration_ms = int((time.time() - start_time) * 1000)
 
-        if response.status_code == 200:
-            data = response.json()
+        if token_resp.status_code == 200:
+            token_data = token_resp.json()
+            expires_in = token_data.get("expires_in", 0)
             log_integration_action(
                 "cd",
                 "test",
@@ -135,30 +114,30 @@ async def test_cd_connection():
             )
             return TestConnectionResponse(
                 status="ok",
-                message="Connected to Central Dispatch",
+                message=f"Connected. Bearer token obtained, expires in {expires_in}s",
                 details={
                     "environment": environment,
                     "marketplace_id": marketplace_id,
-                    "user": data.get("username", client_id),
+                    "token_url": token_url,
+                    "expires_in": expires_in,
                 },
                 duration_ms=duration_ms,
             )
-        elif response.status_code == 401:
+        else:
+            error_msg = token_resp.text[:300]
             log_integration_action(
-                "cd", "test", "failed", error="Invalid credentials", duration_ms=duration_ms
-            )
-            return TestConnectionResponse(
-                status="error",
-                message="Invalid credentials",
+                "cd", "test", "failed",
+                error=f"Token failed: {token_resp.status_code}",
                 duration_ms=duration_ms,
             )
-        else:
-            error_msg = response.text[:200]
-            log_integration_action("cd", "test", "failed", error=error_msg, duration_ms=duration_ms)
             return TestConnectionResponse(
                 status="error",
-                message=f"CD API error: {response.status_code}",
-                details={"error": error_msg},
+                message=f"Token request to {token_url} returned {token_resp.status_code}: {error_msg}",
+                details={
+                    "url": token_url,
+                    "status_code": token_resp.status_code,
+                    "response_body": error_msg,
+                },
                 duration_ms=duration_ms,
             )
 

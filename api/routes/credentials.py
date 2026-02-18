@@ -282,7 +282,7 @@ async def _test_cd_api(config: dict) -> dict:
         import httpx
 
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # Step 1: Acquire OAuth2 token
+            logger.info("[CD Test] POST %s", token_url)
             token_resp = await client.post(
                 token_url,
                 data={
@@ -292,38 +292,39 @@ async def _test_cd_api(config: dict) -> dict:
                     "scope": scopes,
                 },
             )
+            logger.info("[CD Test] Token response: %d", token_resp.status_code)
+
             if token_resp.status_code != 200:
                 return {
                     "status": "failed",
-                    "message": f"OAuth2 token failed: {token_resp.status_code} {token_resp.text[:200]}",
+                    "message": f"Token request to {token_url} returned {token_resp.status_code}: {token_resp.text[:300]}",
+                    "details": {
+                        "url": token_url,
+                        "status_code": token_resp.status_code,
+                        "response_body": token_resp.text[:500],
+                    },
                 }
 
             token_data = token_resp.json()
-            access_token = token_data.get("access_token", "")
+            expires_in = token_data.get("expires_in", 0)
 
-            # Step 2: Test API call with Bearer token
-            api_resp = await client.get(
-                f"{api_base_url}/user/profile",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/vnd.coxauto.v2+json",
-                },
-            )
-            if api_resp.status_code == 200:
-                return {
-                    "status": "ok",
-                    "message": "Authenticated with Central Dispatch (OAuth2)",
-                    "details": {
-                        "environment": environment,
-                        "marketplace_id": config.get("marketplace_id", ""),
-                    },
-                }
+            # Token acquired = credentials valid
             return {
-                "status": "failed",
-                "message": f"CD API returned {api_resp.status_code}: {api_resp.text[:200]}",
+                "status": "ok",
+                "message": f"Connected. Bearer token obtained, expires in {expires_in}s",
+                "details": {
+                    "environment": environment,
+                    "marketplace_id": config.get("marketplace_id", ""),
+                    "token_url": token_url,
+                    "expires_in": expires_in,
+                },
             }
     except Exception as e:
-        return {"status": "failed", "message": f"CD API connection failed: {e}"}
+        return {
+            "status": "failed",
+            "message": f"CD API connection failed: {e}",
+            "details": {"token_url": token_url, "error_type": type(e).__name__},
+        }
 
 
 async def _test_sheets(config: dict) -> dict:
