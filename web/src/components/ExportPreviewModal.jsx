@@ -247,6 +247,21 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     if (payload.transportationReleaseNotes) {
       fields.push({ key: 'transport_special_instructions', value: payload.transportationReleaseNotes, category: 'cd_optional', group: 'Notes' })
     }
+
+    // Marketplaces
+    if (payload.marketplaces?.length > 0) {
+      payload.marketplaces.forEach((mp, i) => {
+        fields.push({ key: `marketplace_${i}_id`, value: mp.marketplaceId?.toString(), category: 'cd_required', group: 'Marketplaces' })
+        fields.push({ key: `marketplace_${i}_searchable`, value: mp.searchable ? 'Yes' : 'No', category: 'cd_optional', group: 'Marketplaces' })
+      })
+    }
+
+    // Tags
+    if (payload.tags?.length > 0) {
+      payload.tags.forEach(tag => {
+        fields.push({ key: `tag_${tag.key}`, value: tag.value, category: 'cd_optional', group: 'Tags', source: 'computed' })
+      })
+    }
   }
 
   // Add source info to fields
@@ -361,7 +376,7 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
           {!loading && !error && view === 'table' && (
             <div className="space-y-4">
               {/* Group fields by their group */}
-              {['Vehicle', 'Pickup', 'Delivery/Warehouse', 'Pricing', 'Dates', 'Reference', 'Notes'].map(groupName => {
+              {['Vehicle', 'Pickup', 'Delivery/Warehouse', 'Pricing', 'Dates', 'Reference', 'Notes', 'Marketplaces', 'Tags'].map(groupName => {
                 const groupFields = enrichedFields.filter(f => f.group === groupName)
                 if (groupFields.length === 0) return null
 

@@ -599,6 +599,16 @@ def build_cd_payload(
     # TERMS AND NOTES
     # =================================================================
     load_specific_terms = (overrides.load_specific_terms if overrides and overrides.load_specific_terms else None)
+
+    # Default template for loadSpecificTerms when no override
+    if not load_specific_terms:
+        pickup_name = get_field("pickup_name") or ""
+        warehouse_name = warehouse_data.get("name", "") if warehouse_data else ""
+        load_specific_terms = (
+            f"TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY). "
+            f"Pick-up location - {pickup_name}, Delivery - {warehouse_name}"
+        )
+
     transport_release_notes = (
         (overrides.transport_special_instructions if overrides and overrides.transport_special_instructions else None)
         or (warehouse_data.get("transport_special_instructions") if warehouse_data else None)
@@ -608,6 +618,31 @@ def build_cd_payload(
     )
 
     requires_inspection = (overrides.requires_inspection if overrides and overrides.requires_inspection is not None else True)
+
+    # =================================================================
+    # MARKETPLACES (CD V2 — public marketplace)
+    # =================================================================
+    marketplaces = [
+        {
+            "marketplaceId": 10000,
+            "searchable": True,
+        }
+    ]
+
+    # =================================================================
+    # TAGS (CD V2 — automation metadata for tracking/filtering)
+    # =================================================================
+    auction_code = at.code.upper() if at and at.code else "UNKNOWN"
+    tags = [
+        {"key": "automationVersion", "value": "v2.0"},
+        {"key": "sourceSystem", "value": "y7dispatch"},
+        {"key": "auctionSource", "value": auction_code},
+    ]
+    gate_pass = get_field("gate_pass")
+    if gate_pass:
+        tags.append({"key": "gatePass", "value": str(gate_pass)[:100]})
+    if warehouse_code:
+        tags.append({"key": "warehouseId", "value": warehouse_code})
 
     # =================================================================
     # FULL PAYLOAD (CD Listings API V2)
@@ -623,6 +658,8 @@ def build_cd_payload(
         "price": price,
         "stops": [pickup_stop, dropoff_stop],
         "vehicles": [vehicle],
+        "marketplaces": marketplaces,
+        "tags": tags,
     }
 
     # Add optional fields only if they have values
