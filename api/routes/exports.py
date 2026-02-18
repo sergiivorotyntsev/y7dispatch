@@ -86,7 +86,6 @@ class CDExportRequest(BaseModel):
 
     run_ids: list[int] = Field(..., description="Extraction run IDs to export")
     dry_run: bool = Field(True, description="Preview only, don't actually send")
-    sandbox: bool = Field(True, description="Use CD sandbox environment")
     overrides: Optional[OperatorOverrides] = None
 
 
@@ -700,7 +699,6 @@ def _init_cd_listings_table():
                 cd_listing_id TEXT NOT NULL,
                 etag TEXT,
                 external_id TEXT,
-                sandbox BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (run_id) REFERENCES extraction_runs(id)
@@ -732,7 +730,6 @@ def save_cd_listing_info(
     cd_listing_id: str,
     etag: Optional[str] = None,
     external_id: Optional[str] = None,
-    sandbox: bool = True,
 ):
     """Save or update CD listing info after successful POST/PUT."""
     from api.database import get_connection
@@ -748,25 +745,25 @@ def save_cd_listing_info(
                 """
                 UPDATE cd_listings
                 SET cd_listing_id = ?, etag = ?, external_id = ?,
-                    sandbox = ?, updated_at = CURRENT_TIMESTAMP
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE run_id = ?
             """,
-                (cd_listing_id, etag, external_id, sandbox, run_id),
+                (cd_listing_id, etag, external_id, run_id),
             )
         else:
             conn.execute(
                 """
-                INSERT INTO cd_listings (run_id, cd_listing_id, etag, external_id, sandbox)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO cd_listings (run_id, cd_listing_id, etag, external_id)
+                VALUES (?, ?, ?, ?)
             """,
-                (run_id, cd_listing_id, etag, external_id, sandbox),
+                (run_id, cd_listing_id, etag, external_id),
             )
 
         conn.commit()
 
 
 def get_cd_listing_etag(
-    cd_listing_id: str, sandbox: bool = True
+    cd_listing_id: str,
 ) -> tuple[bool, Optional[str], dict]:
     """
     GET a listing from CD to retrieve current ETag.
@@ -778,19 +775,24 @@ def get_cd_listing_etag(
     """
     import requests
 
-    if sandbox:
-        base_url = "https://api.sandbox.centraldispatch.com"
-    else:
-        base_url = "https://api.centraldispatch.com"
+    base_url = "https://marketplace-api.centraldispatch.com"
 
     # CD API V2 uses /listings/id/{id} for GET by ID
     endpoint = f"{base_url}/listings/id/{cd_listing_id}"
 
     headers = {
         "Accept": "application/vnd.coxauto.v2+json",
-        # Note: Real implementation would include auth
-        # "Authorization": f"Bearer {token}"
     }
+
+    # Add OAuth2 Bearer token
+    try:
+        from api.cd_client import CDClient
+        cd = CDClient()
+        if cd.client_id and cd.client_secret:
+            token = cd._get_bearer_token()
+            headers["Authorization"] = f"Bearer {token}"
+    except Exception as e:
+        logger.error("get_cd_listing_etag: Failed to get OAuth2 token: %s", e)
 
     try:
         logger.info(f"GET {endpoint} to retrieve ETag")
@@ -820,7 +822,7 @@ def get_cd_listing_etag(
         return False, None, {"error": str(e)}
 
 
-def find_listing_by_partner_ref(partner_ref_id: str, sandbox: bool = True) -> Optional[str]:
+def find_listing_by_partner_ref(partner_ref_id: str) -> Optional[str]:
     """
     Search for existing listing by partnerReferenceId.
 
@@ -830,10 +832,7 @@ def find_listing_by_partner_ref(partner_ref_id: str, sandbox: bool = True) -> Op
     """
     import requests
 
-    if sandbox:
-        base_url = "https://api.sandbox.centraldispatch.com"
-    else:
-        base_url = "https://api.centraldispatch.com"
+    base_url = "https://marketplace-api.centraldispatch.com"
 
     # CD API V2: search listings by partnerReferenceId
     endpoint = f"{base_url}/listings"
@@ -868,7 +867,6 @@ def find_listing_by_partner_ref(partner_ref_id: str, sandbox: bool = True) -> Op
 
 def send_to_cd(
     payload: dict,
-    sandbox: bool = True,
     cd_listing_id: Optional[str] = None,
     etag: Optional[str] = None,
 ) -> tuple[bool, dict, Optional[str], Optional[str]]:
@@ -881,7 +879,6 @@ def send_to_cd(
 
     Args:
         payload: The listing payload
-        sandbox: Use sandbox environment
         cd_listing_id: Existing listing ID (for updates)
         etag: ETag for If-Match header (required for updates)
 
@@ -889,10 +886,7 @@ def send_to_cd(
     """
     import requests
 
-    if sandbox:
-        base_url = "https://api.sandbox.centraldispatch.com"
-    else:
-        base_url = "https://api.centraldispatch.com"
+    base_url = "https://marketplace-api.centraldispatch.com"
 
     # CD V2 uses Content-Type versioning
     headers = {
@@ -932,7 +926,7 @@ def send_to_cd(
             if response.status_code == 204:
                 logger.info(f"PUT success (204 No Content) for listing {cd_listing_id}")
                 # Need to GET the listing to retrieve new ETag
-                success, new_etag, _ = get_cd_listing_etag(cd_listing_id, sandbox=sandbox)
+                success, new_etag, _ = get_cd_listing_etag(cd_listing_id)
                 return True, {"id": cd_listing_id, "updated": True}, new_etag, cd_listing_id
 
         else:
@@ -971,7 +965,7 @@ def send_to_cd(
             # If no ETag in response, fetch it
             if listing_id and not new_etag:
                 logger.info("No ETag in POST response, fetching via GET")
-                success, new_etag, _ = get_cd_listing_etag(listing_id, sandbox=sandbox)
+                success, new_etag, _ = get_cd_listing_etag(listing_id)
 
             try:
                 return True, response.json(), new_etag, listing_id
@@ -1051,7 +1045,6 @@ def send_to_cd(
 
 async def send_to_cd_with_retry(
     payload: dict,
-    sandbox: bool = True,
     run_id: Optional[int] = None,
     force_create: bool = False,
 ) -> tuple[bool, dict, Optional[str]]:
@@ -1067,7 +1060,6 @@ async def send_to_cd_with_retry(
 
     Args:
         payload: The listing payload
-        sandbox: Use sandbox environment
         run_id: Extraction run ID (for ETag tracking)
         force_create: Force POST even if listing exists
 
@@ -1110,7 +1102,7 @@ async def send_to_cd_with_retry(
             if cd_listing_id and not etag:
                 logger.info(f"Found existing CD listing {cd_listing_id}, fetching ETag...")
                 success, fresh_etag, _ = await loop.run_in_executor(
-                    None, lambda lid=cd_listing_id: get_cd_listing_etag(lid, sandbox=sandbox)
+                    None, lambda lid=cd_listing_id: get_cd_listing_etag(lid)
                 )
                 if success and fresh_etag:
                     etag = fresh_etag
@@ -1132,7 +1124,7 @@ async def send_to_cd_with_retry(
                 )
                 existing_id = await loop.run_in_executor(
                     None,
-                    lambda pref=partner_ref_id: find_listing_by_partner_ref(pref, sandbox=sandbox),
+                    lambda pref=partner_ref_id: find_listing_by_partner_ref(pref),
                 )
                 if existing_id:
                     logger.info(
@@ -1148,7 +1140,7 @@ async def send_to_cd_with_retry(
                         )
                     # Fetch ETag for the found listing
                     success, found_etag, resp_data = await loop.run_in_executor(
-                        None, lambda eid=existing_id: get_cd_listing_etag(eid, sandbox=sandbox)
+                        None, lambda eid=existing_id: get_cd_listing_etag(eid)
                     )
                     if run_id:
                         save_cd_listing_info(
@@ -1156,7 +1148,6 @@ async def send_to_cd_with_retry(
                             cd_listing_id=existing_id,
                             etag=found_etag,
                             external_id=payload.get("externalId"),
-                            sandbox=sandbox,
                         )
                     return True, {"id": existing_id, "recovered_from_retry": True}, existing_id
 
@@ -1165,7 +1156,7 @@ async def send_to_cd_with_retry(
             result = await loop.run_in_executor(
                 None,
                 lambda lid=cd_listing_id, et=etag: send_to_cd(
-                    payload, sandbox, lid if is_update else None, et if is_update else None
+                    payload, lid if is_update else None, et if is_update else None
                 ),
             )
             success, response, new_etag, result_listing_id = result
@@ -1178,7 +1169,6 @@ async def send_to_cd_with_retry(
                         cd_listing_id=result_listing_id,
                         etag=new_etag,
                         external_id=payload.get("externalId"),
-                        sandbox=sandbox,
                     )
 
                     # Audit: Log successful create or update
@@ -1224,7 +1214,7 @@ async def send_to_cd_with_retry(
                 if cd_listing_id:
                     old_etag = etag
                     success, fresh_etag, _ = await loop.run_in_executor(
-                        None, lambda lid=cd_listing_id: get_cd_listing_etag(lid, sandbox=sandbox)
+                        None, lambda lid=cd_listing_id: get_cd_listing_etag(lid)
                     )
                     if success and fresh_etag:
                         etag = fresh_etag
@@ -1310,7 +1300,6 @@ async def export_to_cd(
     Export extraction runs to Central Dispatch API V2.
 
     Set dry_run=true to preview payloads without sending.
-    Set sandbox=true to use CD sandbox environment.
     Set force=true to re-export already exported runs (creates new attempt).
 
     IDEMPOTENCY: By default, already exported runs are skipped.
@@ -1407,7 +1396,6 @@ async def export_to_cd(
             # Actually send to CD with throttling and retry
             success, response, cd_listing_id = await send_to_cd_with_retry(
                 payload,
-                sandbox=data.sandbox,
                 run_id=run_id,
                 force_create=force,
             )
@@ -1626,7 +1614,7 @@ async def get_export_job(job_id: int):
 
 
 @router.post("/jobs/{job_id}/retry", response_model=ExportJobResponse)
-async def retry_export_job(job_id: int, sandbox: bool = Query(True)):
+async def retry_export_job(job_id: int):
     """
     Retry a failed export job.
     """
@@ -1638,7 +1626,7 @@ async def retry_export_job(job_id: int, sandbox: bool = Query(True)):
         raise HTTPException(status_code=400, detail="Can only retry failed jobs")
 
     # Resend
-    success, response = send_to_cd(job.payload_json, sandbox=sandbox)
+    success, response, _, _ = send_to_cd(job.payload_json)
 
     if success:
         ExportJobRepository.update(
@@ -1695,7 +1683,6 @@ async def get_cd_listing(run_id: int):
             "cd_listing_id": None,
             "etag": None,
             "external_id": None,
-            "sandbox": None,
         }
 
     return {
@@ -1704,7 +1691,6 @@ async def get_cd_listing(run_id: int):
         "cd_listing_id": listing_info.get("cd_listing_id"),
         "etag": listing_info.get("etag"),
         "external_id": listing_info.get("external_id"),
-        "sandbox": listing_info.get("sandbox"),
         "created_at": listing_info.get("created_at"),
         "updated_at": listing_info.get("updated_at"),
     }
@@ -1898,7 +1884,6 @@ class BatchPostRequest(BaseModel):
 
     run_ids: list[int] = Field(..., description="Extraction run IDs to post")
     post_only_ready: bool = Field(True, description="Only post runs without blocking issues")
-    sandbox: bool = Field(True, description="Use CD sandbox environment")
 
 
 class BatchPostResult(BaseModel):
@@ -2039,7 +2024,6 @@ async def batch_post(request: BatchPostRequest):
         # Send to CD with throttling and retry
         success, response, cd_listing_id = await send_to_cd_with_retry(
             payload,
-            sandbox=request.sandbox,
             run_id=run_id,
         )
 
@@ -2489,7 +2473,6 @@ async def apply_production_corrections_to_training(
 @router.post("/batch-jobs")
 async def create_batch_export_job(
     run_ids: list[int],
-    sandbox: bool = True,
     post_only_ready: bool = True,
     background_tasks: BackgroundTasks = None,
 ):
@@ -2501,7 +2484,6 @@ async def create_batch_export_job(
 
     Args:
         run_ids: List of extraction run IDs to export
-        sandbox: Use CD sandbox environment
         post_only_ready: Only post runs without blocking issues
 
     Returns:
@@ -2516,7 +2498,6 @@ async def create_batch_export_job(
     job_id = create_batch_job(
         run_ids=run_ids,
         options={
-            "sandbox": sandbox,
             "post_only_ready": post_only_ready,
         },
     )
@@ -2526,7 +2507,6 @@ async def create_batch_export_job(
         background_tasks.add_task(
             _run_batch_job_sync,
             job_id=job_id,
-            sandbox=sandbox,
         )
 
     return {
@@ -2537,7 +2517,7 @@ async def create_batch_export_job(
     }
 
 
-def _run_batch_job_sync(job_id: int, sandbox: bool):
+def _run_batch_job_sync(job_id: int):
     """Synchronous wrapper for async batch job processing."""
     import asyncio
 
@@ -2546,7 +2526,7 @@ def _run_batch_job_sync(job_id: int, sandbox: bool):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(run_batch_job(job_id, sandbox=sandbox))
+        loop.run_until_complete(run_batch_job(job_id))
     except Exception as e:
         import logging
 

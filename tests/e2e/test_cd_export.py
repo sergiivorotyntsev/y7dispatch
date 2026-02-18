@@ -437,7 +437,6 @@ class TestETagLifecycle:
             cd_listing_id="test-listing-789",
             etag="etag-abc",
             external_id="DC-TEST",
-            sandbox=True,
         )
 
         resp = client.get(f"/api/exports/cd-listing/{run_id}")

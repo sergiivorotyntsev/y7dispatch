@@ -147,7 +147,6 @@ class PushListingRequest(BaseModel):
 
     document_id: int
     warehouse_code: str | None = None
-    sandbox: bool = Field(default=True, description="Use CD sandbox environment")
     dry_run: bool = Field(default=False, description="Validate only, don't send")
 
 
@@ -240,7 +239,6 @@ async def push_listing(req: PushListingRequest):
         status="success",
         cd_listing_id=listing_id,
         etag=etag,
-        sandbox=req.sandbox,
     )
 
     return PushListingResponse(
@@ -260,7 +258,6 @@ def _save_listing_snapshot(
     status: str,
     cd_listing_id: str | None = None,
     etag: str | None = None,
-    sandbox: bool = True,
     error: str | None = None,
 ) -> None:
     """Persist the payload snapshot and CD response to cd_listings table."""
@@ -274,7 +271,6 @@ def _save_listing_snapshot(
             cd_listing_id=cd_listing_id,
             etag=etag,
             external_id=payload.get("externalId", ""),
-            sandbox=sandbox,
         )
 
     # Also log to export_jobs for audit trail

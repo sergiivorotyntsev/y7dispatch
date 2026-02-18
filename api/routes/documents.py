@@ -195,7 +195,7 @@ async def upload_document(
     Parameters:
     - auction_type_id: Optional. If not provided, document will be auto-classified.
     - auto_classify: If true (default), auto-detect auction type from document content.
-    - source: upload (manual), email (ingestion), batch (bulk), test_lab (sandbox)
+    - source: upload (manual), email (ingestion), batch (bulk), test_lab (testing)
     - is_test: If true, document cannot be exported to Central Dispatch
 
     IMPORTANT: This endpoint automatically creates an ExtractionRun after upload.

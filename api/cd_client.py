@@ -36,16 +36,14 @@ TOKEN_REFRESH_MARGIN = 60  # Refresh token 60s before expiry
 
 def get_cd_urls(environment: str) -> dict[str, str]:
     """
-    Resolve API base URL and token URL based on environment.
+    Resolve API base URL and token URL.
 
-    Args:
-        environment: "test" (sandbox) or "production"
+    CD uses a single URL for all environments.
+    Test vs production differs only by marketplace_id in the payload.
 
     Returns:
         dict with api_base_url and token_url
     """
-    # Single auth and API URL for all environments.
-    # Test vs production differs only by marketplace_id in the payload.
     return {
         "api_base_url": "https://marketplace-api.centraldispatch.com",
         "token_url": "https://id.centraldispatch.com/connect/token",
@@ -149,7 +147,7 @@ class CDClient:
             base_url = base_url or urls["api_base_url"]
 
         self.base_url = base_url or os.environ.get(
-            "CD_API_URL", "https://api.sandbox.centraldispatch.com/v2"
+            "CD_API_URL", "https://marketplace-api.centraldispatch.com"
         )
         self._semaphore = asyncio.Semaphore(CD_SEMAPHORE_LIMIT)
 

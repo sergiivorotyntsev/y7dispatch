@@ -284,7 +284,6 @@ class BatchJobProcessor:
     async def process_job(
         self,
         job_id: int,
-        sandbox: bool = True,
         post_only_ready: bool = True,
     ) -> dict:
         """
@@ -292,7 +291,6 @@ class BatchJobProcessor:
 
         Args:
             job_id: Batch job ID
-            sandbox: Use CD sandbox environment
             post_only_ready: Only post runs without blocking issues
 
         Returns:
@@ -355,7 +353,6 @@ class BatchJobProcessor:
                 # Process single run
                 result = await self._process_single_run(
                     run_id=run_id,
-                    sandbox=sandbox,
                     post_only_ready=post_only_ready,
                 )
 
@@ -419,7 +416,6 @@ class BatchJobProcessor:
     async def _process_single_run(
         self,
         run_id: int,
-        sandbox: bool,
         post_only_ready: bool,
     ) -> BatchItemResult:
         """Process a single extraction run."""
@@ -484,7 +480,6 @@ class BatchJobProcessor:
         async with self.semaphore:
             success, response, cd_listing_id = await send_to_cd_with_retry(
                 payload,
-                sandbox=sandbox,
                 run_id=run_id,
             )
 
@@ -529,7 +524,7 @@ class BatchJobProcessor:
         return result
 
 
-async def run_batch_job(job_id: int, sandbox: bool = True) -> dict:
+async def run_batch_job(job_id: int) -> dict:
     """
     Run a batch job asynchronously.
 
@@ -538,13 +533,12 @@ async def run_batch_job(job_id: int, sandbox: bool = True) -> dict:
 
     Args:
         job_id: Batch job ID
-        sandbox: Use CD sandbox environment
 
     Returns:
         Dict with job results
     """
     processor = BatchJobProcessor()
-    return await processor.process_job(job_id, sandbox=sandbox)
+    return await processor.process_job(job_id)
 
 
 def create_batch_job(
@@ -557,7 +551,7 @@ def create_batch_job(
 
     Args:
         run_ids: List of extraction run IDs to process
-        options: Job options (sandbox, post_only_ready, etc.)
+        options: Job options (post_only_ready, etc.)
         created_by: User who created the job
 
     Returns:

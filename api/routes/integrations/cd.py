@@ -200,13 +200,8 @@ async def cd_export_with_retry(data: CDExportRequest):
     """
     from api.models import ExportJobRepository, ExtractionRunRepository
     from api.routes.exports import build_cd_payload, send_to_cd
-    from api.routes.settings import load_settings
 
     start_time = time.time()
-    settings = load_settings()
-    cd = settings.get("cd", {})
-    use_sandbox = cd.get("sandbox", True)
-
     payload, errors = build_cd_payload(data.run_id)
 
     if errors:
@@ -225,7 +220,7 @@ async def cd_export_with_retry(data: CDExportRequest):
 
     for attempt in range(max_retries):
         try:
-            success, response = send_to_cd(payload, sandbox=use_sandbox)
+            success, response, _, _ = send_to_cd(payload)
 
             if success:
                 job_id = ExportJobRepository.create(
