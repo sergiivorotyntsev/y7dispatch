@@ -54,45 +54,72 @@ class CDExportResponse(BaseModel):
 @router.post("/test", response_model=TestConnectionResponse)
 async def test_cd_connection():
     """
-    Test Central Dispatch API connection.
+    Test Central Dispatch API connection via OAuth2 client credentials.
 
-    Verifies API credentials and marketplace access.
+    Acquires OAuth2 token, then verifies API access.
     """
+    from api.cd_client import get_cd_urls
     from api.routes.settings import load_settings
 
     start_time = time.time()
     settings = load_settings()
     cd = settings.get("cd", {})
 
-    username = cd.get("username")
-    password = cd.get("password")
+    client_id = cd.get("client_id")
+    client_secret = cd.get("client_secret")
     marketplace_id = cd.get("marketplace_id")
-    use_sandbox = cd.get("sandbox", True)
+    environment = cd.get("environment", "test")
+    scopes = cd.get("scopes", "marketplace")
 
-    if not username or not password:
+    if not client_id or not client_secret:
         log_integration_action("cd", "test", "failed", error="CD credentials not configured")
         return TestConnectionResponse(
             status="error",
-            message="Central Dispatch not configured. Set username and password in settings.",
+            message="Central Dispatch not configured. Set client_id and client_secret in settings.",
         )
 
-    base_url = (
-        "https://api.sandbox.centraldispatch.com"
-        if use_sandbox
-        else "https://api.centraldispatch.com"
-    )
+    urls = get_cd_urls(environment)
+    token_url = urls["token_url"]
+    api_base_url = urls["api_base_url"]
 
     try:
         import httpx
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Step 1: Acquire OAuth2 token
+            token_resp = await client.post(
+                token_url,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "scope": scopes,
+                },
+            )
+
+            if token_resp.status_code != 200:
+                duration_ms = int((time.time() - start_time) * 1000)
+                log_integration_action(
+                    "cd", "test", "failed",
+                    error=f"OAuth2 token failed: {token_resp.status_code}",
+                    duration_ms=duration_ms,
+                )
+                return TestConnectionResponse(
+                    status="error",
+                    message=f"OAuth2 token acquisition failed: {token_resp.status_code}",
+                    duration_ms=duration_ms,
+                )
+
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token", "")
+
+            # Step 2: Test API call with Bearer token
             response = await client.get(
-                f"{base_url}/user/profile",
-                auth=(username, password),
+                f"{api_base_url}/user/profile",
                 headers={
+                    "Authorization": f"Bearer {access_token}",
                     "Accept": "application/vnd.coxauto.v2+json",
                 },
-                timeout=15.0,
             )
 
         duration_ms = int((time.time() - start_time) * 1000)
@@ -103,16 +130,16 @@ async def test_cd_connection():
                 "cd",
                 "test",
                 "success",
-                details={"environment": "sandbox" if use_sandbox else "production"},
+                details={"environment": environment},
                 duration_ms=duration_ms,
             )
             return TestConnectionResponse(
                 status="ok",
                 message="Connected to Central Dispatch",
                 details={
-                    "environment": "sandbox" if use_sandbox else "production",
+                    "environment": environment,
                     "marketplace_id": marketplace_id,
-                    "user": data.get("username", username),
+                    "user": data.get("username", client_id),
                 },
                 duration_ms=duration_ms,
             )

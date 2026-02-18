@@ -261,28 +261,66 @@ async def _test_email_oauth(config: dict) -> dict:
 
 
 async def _test_cd_api(config: dict) -> dict:
-    """Test Central Dispatch API connection."""
-    username = config.get("username", "")
-    password = config.get("password", "")
+    """Test Central Dispatch API connection via OAuth2 client_credentials."""
+    client_id = config.get("client_id", "")
+    client_secret = config.get("client_secret", "")
 
-    if not all([username, password]):
-        return {"status": "failed", "message": "Missing username or password"}
+    if not client_id:
+        return {"status": "failed", "message": "Missing client_id"}
+    if not client_secret:
+        return {"status": "failed", "message": "Missing client_secret"}
 
-    # Try to authenticate with CD API
+    from api.cd_client import get_cd_urls
+
+    environment = config.get("environment", "test")
+    urls = get_cd_urls(environment)
+    token_url = config.get("token_url") or urls["token_url"]
+    api_base_url = config.get("api_base_url") or urls["api_base_url"]
+    scopes = config.get("scopes", "marketplace")
+
     try:
         import httpx
 
-        base_url = config.get("base_url", "https://api.centraldispatch.com")
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{base_url}/auth/token",
-                json={"username": username, "password": password},
+            # Step 1: Acquire OAuth2 token
+            token_resp = await client.post(
+                token_url,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "scope": scopes,
+                },
             )
-            if resp.status_code == 200:
-                return {"status": "ok", "message": "Authenticated with Central Dispatch"}
+            if token_resp.status_code != 200:
+                return {
+                    "status": "failed",
+                    "message": f"OAuth2 token failed: {token_resp.status_code} {token_resp.text[:200]}",
+                }
+
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token", "")
+
+            # Step 2: Test API call with Bearer token
+            api_resp = await client.get(
+                f"{api_base_url}/user/profile",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/vnd.coxauto.v2+json",
+                },
+            )
+            if api_resp.status_code == 200:
+                return {
+                    "status": "ok",
+                    "message": "Authenticated with Central Dispatch (OAuth2)",
+                    "details": {
+                        "environment": environment,
+                        "marketplace_id": config.get("marketplace_id", ""),
+                    },
+                }
             return {
                 "status": "failed",
-                "message": f"CD API returned {resp.status_code}: {resp.text[:200]}",
+                "message": f"CD API returned {api_resp.status_code}: {api_resp.text[:200]}",
             }
     except Exception as e:
         return {"status": "failed", "message": f"CD API connection failed: {e}"}

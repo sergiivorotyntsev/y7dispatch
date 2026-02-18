@@ -2,7 +2,8 @@
 Central Dispatch API Client
 
 Handles communication with Central Dispatch V2 API for listing management.
-Implements ETag-based optimistic concurrency, rate limiting, and retries.
+Implements OAuth2 Client Credentials flow, ETag-based optimistic concurrency,
+rate limiting, and retries.
 """
 
 import asyncio
@@ -25,6 +26,34 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 CD_SEMAPHORE_LIMIT = 5  # Max concurrent CD API calls
 RETRY_BACKOFF_BASE = 2  # Exponential backoff base (seconds)
+TOKEN_REFRESH_MARGIN = 60  # Refresh token 60s before expiry
+
+
+# =============================================================================
+# ENVIRONMENT URL RESOLUTION
+# =============================================================================
+
+
+def get_cd_urls(environment: str) -> dict[str, str]:
+    """
+    Resolve API base URL and token URL based on environment.
+
+    Args:
+        environment: "test" (sandbox) or "production"
+
+    Returns:
+        dict with api_base_url and token_url
+    """
+    if environment == "production":
+        return {
+            "api_base_url": "https://api.centraldispatch.com/v2",
+            "token_url": "https://identity.centraldispatch.com/oauth2/token",
+        }
+    # Default to sandbox/test
+    return {
+        "api_base_url": "https://api.sandbox.centraldispatch.com/v2",
+        "token_url": "https://identity.sandbox.centraldispatch.com/oauth2/token",
+    }
 
 
 # =============================================================================
@@ -77,9 +106,11 @@ class CDResponse:
 
 class CDClient:
     """
-    Central Dispatch API Client.
+    Central Dispatch API Client with OAuth2 Client Credentials.
 
     Features:
+    - OAuth2 client_credentials token acquisition + caching
+    - Auto-refresh when token expires (with 60s safety margin)
     - ETag-based optimistic concurrency
     - Rate limit handling (429)
     - Automatic retries with exponential backoff
@@ -88,34 +119,136 @@ class CDClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        token_url: Optional[str] = None,
         base_url: Optional[str] = None,
+        scopes: Optional[str] = None,
         timeout: int = 30,
+        # Legacy: still accept api_key for backward compat during migration
+        api_key: Optional[str] = None,
     ):
-        self.api_key = api_key
-        if not self.api_key:
-            try:
-                from services.credential_store import get_credential_for_service
-
-                cred = get_credential_for_service("cd_api")
-                if cred:
-                    self.api_key = cred.get("password", "") or cred.get("api_key", "")
-            except Exception:
-                pass
-        if not self.api_key:
-            self.api_key = os.environ.get("CD_API_KEY", "")
-        self.base_url = base_url or os.environ.get(
-            "CD_API_URL", "https://api.centraldispatch.com/v2"
-        )
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.token_url = token_url
+        self.scopes = scopes
         self.timeout = timeout
+
+        # Token cache
+        self._cached_token: Optional[str] = None
+        self._token_expires_at: float = 0
+
+        # Legacy api_key fallback
+        self._legacy_api_key = api_key
+
+        # Resolve from credential store if not provided explicitly
+        if not self.client_id:
+            self._load_from_credential_store()
+
+        # Resolve URLs from environment if not provided
+        if not self.token_url or not base_url:
+            env = self._resolve_environment()
+            urls = get_cd_urls(env)
+            self.token_url = self.token_url or urls["token_url"]
+            base_url = base_url or urls["api_base_url"]
+
+        self.base_url = base_url or os.environ.get(
+            "CD_API_URL", "https://api.sandbox.centraldispatch.com/v2"
+        )
         self._semaphore = asyncio.Semaphore(CD_SEMAPHORE_LIMIT)
+
+    def _load_from_credential_store(self):
+        """Load OAuth2 credentials from the credential store."""
+        try:
+            from services.credential_store import get_credential_for_service
+
+            cred = get_credential_for_service("cd_api")
+            if cred:
+                self.client_id = cred.get("client_id", "")
+                self.client_secret = cred.get("client_secret", "")
+                self.scopes = cred.get("scopes", "marketplace")
+                env = cred.get("environment", "test")
+                urls = get_cd_urls(env)
+                self.token_url = cred.get("token_url") or urls["token_url"]
+                self.base_url = cred.get("api_base_url") or urls["api_base_url"]
+        except Exception:
+            pass
+
+        # Legacy fallback: env var
+        if not self.client_id and not self._legacy_api_key:
+            self._legacy_api_key = os.environ.get("CD_API_KEY", "")
+
+    def _resolve_environment(self) -> str:
+        """Resolve environment from credential store or default to test."""
+        try:
+            from services.credential_store import get_credential_for_service
+
+            cred = get_credential_for_service("cd_api")
+            if cred:
+                return cred.get("environment", "test")
+        except Exception:
+            pass
+        return "test"
+
+    def _acquire_token(self) -> str:
+        """
+        Acquire OAuth2 token via client_credentials grant.
+
+        Raises Exception if acquisition fails.
+        """
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        }
+        if self.scopes:
+            data["scope"] = self.scopes
+
+        response = requests.post(
+            self.token_url,
+            data=data,
+            timeout=15,
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"OAuth2 token acquisition failed: {response.status_code} {response.text[:200]}"
+            )
+
+        token_data = response.json()
+        access_token = token_data["access_token"]
+        expires_in = token_data.get("expires_in", 3600)
+
+        # Cache with safety margin
+        self._cached_token = access_token
+        self._token_expires_at = time.time() + expires_in - TOKEN_REFRESH_MARGIN
+
+        logger.info("OAuth2 token acquired, expires in %ds", expires_in)
+        return access_token
+
+    def _get_bearer_token(self) -> str:
+        """
+        Get a valid Bearer token, using cache or acquiring a new one.
+
+        Returns cached token if still valid, otherwise acquires fresh token.
+        """
+        if self._cached_token and time.time() < self._token_expires_at:
+            return self._cached_token
+
+        return self._acquire_token()
 
     def _get_headers(
         self, etag: Optional[str] = None, idempotency_key: Optional[str] = None
     ) -> dict[str, str]:
-        """Build request headers."""
+        """Build request headers with OAuth2 Bearer token."""
+        # Use OAuth2 if client_id is configured, otherwise legacy api_key
+        if self.client_id and self.client_secret:
+            token = self._get_bearer_token()
+        else:
+            token = self._legacy_api_key or ""
+
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/vnd.coxauto.v2+json",
             "Accept": "application/vnd.coxauto.v2+json",
         }
@@ -331,8 +464,20 @@ class CDClient:
 class AsyncCDClient:
     """Async version of CD client for batch operations."""
 
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
-        self.sync_client = CDClient(api_key=api_key, base_url=base_url)
+    def __init__(
+        self,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        base_url: Optional[str] = None,
+        # Legacy
+        api_key: Optional[str] = None,
+    ):
+        self.sync_client = CDClient(
+            client_id=client_id,
+            client_secret=client_secret,
+            base_url=base_url,
+            api_key=api_key,
+        )
         self._semaphore = asyncio.Semaphore(CD_SEMAPHORE_LIMIT)
 
     async def create_listing(self, payload: dict[str, Any]) -> CDResponse:

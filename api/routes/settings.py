@@ -51,12 +51,15 @@ class ClickUpSettings(BaseModel):
 
 
 class CDSettings(BaseModel):
-    """Central Dispatch settings."""
+    """Central Dispatch settings — OAuth2 Client Credentials."""
 
     enabled: bool = False
-    username: str = ""
-    password: str = ""
-    shipper_id: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    marketplace_id: str = ""
+    scopes: str = "marketplace"
+    environment: str = "test"
+    shipper_username: str = ""
 
 
 class EmailSettings(BaseModel):
@@ -309,14 +312,17 @@ async def update_cd_settings(cd: CDSettings):
     """
     settings = load_settings()
 
-    # Don't overwrite password if masked value is sent
-    existing_pwd = settings.get("cd", {}).get("password", "")
-    new_pwd = cd.password if "****" not in cd.password else existing_pwd
+    # Don't overwrite client_secret if masked value is sent
+    existing_secret = settings.get("cd", {}).get("client_secret", "")
+    new_secret = cd.client_secret if "●" not in cd.client_secret and "****" not in cd.client_secret else existing_secret
 
     settings["cd"] = {
-        "username": cd.username,
-        "password": new_pwd,
-        "shipper_id": cd.shipper_id,
+        "client_id": cd.client_id,
+        "client_secret": new_secret,
+        "marketplace_id": cd.marketplace_id,
+        "scopes": cd.scopes,
+        "environment": cd.environment,
+        "shipper_username": cd.shipper_username,
     }
 
     # Update export targets
