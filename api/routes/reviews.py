@@ -119,6 +119,21 @@ class ReviewSubmitRequest(BaseModel):
     mark_for_export: bool = Field(False, description="Mark run ready for CD export")
     load_specific_terms: Optional[str] = Field(None, description="Load-specific terms for CD")
     transport_special_instructions: Optional[str] = Field(None, description="Transport special instructions")
+    # Operator overrides — persisted for export without React state
+    final_price: Optional[float] = Field(None, description="Carrier transport price")
+    available_date: Optional[str] = Field(None, description="Available date ISO")
+    expiration_date: Optional[str] = Field(None, description="Expiration date ISO")
+    desired_delivery_date: Optional[str] = Field(None, description="Desired delivery date ISO")
+    load_id: Optional[str] = Field(None, description="Auto-generated load ID")
+    trailer_type: Optional[str] = Field(None, description="OPEN/ENCLOSED/DRIVEAWAY")
+    requires_inspection: Optional[bool] = Field(None, description="Require carrier inspection")
+    cod_amount: Optional[float] = Field(None, description="COD amount")
+    cod_payment_method: Optional[str] = Field(None, description="COD payment method")
+    cod_payment_location: Optional[str] = Field(None, description="COD payment location")
+    balance_payment_method: Optional[str] = Field(None, description="Balance payment method")
+    balance_payment_time: Optional[str] = Field(None, description="Balance payment time")
+    balance_terms_begin_on: Optional[str] = Field(None, description="Balance terms begin on")
+    vehicle_is_inoperable: Optional[bool] = Field(None, description="Vehicle inoperable flag")
 
 
 class ReviewSubmitResponse(BaseModel):
@@ -427,12 +442,33 @@ async def submit_review(data: ReviewSubmitRequest):
     if isinstance(outputs, str):
         outputs = json.loads(outputs)
 
-    if data.warehouse_id:
+    if data.warehouse_id is not None:
         outputs["warehouse_id"] = data.warehouse_id
-    if data.load_specific_terms:
+    if data.load_specific_terms is not None:
         outputs["load_specific_terms"] = data.load_specific_terms
-    if data.transport_special_instructions:
+    if data.transport_special_instructions is not None:
         outputs["transport_special_instructions"] = data.transport_special_instructions
+
+    # Persist all operator overrides for export without React state
+    override_fields = {
+        "final_price": data.final_price,
+        "available_date": data.available_date,
+        "expiration_date": data.expiration_date,
+        "desired_delivery_date": data.desired_delivery_date,
+        "load_id": data.load_id,
+        "trailer_type": data.trailer_type,
+        "requires_inspection": data.requires_inspection,
+        "cod_amount": data.cod_amount,
+        "cod_payment_method": data.cod_payment_method,
+        "cod_payment_location": data.cod_payment_location,
+        "balance_payment_method": data.balance_payment_method,
+        "balance_payment_time": data.balance_payment_time,
+        "balance_terms_begin_on": data.balance_terms_begin_on,
+        "vehicle_is_inoperable": data.vehicle_is_inoperable,
+    }
+    for key, value in override_fields.items():
+        if value is not None:
+            outputs[key] = value
 
     # Determine status
     new_status = run.status
@@ -750,12 +786,13 @@ async def get_run_preflight(
     if isinstance(outputs, str):
         outputs = json.loads(outputs)
 
-    # Get warehouse data if warehouse_id provided
+    # Get warehouse data — from query param or from saved outputs
     warehouse_data = None
-    warehouse_selected = bool(outputs.get("warehouse_id") or outputs.get("delivery_address"))
+    effective_warehouse_id = warehouse_id or outputs.get("warehouse_id")
+    warehouse_selected = bool(effective_warehouse_id or outputs.get("delivery_address"))
 
-    if warehouse_id:
-        warehouse_data = _get_warehouse_by_id(warehouse_id)
+    if effective_warehouse_id:
+        warehouse_data = _get_warehouse_by_id(int(effective_warehouse_id))
         warehouse_selected = warehouse_data is not None
 
     # Get blocking issues from field registry
@@ -785,11 +822,20 @@ async def get_run_preflight(
             )
         )
 
-    # Also check for low confidence fields
+    # Also check for low confidence EXTRACTED fields
     review_items = ReviewItemRepository.get_by_run(run_id)
+    # Skip confidence warnings for non-extracted source types
+    non_extracted_sources = {"constant", "warehouse_ref", "user_input", "computed"}
     for item in review_items:
         if item.confidence is not None and item.confidence < 0.5:
             if not item.corrected_value and not item.is_match_ok:
+                # Skip fields whose source type is not EXTRACTED
+                field_def = registry.get_field(item.source_key)
+                if field_def and field_def.source_type.value in non_extracted_sources:
+                    continue
+                # Skip fields with no predicted value (not extracted, not low-confidence)
+                if not item.predicted_value:
+                    continue
                 warning_count += 1
                 issues.append(
                     PreflightIssue(

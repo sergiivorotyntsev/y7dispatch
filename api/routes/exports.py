@@ -276,6 +276,7 @@ def build_cd_payload(
             extracted_values[item.source_key] = item.predicted_value
 
     # Also get extracted values from outputs_json
+    outputs = {}
     if run.outputs_json:
         outputs = (
             run.outputs_json if isinstance(run.outputs_json, dict) else json.loads(run.outputs_json)
@@ -293,6 +294,23 @@ def build_cd_payload(
                 ).fetchone()
                 if wh_row:
                     warehouse_code = wh_row["code"]
+
+    # =================================================================
+    # AUTO-LOAD saved overrides from outputs_json when none provided
+    # (This handles the Documents list export path where React state is unavailable)
+    # =================================================================
+    if overrides is None and outputs:
+        saved_override_keys = [
+            "warehouse_id", "load_id", "trailer_type", "available_date",
+            "expiration_date", "desired_delivery_date", "final_price",
+            "cod_amount", "cod_payment_method", "cod_payment_location",
+            "balance_payment_method", "balance_payment_time", "balance_terms_begin_on",
+            "requires_inspection", "load_specific_terms",
+            "transport_special_instructions", "vehicle_is_inoperable",
+        ]
+        saved = {k: outputs[k] for k in saved_override_keys if k in outputs and outputs[k] is not None}
+        if saved:
+            overrides = OperatorOverrides(**saved)
 
     # =================================================================
     # WAREHOUSE LOOKUP from operator overrides
