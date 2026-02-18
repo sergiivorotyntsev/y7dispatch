@@ -250,19 +250,35 @@ class MarketIntelligenceClient:
                 )
 
             else:
+                body_text = response.text[:1000]
                 logger.error(
                     f"MI API error: {request_id}, "
                     f"status={response.status_code}, "
-                    f"body={response.text[:200]}"
+                    f"body={body_text}"
                 )
-                return None
+                return MIPriceQuote(
+                    suggested_price=0,
+                    source="CD_MARKET_INTELLIGENCE",
+                    error=f"CD MI API returned HTTP {response.status_code}: {body_text}",
+                    request_id=request_id,
+                )
 
         except httpx.TimeoutException:
             logger.error(f"MI API timeout: {request_id}")
-            return None
+            return MIPriceQuote(
+                suggested_price=0,
+                source="CD_MARKET_INTELLIGENCE",
+                error=f"CD MI API timeout after {self.config.timeout_seconds}s",
+                request_id=request_id,
+            )
         except httpx.RequestError as e:
             logger.error(f"MI API request error: {request_id}, {e}")
-            return None
+            return MIPriceQuote(
+                suggested_price=0,
+                source="CD_MARKET_INTELLIGENCE",
+                error=f"CD MI API request error: {e}",
+                request_id=request_id,
+            )
 
     def _parse_response(self, data: dict, request_id: str) -> Optional[MIPriceQuote]:
         """Parse MI API response into MIPriceQuote.
@@ -304,8 +320,15 @@ class MarketIntelligenceClient:
                         )
 
             if not items:
-                logger.warning(f"MI API returned no items: {request_id}")
-                return None
+                # Log the actual response so we can see what CD returned
+                logger.warning(f"MI API returned no items: {request_id}, keys={list(data.keys())}, data={json.dumps(data)[:500]}")
+                return MIPriceQuote(
+                    suggested_price=0,
+                    source="CD_MARKET_INTELLIGENCE",
+                    error=f"CD MI API returned 200 but no pricing items. Response keys: {list(data.keys())}",
+                    request_id=request_id,
+                    response_raw=data,
+                )
 
             # Calculate averages from items
             dispatch_prices = [i["dispatchPrice"] for i in items if i.get("dispatchPrice")]
@@ -327,8 +350,14 @@ class MarketIntelligenceClient:
             elif avg_listing:
                 suggested_price = avg_listing
             else:
-                logger.warning(f"MI API no usable prices: {request_id}")
-                return None
+                logger.warning(f"MI API no usable prices: {request_id}, items={items}")
+                return MIPriceQuote(
+                    suggested_price=0,
+                    source="CD_MARKET_INTELLIGENCE",
+                    error=f"CD MI API returned {len(items)} items but no dispatch or listing prices",
+                    request_id=request_id,
+                    response_raw=data,
+                )
 
             low_price = min(dispatch_prices) if dispatch_prices else None
             high_price = max(listing_prices) if listing_prices else None
@@ -351,7 +380,13 @@ class MarketIntelligenceClient:
 
         except (KeyError, TypeError, ValueError) as e:
             logger.error(f"MI API parse error: {request_id}, {e}, data={data}")
-            return None
+            return MIPriceQuote(
+                suggested_price=0,
+                source="CD_MARKET_INTELLIGENCE",
+                error=f"Failed to parse CD MI response: {type(e).__name__}: {e}",
+                request_id=request_id,
+                response_raw=data,
+            )
 
     def close(self):
         """Close the HTTP client."""
@@ -469,16 +504,18 @@ def create_authenticated_mi_client() -> MarketIntelligenceClient:
 
     Gets a fresh token from the CDClient's OAuth2 flow using the same
     credentials stored in the credential store.
+
+    Raises Exception if token acquisition fails so the caller can surface it.
     """
-    try:
-        from api.cd_client import CDClient
+    from api.cd_client import CDClient
 
-        cd = CDClient()
-        if cd.client_id and cd.client_secret:
-            token = cd._get_bearer_token()
-            return MarketIntelligenceClient(bearer_token=token)
-    except Exception as e:
-        logger.warning(f"Failed to get OAuth2 token for MI client: {e}")
+    cd = CDClient()
+    if not cd.client_id or not cd.client_secret:
+        raise ValueError(
+            "CD API credentials not configured. Go to Settings > Central Dispatch and enter client_id/client_secret. "
+            "Ensure 'market_intelligence_api' scope is included."
+        )
 
-    # Fallback: no auth (will likely fail with 401)
-    return MarketIntelligenceClient()
+    token = cd._get_bearer_token()
+    logger.info("MI client created with OAuth2 Bearer token (token=%s...)", token[:20] if token else "None")
+    return MarketIntelligenceClient(bearer_token=token)

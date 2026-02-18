@@ -306,8 +306,13 @@ class CDClient:
                     # Try to find existing by reference ID
                     return self._find_existing_listing(ref_id)
 
-                # Other error
-                last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                # Other error — capture full response for debugging
+                body_text = response.text[:1000]
+                logger.error(
+                    "CD API create_listing failed: HTTP %d, url=%s/listings, body=%s",
+                    response.status_code, self.base_url, body_text,
+                )
+                last_error = f"HTTP {response.status_code}: {body_text}"
                 retries += 1
 
             except requests.RequestException as e:

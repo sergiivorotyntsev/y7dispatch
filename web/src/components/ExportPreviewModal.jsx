@@ -113,9 +113,9 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
         if (result.exported_count > 0) {
           onClose()
         } else {
-          // Export attempted but failed — show error in modal
+          // Export attempted but failed — show error details in modal
           const errors = result.previews?.flatMap(p => p.validation_errors || []) || []
-          setExportError(result.message + (errors.length ? ': ' + errors.join('; ') : ''))
+          setExportError({ message: result.message, errors })
         }
       }
     } catch (err) {
@@ -465,7 +465,20 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
         {exportError && (
           <div className="mx-6 mb-2 p-3 rounded-lg border bg-red-50 border-red-200">
             <p className="font-medium text-red-800 text-sm mb-1">Export Failed</p>
-            <p className="text-sm text-red-700">{exportError}</p>
+            {typeof exportError === 'object' ? (
+              <>
+                <p className="text-sm text-red-700 mb-2">{exportError.message}</p>
+                {exportError.errors?.length > 0 && (
+                  <div className="space-y-1">
+                    {exportError.errors.map((err, i) => (
+                      <pre key={i} className="text-xs text-red-600 bg-red-100 p-2 rounded whitespace-pre-wrap break-all font-mono">{err}</pre>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-red-700">{exportError}</p>
+            )}
           </div>
         )}
 

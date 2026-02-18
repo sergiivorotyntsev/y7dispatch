@@ -169,7 +169,10 @@ function PricingPaymentSection({
         {/* CD Price Error */}
         {cdPriceError && (
           <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-            <p className="text-sm text-yellow-800">{cdPriceError}</p>
+            <p className="text-sm font-medium text-yellow-800 mb-1">CD Pricing Error</p>
+            <pre className="text-xs text-yellow-700 whitespace-pre-wrap break-all font-mono">
+              {typeof cdPriceError === 'object' ? JSON.stringify(cdPriceError, null, 2) : cdPriceError}
+            </pre>
           </div>
         )}
       </div>

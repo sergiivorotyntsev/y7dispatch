@@ -898,9 +898,20 @@ def send_to_cd(
     headers = {
         "Content-Type": "application/vnd.coxauto.v2+json",
         "Accept": "application/vnd.coxauto.v2+json",
-        # Note: Real implementation would include auth
-        # "Authorization": f"Bearer {token}"
     }
+
+    # Add OAuth2 Bearer token if credentials are configured
+    try:
+        from api.cd_client import CDClient
+        cd = CDClient()
+        if cd.client_id and cd.client_secret:
+            token = cd._get_bearer_token()
+            headers["Authorization"] = f"Bearer {token}"
+            logger.info("send_to_cd: Using OAuth2 Bearer token (token=%s...)", token[:20])
+        else:
+            logger.warning("send_to_cd: No CD API credentials configured — request will likely fail with 401")
+    except Exception as e:
+        logger.error("send_to_cd: Failed to get OAuth2 token: %s", e)
 
     try:
         if cd_listing_id and etag:
@@ -1007,12 +1018,27 @@ def send_to_cd(
             )
 
         else:
-            logger.error(f"CD API error {response.status_code}: {response.text[:500]}")
+            body_text = response.text[:2000]
+            logger.error(
+                "CD API error: method=%s url=%s status=%d body=%s",
+                "PUT" if (cd_listing_id and etag) else "POST",
+                endpoint,
+                response.status_code,
+                body_text,
+            )
+            # Try to parse JSON error for structured display
+            try:
+                error_json = response.json()
+            except Exception:
+                error_json = None
+
             return (
                 False,
                 {
                     "status_code": response.status_code,
-                    "error": response.text,
+                    "error": body_text,
+                    "error_json": error_json,
+                    "cd_url": endpoint,
                 },
                 None,
                 None,
@@ -1406,6 +1432,9 @@ async def export_to_cd(
                 ExtractionRunRepository.update(run_id, status="exported")
             else:
                 error_msg = response.get("error", "Unknown error")
+                cd_status = response.get("status_code", "?")
+                cd_url = response.get("cd_url", "")
+
                 if response.get("error_code") == "ETAG_MISMATCH":
                     error_msg = "Listing was modified externally. Please refresh and retry."
                 elif response.get("error_code") == "RATE_LIMITED":
@@ -1419,6 +1448,13 @@ async def export_to_cd(
                 )
                 failed_count += 1
 
+                # Surface the CD error in the preview so frontend can show it
+                cd_error_detail = f"CD API HTTP {cd_status}: {error_msg[:500]}"
+                if cd_url:
+                    cd_error_detail += f" (URL: {cd_url})"
+                preview.validation_errors.append(cd_error_detail)
+                preview.is_valid = False
+
       except Exception as e:
         logger.error("Export failed for run_id=%d: %s", run_id, str(e), exc_info=True)
         previews.append(
@@ -1426,7 +1462,7 @@ async def export_to_cd(
                 dispatch_id="",
                 run_id=run_id,
                 payload={},
-                validation_errors=[f"Export error: {str(e)}"],
+                validation_errors=[f"Export error ({type(e).__name__}): {str(e)}"],
                 is_valid=False,
             )
         )
