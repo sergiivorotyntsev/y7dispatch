@@ -286,26 +286,39 @@ Review UI State (React)
 | `tests/e2e/test_pricing_alerting.py` | ~10 | PricingEngine + alerts |
 | `tests/test_cd_payload.py` | 59 | CD V2 Pydantic model validation |
 | `tests/test_api_contracts.py` | ~20 | API endpoint contracts |
+| `tests/e2e/test_warehouse_delivery.py` | 23 | Auction directory, warehouse schema, delivery integration |
+| `tests/e2e/test_cd_payload_v2.py` | 26 | Marketplaces, tags, terms template, payment validation |
 
-Total: ~170 tests (692 pass as of Day 10)
+Total: ~220 tests (807 pass as of Day 12)
 
 ---
 
-## Upcoming Work
+**Day 11** — Warehouse Delivery Integration + Auction Directory
+| Commit | Description |
+|--------|-------------|
+| `8f9affd` | Auction directory (95+ locations), warehouse delivery integration, phone auto-fill |
 
-### Day 11 (Planned): Warehouse Management + Copart Directory
-- Verify/enhance warehouse CRUD system
-- Create Copart/IAA phone directory for auto-fill
-- Wire warehouse selection to delivery section
-- Transport special instructions auto-fill
+Key changes in Day 11:
+- **`services/auction_directory.py`**: 95+ auction locations (50+ Copart, 25+ IAA, 20+ Manheim) with normalized name lookup
+- **`api/routes/auction_directory.py`**: `GET /api/auction-directory/lookup` endpoint for phone/address lookup
+- **Warehouse schema enhanced**: Added `location_type` (BUSINESS/DEALERSHIP/RESIDENCE/AUCTION) and `contact_phone` to models, CRUD, and export payload
+- **Export payload**: `location_type` now pulled from warehouse data (was hardcoded "BUSINESS")
+- **PickupSection.jsx**: "Lookup" button auto-fills phone + address from auction directory
+- **DeliverySection.jsx**: Shows `contact_phone` and `location_type` in warehouse readout
+- **WarehousesTab.jsx**: Form includes contact_phone and location_type fields
+- **23 tests** across 4 classes (TestAuctionDirectory, TestWarehouseSchema, TestDeliveryIntegration, TestPickupPhoneAutoFill)
 
-### Day 12 (Planned): CD API V2 Payload Builder Refinement + Sheets Sync
-- Finalize CD payload builder (partially done in Day 10 export fix)
-- Update Google Sheets export columns to match CD_FIELD_CONFIG
-- Export Preview Modal enhancements
-- E2E export tests
+**Day 12** — CD API V2 Payload Builder Enhancements
+| Commit | Description |
+|--------|-------------|
+| `11c7efc` | CD V2 payload: marketplaces, tags, default terms template, ExportPreview update |
 
-See `docs/WEEK3_DAYS10-12_PROMPTS.md` for detailed specifications.
+Key changes in Day 12:
+- **Marketplaces array**: `marketplaces: [{marketplaceId: 10000, searchable: true}]` added to CD payload
+- **Tags array**: Automation metadata for CD dashboard filtering: `automationVersion`, `sourceSystem`, `auctionSource`, `gatePass`, `warehouseId`
+- **Default loadSpecificTerms**: Template auto-filled when no operator override: `"TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY). Pick-up location - {pickup_name}, Delivery - {warehouse_name}"`
+- **ExportPreviewModal**: Shows Marketplaces and Tags sections in table view
+- **26 tests** across 5 classes (TestMarketplacesArray, TestTagsArray, TestLoadSpecificTermsTemplate, TestPaymentMethodValidation, TestFullV2PayloadStructure)
 
 ---
 
@@ -316,8 +329,10 @@ y7dispatch/
 ├── api/
 │   ├── main.py                    # FastAPI app, router registration
 │   ├── routes/
-│   │   ├── exports.py             # CD export + preview endpoints (2415 lines)
+│   │   ├── exports.py             # CD export + preview endpoints
 │   │   ├── listings.py            # Load ID generation endpoint
+│   │   ├── auction_directory.py   # Auction location lookup API (Day 11)
+│   │   ├── warehouses.py          # Warehouse CRUD with location_type/contact_phone
 │   │   ├── documents.py           # Document upload/management
 │   │   ├── settings.py            # Settings + warehouse CRUD
 │   │   └── metrics.py             # Extraction/pipeline metrics
@@ -328,6 +343,7 @@ y7dispatch/
 │   ├── haiku_extractor.py         # Claude Haiku extraction (primary)
 │   ├── orchestrator.py            # Pipeline orchestration
 │   ├── cd_exporter.py             # Export business logic
+│   ├── auction_directory.py       # Auction phone/address directory (Day 11)
 │   └── warehouse.py               # Warehouse constants
 ├── extractors/
 │   ├── block_extractor.py         # Layout-aware block extraction
@@ -353,4 +369,4 @@ y7dispatch/
 
 ---
 
-*Generated: 2026-02-16 | Branch: claude/create-claude-md-OomNZ*
+*Updated: 2026-02-18 | Branch: claude/create-claude-md-OomNZ*
