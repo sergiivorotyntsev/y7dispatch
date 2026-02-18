@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import api from '../../api'
+
 /**
  * Section 6: Pricing and Payment
  * Market intel pricing, final price, COD, balance, payment methods/terms.
@@ -10,10 +13,37 @@ function PricingPaymentSection({
   balancePaymentMethod, setBalancePaymentMethod,
   balancePaymentTime, setBalancePaymentTime,
   balanceTermsBeginOn, setBalanceTermsBeginOn,
+  runId, warehouseId, hasPickupLocation, hasDeliveryLocation,
 }) {
   const codNum = parseFloat(codAmount) || 0
   const totalNum = parseFloat(finalPrice) || parseFloat(pricing?.suggested_price) || 0
   const balanceAmount = Math.max(0, totalNum - codNum)
+
+  // CD Market Intelligence state
+  const [cdPriceData, setCdPriceData] = useState(null)
+  const [cdPriceError, setCdPriceError] = useState(null)
+  const [loadingCDPrice, setLoadingCDPrice] = useState(false)
+
+  const canFetchCDPrice = runId && (hasPickupLocation !== false) && (hasDeliveryLocation !== false || warehouseId)
+
+  async function handleFetchCDPrice() {
+    if (!runId) return
+    setLoadingCDPrice(true)
+    setCdPriceError(null)
+    setCdPriceData(null)
+    try {
+      const data = await api.getCDMarketPrice(runId, warehouseId)
+      if (data.error) {
+        setCdPriceError(data.error)
+      } else {
+        setCdPriceData(data)
+      }
+    } catch (err) {
+      setCdPriceError(err.message || 'Failed to fetch CD pricing')
+    } finally {
+      setLoadingCDPrice(false)
+    }
+  }
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
@@ -79,6 +109,70 @@ function PricingPaymentSection({
           )}
         </>
       )}
+
+      {/* CD Market Intelligence — Get Price button */}
+      <div className="mb-4">
+        <button
+          onClick={handleFetchCDPrice}
+          disabled={loadingCDPrice || !canFetchCDPrice}
+          className="btn btn-secondary text-sm w-full"
+          title={!canFetchCDPrice ? 'Set pickup location and warehouse first' : ''}
+        >
+          {loadingCDPrice ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></span>
+              Fetching CD Pricing...
+            </span>
+          ) : (
+            'Get Price from Central Dispatch'
+          )}
+        </button>
+        {!canFetchCDPrice && !loadingCDPrice && (
+          <p className="text-xs text-gray-400 mt-1">Requires pickup location and delivery warehouse</p>
+        )}
+
+        {/* CD Price Result */}
+        {cdPriceData && (
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
+            <div className="flex justify-between items-start mb-2">
+              <h4 className="text-sm font-medium text-green-800">CD Market Intelligence</h4>
+              <span className="text-xs text-green-600">{cdPriceData.data_points} similar loads</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <span className="text-xs text-green-700">Predicted Price</span>
+                <div className="text-lg font-bold text-green-900">${cdPriceData.predicted_price?.toFixed(0)}</div>
+              </div>
+              {cdPriceData.price_range && (
+                <div>
+                  <span className="text-xs text-green-700">Range</span>
+                  <div className="text-sm font-medium text-green-800">
+                    ${cdPriceData.price_range.low?.toFixed(0)} - ${cdPriceData.price_range.high?.toFixed(0)}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-4 text-xs text-green-700 mb-2">
+              {cdPriceData.price_per_mile && <span>$/mi: {cdPriceData.price_per_mile.toFixed(2)}</span>}
+              {cdPriceData.distance_miles && <span>Distance: {Math.round(cdPriceData.distance_miles)} mi</span>}
+              {cdPriceData.avg_dispatch && <span>Avg Dispatch: ${cdPriceData.avg_dispatch.toFixed(0)}</span>}
+            </div>
+            <button
+              onClick={() => setFinalPrice(String(cdPriceData.predicted_price?.toFixed(0)))}
+              className="btn btn-primary text-xs py-1 px-3"
+            >
+              Use This Price
+            </button>
+          </div>
+        )}
+
+        {/* CD Price Error */}
+        {cdPriceError && (
+          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <p className="text-sm text-yellow-800">{cdPriceError}</p>
+          </div>
+        )}
+      </div>
 
       {/* Amount to Pay Carrier + Urgency */}
       <div className="grid grid-cols-2 gap-4 mb-4">

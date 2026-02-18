@@ -95,6 +95,13 @@ class MIPriceQuote:
     source: str = "MARKET_INTELLIGENCE"
     request_id: Optional[str] = None
     response_raw: Optional[dict] = None
+    avg_dispatch: Optional[float] = None
+    avg_listing: Optional[float] = None
+    spread: Optional[float] = None
+    distance_miles: Optional[float] = None
+    data_points: int = 0
+    raw_items: Optional[list] = None
+    error: Optional[str] = None
 
 
 @dataclass
@@ -120,8 +127,9 @@ class MarketIntelligenceClient:
         )
     """
 
-    def __init__(self, config: MIClientConfig = None):
+    def __init__(self, config: MIClientConfig = None, bearer_token: Optional[str] = None):
         self.config = config or MIClientConfig()
+        self._bearer_token = bearer_token
         self._client = None
 
     @property
@@ -140,8 +148,9 @@ class MarketIntelligenceClient:
             "Content-Type": "application/vnd.coxauto.v1+json",
             "Accept": "application/vnd.coxauto.v1+json",
         }
-        if self.config.api_key:
-            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        token = self._bearer_token or self.config.api_key
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         return headers
 
     def _compute_payload_hash(self, payload: dict) -> str:
@@ -222,6 +231,15 @@ class MarketIntelligenceClient:
                 data = response.json()
                 return self._parse_response(data, request_id)
 
+            elif response.status_code == 403:
+                logger.warning(f"MI API 403 (no subscription): {request_id}")
+                return MIPriceQuote(
+                    suggested_price=0,
+                    source="CD_MARKET_INTELLIGENCE",
+                    error="Market Intelligence API not available — requires Price Check Plus subscription",
+                    request_id=request_id,
+                )
+
             elif response.status_code == 429:
                 # Rate limited - let retry handle it
                 logger.warning(f"MI API rate limited: {request_id}")
@@ -247,34 +265,88 @@ class MarketIntelligenceClient:
             return None
 
     def _parse_response(self, data: dict, request_id: str) -> Optional[MIPriceQuote]:
-        """Parse MI API response into MIPriceQuote."""
+        """Parse MI API response into MIPriceQuote.
+
+        Handles the CD Price Check Plus response format:
+        {
+            "items": [
+                {
+                    "listingPrice": 750.00, "dispatchPrice": 700.00,
+                    "listingDistance": 882, "dispatchDistance": 882, ...
+                }
+            ],
+            "count": 5
+        }
+
+        Also handles legacy format: {"prices": [{"price": 450}]}
+        """
         try:
-            # Response format (expected):
-            # {
-            #   "prices": [
-            #     {"price": 450.00, "lowPrice": 400.00, "highPrice": 500.00}
-            #   ]
-            # }
-            prices = data.get("prices", [])
-            if not prices:
-                logger.warning(f"MI API returned no prices: {request_id}")
+            # CD Price Check Plus format: items array
+            items = data.get("items", [])
+
+            # Legacy fallback: prices array
+            if not items:
+                prices = data.get("prices", [])
+                if prices:
+                    price_data = prices[0]
+                    suggested = price_data.get("price") or price_data.get("suggestedPrice")
+                    if suggested is not None:
+                        return MIPriceQuote(
+                            suggested_price=float(suggested),
+                            low_price=price_data.get("lowPrice"),
+                            high_price=price_data.get("highPrice"),
+                            confidence=price_data.get("confidence", 0.8),
+                            source="CD_MARKET_INTELLIGENCE",
+                            request_id=request_id,
+                            response_raw=data,
+                            data_points=len(prices),
+                            raw_items=prices,
+                        )
+
+            if not items:
+                logger.warning(f"MI API returned no items: {request_id}")
                 return None
 
-            price_data = prices[0]
-            suggested = price_data.get("price") or price_data.get("suggestedPrice")
+            # Calculate averages from items
+            dispatch_prices = [i["dispatchPrice"] for i in items if i.get("dispatchPrice")]
+            listing_prices = [i["listingPrice"] for i in items if i.get("listingPrice")]
+            distances = [i.get("listingDistance") or i.get("dispatchDistance") for i in items
+                         if i.get("listingDistance") or i.get("dispatchDistance")]
 
-            if suggested is None:
-                logger.warning(f"MI API price missing: {request_id}, data={price_data}")
+            avg_dispatch = sum(dispatch_prices) / len(dispatch_prices) if dispatch_prices else None
+            avg_listing = sum(listing_prices) / len(listing_prices) if listing_prices else None
+            avg_distance = sum(distances) / len(distances) if distances else None
+
+            spread = (avg_listing - avg_dispatch) if avg_listing and avg_dispatch else None
+
+            # Suggested price = midpoint of dispatch and listing averages
+            if avg_dispatch and avg_listing:
+                suggested_price = avg_dispatch + (spread * 0.5)
+            elif avg_dispatch:
+                suggested_price = avg_dispatch
+            elif avg_listing:
+                suggested_price = avg_listing
+            else:
+                logger.warning(f"MI API no usable prices: {request_id}")
                 return None
+
+            low_price = min(dispatch_prices) if dispatch_prices else None
+            high_price = max(listing_prices) if listing_prices else None
 
             return MIPriceQuote(
-                suggested_price=float(suggested),
-                low_price=price_data.get("lowPrice"),
-                high_price=price_data.get("highPrice"),
-                confidence=price_data.get("confidence", 0.8),
-                source="MARKET_INTELLIGENCE",
+                suggested_price=round(suggested_price, 2),
+                low_price=low_price,
+                high_price=high_price,
+                confidence=min(1.0, len(items) / 5.0),
+                source="CD_MARKET_INTELLIGENCE",
                 request_id=request_id,
                 response_raw=data,
+                avg_dispatch=round(avg_dispatch, 2) if avg_dispatch else None,
+                avg_listing=round(avg_listing, 2) if avg_listing else None,
+                spread=round(spread, 2) if spread else None,
+                distance_miles=round(avg_distance, 1) if avg_distance else None,
+                data_points=len(items),
+                raw_items=items,
             )
 
         except (KeyError, TypeError, ValueError) as e:
@@ -390,3 +462,23 @@ def get_pricing_service() -> PricingService:
     if _pricing_service is None:
         _pricing_service = PricingService()
     return _pricing_service
+
+
+def create_authenticated_mi_client() -> MarketIntelligenceClient:
+    """Create an MI client with OAuth2 Bearer token from credential store.
+
+    Gets a fresh token from the CDClient's OAuth2 flow using the same
+    credentials stored in the credential store.
+    """
+    try:
+        from api.cd_client import CDClient
+
+        cd = CDClient()
+        if cd.client_id and cd.client_secret:
+            token = cd._get_bearer_token()
+            return MarketIntelligenceClient(bearer_token=token)
+    except Exception as e:
+        logger.warning(f"Failed to get OAuth2 token for MI client: {e}")
+
+    # Fallback: no auth (will likely fail with 401)
+    return MarketIntelligenceClient()

@@ -400,6 +400,10 @@ export const api = {
   // Market Intelligence Pricing
   getPricingRecommendation: (runId) => request(`/exports/pricing/${runId}`),
   getFullPricing: (runId, urgency = 'STANDARD') => request(`/pricing/recommend/${runId}?urgency=${urgency}`),
+  getCDMarketPrice: (runId, warehouseId) => {
+    const qs = warehouseId ? `?warehouse_id=${warehouseId}` : ''
+    return request(`/pricing/cd-market-intelligence/${runId}${qs}`)
+  },
 
   // Load ID Generation
   generateLoadId: (make, model) => request(`/listings/generate-load-id?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`),

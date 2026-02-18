@@ -364,10 +364,12 @@ def init_extended_schema():
                 run_id INTEGER NOT NULL,
                 dispatch_id TEXT,
                 cd_listing_id TEXT,
+                target TEXT NOT NULL DEFAULT 'central_dispatch',
                 status TEXT DEFAULT 'pending',
                 payload_json TEXT,
                 response_json TEXT,
                 error_json TEXT,
+                error_message TEXT,
                 validation_errors_json TEXT,
                 retry_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2319,6 +2321,18 @@ def _run_migrations():
         # Migration: Add error_message column to extraction_runs
         try:
             conn.execute("ALTER TABLE extraction_runs ADD COLUMN error_message TEXT")
+        except Exception:
+            pass  # Column already exists
+
+        # Migration: Add error_message column to export_jobs
+        try:
+            conn.execute("ALTER TABLE export_jobs ADD COLUMN error_message TEXT")
+        except Exception:
+            pass  # Column already exists
+
+        # Migration: Add target column to export_jobs
+        try:
+            conn.execute("ALTER TABLE export_jobs ADD COLUMN target TEXT NOT NULL DEFAULT 'central_dispatch'")
         except Exception:
             pass  # Column already exists
 

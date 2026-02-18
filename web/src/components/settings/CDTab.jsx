@@ -129,7 +129,7 @@ export default function CDTab() {
             placeholder="marketplace dispatchdocument_api"
             className="form-input w-full"
           />
-          <p className="text-xs text-gray-500 mt-1">Space-separated OAuth2 scopes</p>
+          <p className="text-xs text-gray-500 mt-1">Space-separated OAuth2 scopes. Add <code className="bg-gray-100 px-1 rounded">market_intelligence_api</code> for CD Price Check Plus (paid add-on).</p>
         </div>
         <div>
           <label className="form-label">Environment</label>

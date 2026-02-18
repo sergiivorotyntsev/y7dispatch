@@ -457,3 +457,187 @@ def get_pricing_config() -> dict:
             "high_price_warning": config.high_price_warning_threshold,
         },
     }
+
+
+# =============================================================================
+# CD MARKET INTELLIGENCE — PRICE CHECK PLUS
+# =============================================================================
+
+
+class CDMarketPriceResponse(BaseModel):
+    """Response from CD Market Intelligence Price Check Plus."""
+
+    run_id: int
+    predicted_price: Optional[float] = None
+    price_range: Optional[dict] = None  # {"low": float, "high": float}
+    price_per_mile: Optional[float] = None
+    avg_dispatch: Optional[float] = None
+    avg_listing: Optional[float] = None
+    spread: Optional[float] = None
+    distance_miles: Optional[float] = None
+    data_points: int = 0
+    source: str = "cd_market_intelligence"
+    pickup_location: Optional[str] = None
+    delivery_location: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.get("/cd-market-intelligence/{run_id}", response_model=CDMarketPriceResponse)
+def get_cd_market_price(run_id: int, warehouse_id: Optional[int] = None) -> CDMarketPriceResponse:
+    """
+    Get pricing from CD Market Intelligence (Price Check Plus).
+
+    Reads extraction data for pickup location and vehicle info,
+    uses warehouse for delivery location, and calls the CD MI API
+    with OAuth2 Bearer token.
+    """
+    import json
+
+    from api.database import get_connection
+    from api.mi_client import MIStop, MIVehicle, create_authenticated_mi_client
+    from api.models import ExtractionRunRepository, ReviewItemRepository
+    from api.routes.warehouses import init_warehouses_schema
+
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Extraction run not found")
+
+    # Collect field values
+    items = ReviewItemRepository.get_by_run(run_id)
+    data = {}
+    for item in items:
+        value = item.corrected_value if item.corrected_value else item.predicted_value
+        data[item.source_key] = value
+
+    if run.outputs_json:
+        outputs = run.outputs_json if isinstance(run.outputs_json, dict) else json.loads(run.outputs_json)
+        for key, value in outputs.items():
+            if key not in data:
+                data[key] = value
+
+    # Pickup location from extraction
+    pickup_city = data.get("pickup_city")
+    pickup_state = data.get("pickup_state")
+    pickup_zip = data.get("pickup_zip")
+
+    if not pickup_city or not pickup_state:
+        return CDMarketPriceResponse(
+            run_id=run_id,
+            error="Missing pickup location — city and state required",
+        )
+
+    # Delivery location from warehouse
+    delivery_city = None
+    delivery_state = None
+    delivery_zip = None
+
+    wh_id = warehouse_id or data.get("warehouse_id")
+    if wh_id:
+        init_warehouses_schema()
+        with get_connection() as conn:
+            wh_row = conn.execute(
+                "SELECT * FROM warehouses WHERE id = ?", (wh_id,)
+            ).fetchone()
+
+        if wh_row:
+            delivery_city = wh_row["city"]
+            delivery_state = wh_row["state"]
+            delivery_zip = wh_row["zip_code"]
+
+    # Fallback to extracted delivery
+    if not delivery_city:
+        delivery_city = data.get("delivery_city") or data.get("dropoff_city")
+        delivery_state = data.get("delivery_state") or data.get("dropoff_state")
+        delivery_zip = data.get("delivery_zip") or data.get("dropoff_zip")
+
+    if not delivery_city or not delivery_state:
+        return CDMarketPriceResponse(
+            run_id=run_id,
+            error="Missing delivery location — select a warehouse first",
+        )
+
+    pickup_location = f"{pickup_city}, {pickup_state}"
+    delivery_location = f"{delivery_city}, {delivery_state}"
+
+    # Build MI request
+    pickup_stop = MIStop(
+        stop_number=1,
+        city=pickup_city,
+        state=pickup_state,
+        postal_code=pickup_zip,
+    )
+    dropoff_stop = MIStop(
+        stop_number=2,
+        city=delivery_city,
+        state=delivery_state,
+        postal_code=delivery_zip,
+    )
+
+    vehicle_type = data.get("vehicle_type", "SEDAN")
+    is_inop = str(data.get("vehicle_is_inoperable", "false")).lower() in ("true", "yes", "1")
+
+    vehicle = MIVehicle(
+        vin=data.get("vehicle_vin"),
+        year=int(data["vehicle_year"]) if data.get("vehicle_year") else None,
+        make=data.get("vehicle_make"),
+        model=data.get("vehicle_model"),
+        vehicle_type=vehicle_type,
+        is_operable=not is_inop,
+    )
+
+    # Call CD MI API with OAuth2 token
+    try:
+        mi_client = create_authenticated_mi_client()
+        quote = mi_client.get_list_prices(
+            stops=[pickup_stop, dropoff_stop],
+            vehicles=[vehicle],
+            is_enclosed=False,
+            limit=5,
+        )
+    except Exception as e:
+        logger.error(f"CD MI API call failed for run {run_id}: {e}", exc_info=True)
+        return CDMarketPriceResponse(
+            run_id=run_id,
+            error=f"CD API error: {str(e)}",
+            pickup_location=pickup_location,
+            delivery_location=delivery_location,
+        )
+
+    if not quote:
+        return CDMarketPriceResponse(
+            run_id=run_id,
+            error="No pricing data returned from CD Market Intelligence",
+            pickup_location=pickup_location,
+            delivery_location=delivery_location,
+        )
+
+    # Handle 403 / subscription error
+    if quote.error:
+        return CDMarketPriceResponse(
+            run_id=run_id,
+            error=quote.error,
+            pickup_location=pickup_location,
+            delivery_location=delivery_location,
+        )
+
+    # Calculate price per mile
+    price_per_mile = None
+    if quote.distance_miles and quote.distance_miles > 0 and quote.suggested_price:
+        price_per_mile = round(quote.suggested_price / quote.distance_miles, 2)
+
+    return CDMarketPriceResponse(
+        run_id=run_id,
+        predicted_price=quote.suggested_price,
+        price_range={"low": quote.low_price, "high": quote.high_price}
+        if quote.low_price is not None
+        else None,
+        price_per_mile=price_per_mile,
+        avg_dispatch=quote.avg_dispatch,
+        avg_listing=quote.avg_listing,
+        spread=quote.spread,
+        distance_miles=quote.distance_miles,
+        data_points=quote.data_points,
+        source="cd_market_intelligence",
+        pickup_location=pickup_location,
+        delivery_location=delivery_location,
+    )

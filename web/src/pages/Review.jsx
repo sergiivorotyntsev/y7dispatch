@@ -715,6 +715,8 @@ function Review() {
               setBalancePaymentTime={setBalancePaymentTime}
               balanceTermsBeginOn={balanceTermsBeginOn}
               setBalanceTermsBeginOn={setBalanceTermsBeginOn}
+              runId={runId}
+              warehouseId={selectedWarehouse ? parseInt(selectedWarehouse) : null}
             />
 
             {/* Section 7: Additional Info */}
