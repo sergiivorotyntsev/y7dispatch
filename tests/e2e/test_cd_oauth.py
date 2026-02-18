@@ -41,7 +41,7 @@ class TestOAuth2TokenAcquisition:
             client = CDClient(
                 client_id="test-client-id",
                 client_secret="test-client-secret",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
             )
             token = client._acquire_token()
 
@@ -68,7 +68,7 @@ class TestOAuth2TokenAcquisition:
             client = CDClient(
                 client_id="cid",
                 client_secret="csec",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
                 scopes="marketplace dispatchdocument_api",
             )
             client._acquire_token()
@@ -88,7 +88,7 @@ class TestOAuth2TokenAcquisition:
             client = CDClient(
                 client_id="bad-id",
                 client_secret="bad-secret",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
             )
             with pytest.raises(Exception, match="OAuth2 token acquisition failed"):
                 client._acquire_token()
@@ -118,7 +118,7 @@ class TestTokenCaching:
             client = CDClient(
                 client_id="cid",
                 client_secret="csec",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
             )
             token1 = client._get_bearer_token()
             token2 = client._get_bearer_token()
@@ -143,7 +143,7 @@ class TestTokenCaching:
             client = CDClient(
                 client_id="cid",
                 client_secret="csec",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
             )
             # First acquisition
             client._get_bearer_token()
@@ -171,7 +171,7 @@ class TestTokenCaching:
             client = CDClient(
                 client_id="cid",
                 client_secret="csec",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
             )
             before = time.time()
             client._acquire_token()
@@ -207,7 +207,7 @@ class TestCDClientOAuth2Headers:
             client = CDClient(
                 client_id="cid",
                 client_secret="csec",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
             )
             headers = client._get_headers()
             assert headers["Authorization"] == "Bearer oauth-bearer-token"
@@ -238,7 +238,7 @@ class TestCDClientOAuth2Headers:
             client = CDClient(
                 client_id="cid",
                 client_secret="csec",
-                token_url="https://identity.centraldispatch.com/oauth2/token",
+                token_url="https://id.centraldispatch.com/connect/token",
                 base_url="https://api.centraldispatch.com/v2",
             )
             result = client.create_listing({"partnerReferenceId": "test"})
@@ -429,7 +429,7 @@ class TestEnvironmentURLs:
 
         urls = get_cd_urls("test")
         assert "sandbox" in urls["api_base_url"]
-        assert "identity" in urls["token_url"] or "sandbox" in urls["token_url"]
+        assert "staging" in urls["token_url"]
 
     def test_production_environment_urls(self):
         """'production' environment maps to production URLs."""

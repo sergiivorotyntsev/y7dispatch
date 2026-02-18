@@ -47,12 +47,12 @@ def get_cd_urls(environment: str) -> dict[str, str]:
     if environment == "production":
         return {
             "api_base_url": "https://api.centraldispatch.com/v2",
-            "token_url": "https://identity.centraldispatch.com/oauth2/token",
+            "token_url": "https://id.centraldispatch.com/connect/token",
         }
     # Default to sandbox/test
     return {
         "api_base_url": "https://api.sandbox.centraldispatch.com/v2",
-        "token_url": "https://identity.sandbox.centraldispatch.com/oauth2/token",
+        "token_url": "https://id.staging.centraldispatch.com/connect/token",
     }
 
 
