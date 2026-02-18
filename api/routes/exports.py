@@ -1297,6 +1297,7 @@ async def export_to_cd(
     skipped_count = 0
 
     for run_id in data.run_ids:
+      try:
         run = ExtractionRunRepository.get_by_id(run_id)
         if not run:
             previews.append(
@@ -1417,6 +1418,19 @@ async def export_to_cd(
                     error_message=error_msg,
                 )
                 failed_count += 1
+
+      except Exception as e:
+        logger.error("Export failed for run_id=%d: %s", run_id, str(e), exc_info=True)
+        previews.append(
+            CDPayloadPreview(
+                dispatch_id="",
+                run_id=run_id,
+                payload={},
+                validation_errors=[f"Export error: {str(e)}"],
+                is_valid=False,
+            )
+        )
+        failed_count += 1
 
     if data.dry_run:
         message = f"Dry run: {len(previews)} payloads generated. Set dry_run=false to export."

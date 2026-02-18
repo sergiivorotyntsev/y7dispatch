@@ -91,18 +91,19 @@ function VehicleSection({ fields, updateField, trailerType, setTrailerType, high
             <span className="text-gray-400 ml-1 font-normal">(CD auto-detects from VIN)</span>
           </label>
           <select
-            value={fields.vehicle_type?.corrected || 'CAR'}
+            value={fields.vehicle_type?.corrected || 'SEDAN'}
             onChange={(e) => updateField('vehicle_type', e.target.value)}
             className="form-select w-full text-sm"
           >
-            <option value="CAR">CAR</option>
+            <option value="SEDAN">Sedan</option>
             <option value="SUV">SUV</option>
-            <option value="TRUCK">TRUCK</option>
-            <option value="VAN">VAN</option>
-            <option value="MOTORCYCLE">MOTORCYCLE</option>
-            <option value="COUPE">COUPE</option>
-            <option value="CONVERTIBLE">CONVERTIBLE</option>
-            <option value="WAGON">WAGON</option>
+            <option value="COUPE">Coupe</option>
+            <option value="CONVERTIBLE">Convertible</option>
+            <option value="WAGON">Wagon</option>
+            <option value="TRUCK">Truck</option>
+            <option value="VAN">Van</option>
+            <option value="MOTORCYCLE">Motorcycle</option>
+            <option value="OTHER">Other</option>
           </select>
         </div>
 

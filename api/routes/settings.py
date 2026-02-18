@@ -165,7 +165,7 @@ async def get_settings_status():
         settings.get("clickup", {}).get("api_token") and settings.get("clickup", {}).get("list_id")
     )
 
-    cd_ok = bool(settings.get("cd", {}).get("username") and settings.get("cd", {}).get("password"))
+    cd_ok = bool(settings.get("cd", {}).get("client_id") and settings.get("cd", {}).get("client_secret"))
 
     email_ok = bool(
         settings.get("email", {}).get("email_address") and settings.get("email", {}).get("password")
@@ -212,9 +212,12 @@ async def get_all_settings():
         ),
         cd=CDSettings(
             enabled="cd" in settings.get("export_targets", []),
-            username=settings.get("cd", {}).get("username", ""),
-            password=mask_secret(settings.get("cd", {}).get("password", "")),
-            shipper_id=settings.get("cd", {}).get("shipper_id", ""),
+            client_id=settings.get("cd", {}).get("client_id", ""),
+            client_secret=mask_secret(settings.get("cd", {}).get("client_secret", "")),
+            marketplace_id=settings.get("cd", {}).get("marketplace_id", ""),
+            scopes=settings.get("cd", {}).get("scopes", "marketplace"),
+            environment=settings.get("cd", {}).get("environment", "test"),
+            shipper_username=settings.get("cd", {}).get("shipper_username", ""),
         ),
         email=EmailSettings(
             enabled=settings.get("enable_email_ingest", False),
@@ -303,6 +306,22 @@ async def update_clickup_settings(clickup: ClickUpSettings):
     save_settings(settings)
 
     return {"status": "ok"}
+
+
+@router.get("/cd")
+async def get_cd_settings():
+    """Get Central Dispatch settings (secrets masked)."""
+    settings = load_settings()
+    cd = settings.get("cd", {})
+    return CDSettings(
+        enabled="cd" in settings.get("export_targets", []),
+        client_id=cd.get("client_id", ""),
+        client_secret=mask_secret(cd.get("client_secret", "")),
+        marketplace_id=cd.get("marketplace_id", ""),
+        scopes=cd.get("scopes", "marketplace"),
+        environment=cd.get("environment", "test"),
+        shipper_username=cd.get("shipper_username", ""),
+    )
 
 
 @router.put("/cd")

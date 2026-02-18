@@ -24,8 +24,11 @@ class TrailerType(Enum):
 
 
 class VehicleType(Enum):
-    CAR = "CAR"
+    SEDAN = "SEDAN"
     SUV = "SUV"
+    COUPE = "COUPE"
+    CONVERTIBLE = "CONVERTIBLE"
+    WAGON = "WAGON"
     TRUCK = "TRUCK"
     VAN = "VAN"
     MOTORCYCLE = "MOTORCYCLE"

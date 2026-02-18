@@ -369,7 +369,7 @@ class BaseExtractor(ABC):
                 return VehicleType.SUV
         for keyword in car_keywords:
             if keyword in combined:
-                return VehicleType.CAR
+                return VehicleType.SEDAN
         for keyword in truck_keywords:
             if keyword in combined:
                 return VehicleType.TRUCK

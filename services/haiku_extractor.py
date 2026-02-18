@@ -142,7 +142,7 @@ Fields to extract:
 - vehicle_make: Manufacturer name
 - vehicle_model: Model name
 - vehicle_color: Color if mentioned, else null
-- vehicle_type: "CAR" | "SUV" | "TRUCK" | "VAN" | "MOTORCYCLE"
+- vehicle_type: "SEDAN" | "SUV" | "COUPE" | "CONVERTIBLE" | "WAGON" | "TRUCK" | "VAN" | "MOTORCYCLE" | "OTHER"
 - vehicle_lot: Lot/Stock number
 - vehicle_is_inoperable: true if vehicle is inoperable/non-running, false otherwise (default false)
 - pickup_name: Location name (e.g., "Copart Dallas")
@@ -190,7 +190,7 @@ Here are 3 verified correct extractions as examples:
 Example 1 (Copart):
 Document begins: "Sales Receipt/Bill of Sale Date: 12/31/25 ... MEMBER:535527 ... GEICO - HOME OFFICE ... BROADWAY MOTORING INC ... 12020 US HIGHWAY 301 SOUTH SOLD THROUGH COPART ... RIVERVIEW FL 33578 ... LOT# 95541835 ... JTDKAMFU6N3164401 ... 2022 TOYOTA PRIUS ..."
 Correct extraction:
-{{"auction_type":"COPART","vehicle_vin":"JTDKAMFU6N3164401","vehicle_year":2022,"vehicle_make":"TOYOTA","vehicle_model":"PRIUS","vehicle_color":"RED","vehicle_type":"CAR","vehicle_lot":"95541835","vehicle_is_inoperable":false,"pickup_name":"Copart Riverview","pickup_address":"12020 US HIGHWAY 301 SOUTH","pickup_city":"RIVERVIEW","pickup_state":"FL","pickup_zip":"33578","pickup_phone":null,"buyer_id":"535527","buyer_name":"BROADWAY MOTORING INC","seller_name":"GEICO - HOME OFFICE","sale_date":"2025-12-30","total_amount":7275,"manheim_release_date":null,"manheim_offsite":null,"offsite_pickup_address":null,"offsite_pickup_city":null,"offsite_pickup_state":null,"offsite_pickup_zip":null}}
+{{"auction_type":"COPART","vehicle_vin":"JTDKAMFU6N3164401","vehicle_year":2022,"vehicle_make":"TOYOTA","vehicle_model":"PRIUS","vehicle_color":"RED","vehicle_type":"SEDAN","vehicle_lot":"95541835","vehicle_is_inoperable":false,"pickup_name":"Copart Riverview","pickup_address":"12020 US HIGHWAY 301 SOUTH","pickup_city":"RIVERVIEW","pickup_state":"FL","pickup_zip":"33578","pickup_phone":null,"buyer_id":"535527","buyer_name":"BROADWAY MOTORING INC","seller_name":"GEICO - HOME OFFICE","sale_date":"2025-12-30","total_amount":7275,"manheim_release_date":null,"manheim_offsite":null,"offsite_pickup_address":null,"offsite_pickup_city":null,"offsite_pickup_state":null,"offsite_pickup_zip":null}}
 
 Example 2 (IAA):
 Document begins: "Buyer Receipt ... Insurance Auto Auctions Corp ... Sold At Branch 332 - East Bay ... Pick-Up Location: East Bay 2780 Willow Pass Road Bay Point California 94565 (925) 458-7610 ... Buyer # 593509 ... Broadway Motoring Inc ... WA1CCAFP4GA133227 2016 AUDI SQ5 ..."

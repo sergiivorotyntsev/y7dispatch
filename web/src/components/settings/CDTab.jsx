@@ -1,15 +1,50 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSettings } from './SettingsContext'
 import api from '../../api'
 
 export default function CDTab() {
   const { settings, showMessage, setSaving, testConnection, testResults } = useSettings()
   const [cd, setCd] = useState(settings.cd || {})
+  const [dbTestStatus, setDbTestStatus] = useState(null)
+  const [dbTestedAt, setDbTestedAt] = useState(null)
+  const [credLoaded, setCredLoaded] = useState(false)
+
+  // Load saved credential from credential store on mount
+  useEffect(() => {
+    api.getCredential('cd_api').then(data => {
+      if (data && data.config) {
+        setCd(prev => ({
+          ...prev,
+          client_id: data.config.client_id || prev.client_id || '',
+          client_secret: data.config.client_secret || prev.client_secret || '',
+          marketplace_id: data.config.marketplace_id || prev.marketplace_id || '',
+          scopes: data.config.scopes || prev.scopes || 'marketplace',
+          environment: data.config.environment || prev.environment || 'test',
+          shipper_username: data.config.shipper_username || prev.shipper_username || '',
+        }))
+        setDbTestStatus(data.last_test_status)
+        setDbTestedAt(data.last_tested_at)
+        setCredLoaded(true)
+      }
+    }).catch(() => {
+      // No saved credential — use settings.cd if available
+      setCredLoaded(true)
+    })
+  }, [])
 
   async function handleSave() {
     setSaving(true)
     try {
+      // Save to both settings and credential store
       await api.updateCDConfig(cd)
+      await api.saveCredential('cd_api', {
+        client_id: cd.client_id,
+        client_secret: cd.client_secret,
+        marketplace_id: cd.marketplace_id,
+        scopes: cd.scopes,
+        environment: cd.environment,
+        shipper_username: cd.shipper_username,
+      }, true)
       showMessage('success', 'Central Dispatch settings saved')
     } catch (err) {
       showMessage('error', err.message)
@@ -19,7 +54,13 @@ export default function CDTab() {
   }
 
   async function handleTest() {
-    await testConnection('cd', api.testCDConnection)
+    const result = await testConnection('cd', api.testCDConnection)
+    if (result && result.status === 'ok') {
+      setDbTestStatus('ok')
+      setDbTestedAt(new Date().toISOString())
+    } else {
+      setDbTestStatus('failed')
+    }
   }
 
   function updateField(field, value) {
@@ -27,12 +68,25 @@ export default function CDTab() {
   }
 
   const result = testResults.cd
+  const isConnected = dbTestStatus === 'ok' || dbTestStatus === 'success'
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium mb-1">Central Dispatch — OAuth2 Credentials</h3>
-        <p className="text-sm text-gray-500">Client credentials for the CD API (OAuth2 flow)</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-medium mb-1">Central Dispatch — OAuth2 Credentials</h3>
+          <p className="text-sm text-gray-500">Client credentials for the CD API (OAuth2 flow)</p>
+        </div>
+        {credLoaded && (
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+            isConnected ? 'bg-green-100 text-green-800' : dbTestStatus ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-500'
+          }`}>
+            <span className={`w-2.5 h-2.5 rounded-full ${
+              isConnected ? 'bg-green-500' : dbTestStatus ? 'bg-red-500' : 'bg-gray-400'
+            }`}></span>
+            {isConnected ? 'Connected' : dbTestStatus ? 'Failed' : 'Not tested'}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -108,6 +162,12 @@ export default function CDTab() {
 
       {result && <TestResultCard result={result} />}
 
+      {dbTestedAt && !result && (
+        <div className={`p-3 rounded-lg text-sm ${isConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          Last tested: {new Date(dbTestedAt).toLocaleString()} — {isConnected ? 'Connected' : 'Failed'}
+        </div>
+      )}
+
       <div className="bg-blue-50 p-4 rounded-lg">
         <h4 className="font-medium text-blue-800 mb-2">OAuth2 Authentication Flow</h4>
         <ul className="text-sm text-blue-700 space-y-1">
@@ -127,6 +187,9 @@ function TestResultCard({ result }) {
     <div className={'p-4 rounded-lg ' + (isOk ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800')}>
       <p className="font-medium">{isOk ? 'Connected' : 'Failed'}</p>
       <p className="text-sm">{result.message}</p>
+      {result.details && result.details.expires_in && (
+        <p className="text-xs mt-1">Token expires in: {result.details.expires_in}s</p>
+      )}
       {result.duration_ms && <p className="text-xs mt-1">Response time: {result.duration_ms}ms</p>}
     </div>
   )

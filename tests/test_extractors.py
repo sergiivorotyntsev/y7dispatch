@@ -64,7 +64,7 @@ class TestBaseExtractor:
             assert result == VehicleType.SUV, f"Failed for {make} {model}"
 
     def test_detect_vehicle_type_car(self):
-        """Test car detection."""
+        """Test sedan detection."""
         car_cases = [
             ("ALFA ROMEO", "GIULIA"),
             ("MERCEDES", "E 300"),
@@ -72,7 +72,7 @@ class TestBaseExtractor:
         ]
         for make, model in car_cases:
             result = BaseExtractor.detect_vehicle_type(make, model)
-            assert result == VehicleType.CAR, f"Failed for {make} {model}"
+            assert result == VehicleType.SEDAN, f"Failed for {make} {model}"
 
     def test_detect_vehicle_type_truck(self):
         """Test truck detection."""

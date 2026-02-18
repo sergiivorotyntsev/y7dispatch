@@ -74,7 +74,7 @@ function PricingPaymentSection({
 
           {(pricing.source === 'MANUAL_REQUIRED' || pricing.price_source === 'manual_required') && (
             <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-              <p className="text-sm text-yellow-800">Market data unavailable. Enter a price below.</p>
+              <p className="text-sm text-yellow-800">No market data available for this route. Enter carrier price manually.</p>
             </div>
           )}
         </>

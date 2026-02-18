@@ -94,17 +94,32 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     }
   }
 
+  const [dryRunResult, setDryRunResult] = useState(null)
+  const [exportError, setExportError] = useState(null)
+
   async function handleExport(dryRun = false) {
     setExporting(true)
+    setDryRunResult(null)
+    setExportError(null)
     try {
       const result = await api.exportToCD([extractionId], dryRun, true, false, overrides || null)
-      if (onExport) {
-        onExport(result)
-      }
-      if (!dryRun && result.posted > 0) {
-        onClose()
+      if (dryRun) {
+        // Show dry run results in modal — don't close
+        setDryRunResult(result)
+      } else {
+        if (onExport) {
+          onExport(result)
+        }
+        if (result.exported_count > 0) {
+          onClose()
+        } else {
+          // Export attempted but failed — show error in modal
+          const errors = result.previews?.flatMap(p => p.validation_errors || []) || []
+          setExportError(result.message + (errors.length ? ': ' + errors.join('; ') : ''))
+        }
       }
     } catch (err) {
+      setExportError(`Export failed: ${err.message}`)
       setError(`Export failed: ${err.message}`)
     } finally {
       setExporting(false)
@@ -429,6 +444,30 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
             </pre>
           )}
         </div>
+
+        {/* Dry Run Result */}
+        {dryRunResult && (
+          <div className="mx-6 mb-2 p-3 rounded-lg border bg-yellow-50 border-yellow-200">
+            <p className="font-medium text-yellow-800 text-sm mb-1">Dry Run Result</p>
+            {dryRunResult.previews?.every(p => p.is_valid) ? (
+              <p className="text-sm text-green-700">Payload valid, ready to export.</p>
+            ) : (
+              <ul className="text-sm text-red-700 list-disc pl-4">
+                {dryRunResult.previews?.flatMap(p => p.validation_errors || []).map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Export Error */}
+        {exportError && (
+          <div className="mx-6 mb-2 p-3 rounded-lg border bg-red-50 border-red-200">
+            <p className="font-medium text-red-800 text-sm mb-1">Export Failed</p>
+            <p className="text-sm text-red-700">{exportError}</p>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
