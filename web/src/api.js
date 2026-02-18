@@ -404,6 +404,9 @@ export const api = {
   // Load ID Generation
   generateLoadId: (make, model) => request(`/listings/generate-load-id?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`),
 
+  // Auction Directory Lookup
+  lookupAuctionLocation: (name) => request(`/auction-directory/lookup?name=${encodeURIComponent(name)}`),
+
   // CD Listings API v2 — Preview & Push
   getCDPayload: (docId, warehouseCode = null) => {
     const qs = warehouseCode ? `?warehouse_code=${warehouseCode}` : ''

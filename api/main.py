@@ -36,6 +36,7 @@ request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 from api.database import init_db
 from api.models import init_schema, seed_base_auction_types, seed_default_field_mappings
 from api.routes import (
+    auction_directory,
     auction_types,
     cd_listings,
     credentials,
@@ -140,6 +141,7 @@ app.include_router(dlq.router, prefix="/api", tags=["DLQ"])  # Dead Letter Queue
 app.include_router(sheets.router)  # Sheets webhook override endpoint
 app.include_router(credentials.router, prefix="/api/credentials", tags=["Credentials"])
 app.include_router(listings.router)  # Load ID generation + listing management
+app.include_router(auction_directory.router)  # Auction phone directory lookup
 
 
 # =============================================================================

@@ -394,7 +394,7 @@ def build_cd_payload(
         delivery_zip = warehouse_data.get("zip_code", "")
         delivery_phone = warehouse_data.get("phone", "")
         delivery_contact = warehouse_data.get("contact_name", "")
-        delivery_location_type = "BUSINESS"
+        delivery_location_type = warehouse_data.get("location_type", "BUSINESS")
     else:
         delivery_name = get_field("delivery_name") or get_field("dropoff_name") or ""
         delivery_address = get_field("delivery_address") or get_field("dropoff_address") or ""

@@ -67,6 +67,14 @@ function DeliverySection({ warehouses, selectedWarehouse, handleWarehouseChange,
               <span className="text-gray-500">Contact: </span>
               <span className="font-medium">{wh.contact_name || '-'}</span>
             </div>
+            <div>
+              <span className="text-gray-500">Contact Phone: </span>
+              <span className="font-medium">{wh.contact_phone || '-'}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Location Type: </span>
+              <span className="font-medium">{wh.location_type || 'BUSINESS'}</span>
+            </div>
           </div>
         </div>
       )}

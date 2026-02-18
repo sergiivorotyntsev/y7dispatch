@@ -26,6 +26,8 @@ export default function WarehousesTab() {
     zip_code: '',
     phone: '',
     contact_name: '',
+    contact_phone: '',
+    location_type: 'BUSINESS',
     transport_special_instructions: '',
     is_default: false,
   })
@@ -56,6 +58,8 @@ export default function WarehousesTab() {
       zip_code: '',
       phone: '',
       contact_name: '',
+      contact_phone: '',
+      location_type: 'BUSINESS',
       transport_special_instructions: '',
       is_default: false,
     })
@@ -73,6 +77,8 @@ export default function WarehousesTab() {
       zip_code: wh.zip_code || '',
       phone: wh.phone || '',
       contact_name: wh.contact_name || '',
+      contact_phone: wh.contact_phone || '',
+      location_type: wh.location_type || 'BUSINESS',
       transport_special_instructions: wh.transport_special_instructions || '',
       is_default: wh.is_default || false,
     })
@@ -216,6 +222,29 @@ export default function WarehousesTab() {
                 placeholder="John Smith"
                 className="form-input w-full"
               />
+            </div>
+            <div>
+              <label className="form-label">Contact Phone</label>
+              <input
+                type="text"
+                value={form.contact_phone}
+                onChange={e => setForm({ ...form, contact_phone: e.target.value })}
+                placeholder="(555) 123-4567"
+                className="form-input w-full"
+              />
+            </div>
+            <div>
+              <label className="form-label">Location Type</label>
+              <select
+                value={form.location_type}
+                onChange={e => setForm({ ...form, location_type: e.target.value })}
+                className="form-select w-full"
+              >
+                <option value="BUSINESS">Business</option>
+                <option value="RESIDENCE">Residence</option>
+                <option value="DEALERSHIP">Dealership</option>
+                <option value="AUCTION">Auction</option>
+              </select>
             </div>
             <div>
               <label className="flex items-center gap-2 mt-6">

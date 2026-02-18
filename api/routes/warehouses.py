@@ -39,6 +39,8 @@ class WarehouseCreate(BaseModel):
     zip_code: Optional[str] = None
     phone: Optional[str] = None
     contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    location_type: Optional[str] = "BUSINESS"
     transport_special_instructions: Optional[str] = None
     is_default: bool = False
 
@@ -63,6 +65,8 @@ class WarehouseUpdate(BaseModel):
     zip_code: Optional[str] = None
     phone: Optional[str] = None
     contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    location_type: Optional[str] = None
     transport_special_instructions: Optional[str] = None
     is_default: Optional[bool] = None
 
@@ -84,6 +88,8 @@ class WarehouseResponse(BaseModel):
     zip_code: Optional[str] = None
     phone: Optional[str] = None
     contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    location_type: Optional[str] = "BUSINESS"
     transport_special_instructions: Optional[str] = None
     is_default: bool = False
     is_active: bool = True
@@ -138,6 +144,14 @@ def init_warehouses_schema():
             pass
         try:
             conn.execute("ALTER TABLE warehouses ADD COLUMN is_default BOOLEAN DEFAULT FALSE")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN contact_phone TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN location_type TEXT DEFAULT 'BUSINESS'")
         except Exception:
             pass
 
@@ -236,8 +250,8 @@ async def create_warehouse(data: WarehouseCreate):
 
         cursor = conn.execute(
             """
-            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, transport_special_instructions, is_default, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, contact_phone, location_type, transport_special_instructions, is_default, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.code,
@@ -248,6 +262,8 @@ async def create_warehouse(data: WarehouseCreate):
                 data.zip_code,
                 data.phone,
                 data.contact_name,
+                data.contact_phone,
+                data.location_type or "BUSINESS",
                 data.transport_special_instructions,
                 data.is_default,
                 True,
@@ -416,6 +432,10 @@ async def update_warehouse(id: int, data: WarehouseUpdate):
         updates["phone"] = data.phone
     if data.contact_name is not None:
         updates["contact_name"] = data.contact_name
+    if data.contact_phone is not None:
+        updates["contact_phone"] = data.contact_phone
+    if data.location_type is not None:
+        updates["location_type"] = data.location_type
     if data.transport_special_instructions is not None:
         updates["transport_special_instructions"] = data.transport_special_instructions
     if data.is_default is not None:
@@ -495,6 +515,8 @@ def _row_to_response(row: dict) -> WarehouseResponse:
         zip_code=row.get("zip_code"),
         phone=row.get("phone"),
         contact_name=row.get("contact_name"),
+        contact_phone=row.get("contact_phone"),
+        location_type=row.get("location_type", "BUSINESS"),
         transport_special_instructions=row.get("transport_special_instructions"),
         is_default=row.get("is_default", False),
         is_active=row.get("is_active", True),
