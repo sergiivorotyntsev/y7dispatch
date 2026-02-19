@@ -285,38 +285,74 @@ class EmailWorker:
                     return True
         return False
 
+    def _acquire_oauth2_token(self, config: dict) -> str | None:
+        """Acquire access token via Microsoft client_credentials grant."""
+        import requests as _requests
+
+        tenant_id = config.get("tenant_id", "")
+        client_id = config.get("client_id", "")
+        client_secret = config.get("client_secret", "")
+
+        if not all([tenant_id, client_id, client_secret]):
+            return None
+
+        token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        data = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://outlook.office365.com/.default",
+            "grant_type": "client_credentials",
+        }
+
+        try:
+            resp = _requests.post(token_url, data=data, timeout=15)
+            if resp.status_code == 200:
+                return resp.json()["access_token"]
+            else:
+                error = resp.json().get("error_description", resp.text)
+                self._log_activity("SYSTEM", "oauth2_token", "failed", error=f"Token request failed: {error}")
+                return None
+        except Exception as e:
+            self._log_activity("SYSTEM", "oauth2_token", "failed", error=str(e))
+            return None
+
     def _connect(self) -> bool:
-        """Connect to IMAP server."""
+        """Connect to IMAP server. Supports password auth and OAuth2 client_credentials."""
         config = self._load_config()
 
-        server = config.get("imap_server")
-        port = config.get("imap_port", 993)
+        auth_type = config.get("auth_type", "password")
         email_addr = config.get("email_address")
-        password = config.get("password")
 
-        if not all([server, email_addr, password]):
+        if not email_addr:
             self._log_activity("SYSTEM", "connect", "failed", error="Email not configured")
             return False
 
         try:
-            # Handle OAuth2 for Microsoft/Gmail
-            auth_type = config.get("auth_type", "password")
-
             if auth_type == "oauth2":
-                # Microsoft/Gmail OAuth2
-                access_token = config.get("access_token")
+                # Microsoft OAuth2: acquire token via client_credentials, connect XOAUTH2
+                access_token = self._acquire_oauth2_token(config)
                 if not access_token:
                     self._log_activity(
-                        "SYSTEM", "connect", "failed", error="OAuth2 access token not configured"
+                        "SYSTEM", "connect", "failed", error="Failed to acquire OAuth2 token"
                     )
                     return False
 
+                server = "outlook.office365.com"
+                port = 993
+
                 self.imap = imaplib.IMAP4_SSL(server, port)
-                # OAuth2 authentication
                 auth_string = f"user={email_addr}\x01auth=Bearer {access_token}\x01\x01"
-                self.imap.authenticate("XOAUTH2", lambda x: auth_string)
+                self.imap.authenticate("XOAUTH2", lambda x: auth_string.encode())
             else:
-                # Standard password auth
+                # Standard IMAP password auth
+                server = config.get("imap_server")
+                port = config.get("imap_port", 993)
+                password = config.get("password")
+
+                if not all([server, password]):
+                    self._log_activity("SYSTEM", "connect", "failed", error="IMAP not configured")
+                    return False
+
                 self.imap = imaplib.IMAP4_SSL(server, port)
                 self.imap.login(email_addr, password)
 
@@ -479,7 +515,8 @@ class EmailWorker:
             return other["id"] if other else 1
 
     def _process_pdf(
-        self, file_path: Path, auction_type_id: int
+        self, file_path: Path, auction_type_id: int,
+        email_metadata: dict = None,
     ) -> tuple[Optional[int], Optional[int]]:
         """
         Process PDF file: create document and run extraction.
@@ -512,7 +549,7 @@ class EmailWorker:
         except Exception:
             pass
 
-        # Create document with source=email
+        # Create document with source=email and email metadata
         doc_id = DocumentRepository.create(
             auction_type_id=auction_type_id,
             dataset_split="train",
@@ -522,6 +559,8 @@ class EmailWorker:
             sha256=sha256,
             raw_text=raw_text,
             uploaded_by="email_worker",
+            source="email",
+            email_metadata_json=json.dumps(email_metadata) if email_metadata else None,
         )
 
         # Check if scanned (low text content)
@@ -726,6 +765,14 @@ class EmailWorker:
                         body_text = self._get_email_body_text(msg.raw_message)
                         gate_pass = self._extract_gate_pass(body_text)
 
+                        # Build email metadata for document trail
+                        email_metadata = {
+                            "sender": msg.sender,
+                            "subject": msg.subject,
+                            "message_id": msg.message_id,
+                            "date": msg.date,
+                        }
+
                         # Process PDF attachments with classification
                         auction_type_id = rule.get("auction_type_id")
                         last_doc_id = None
@@ -755,7 +802,10 @@ class EmailWorker:
                                         except Exception:
                                             auction_type_id = 1  # Default
 
-                                    doc_id, run_id = self._process_pdf(file_path, auction_type_id)
+                                    doc_id, run_id = self._process_pdf(
+                                        file_path, auction_type_id,
+                                        email_metadata=email_metadata,
+                                    )
                                     last_doc_id = doc_id
                                     last_run_id = run_id
 

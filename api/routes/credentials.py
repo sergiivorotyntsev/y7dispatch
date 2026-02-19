@@ -237,27 +237,80 @@ def _test_email_forwarding(config: dict) -> dict:
 
 
 async def _test_email_oauth(config: dict) -> dict:
-    """Test OAuth email config (checks token existence)."""
-    from api.routes.integrations.oauth import get_token
+    """Test OAuth2 email: acquire token via client_credentials, connect IMAP with XOAUTH2."""
+    import base64
+    import imaplib
+    import ssl
 
+    import httpx
+
+    tenant_id = config.get("tenant_id", "")
+    client_id = config.get("client_id", "")
+    client_secret = config.get("client_secret", "")
     email_addr = config.get("email_address", "")
-    provider = config.get("provider", "microsoft")
 
-    if not email_addr:
-        return {"status": "failed", "message": "No email_address configured"}
+    if not all([tenant_id, client_id, client_secret, email_addr]):
+        missing = []
+        if not tenant_id: missing.append("tenant_id")
+        if not client_id: missing.append("client_id")
+        if not client_secret: missing.append("client_secret")
+        if not email_addr: missing.append("email_address")
+        return {"status": "failed", "message": f"Missing required fields: {', '.join(missing)}"}
 
-    token = get_token(provider, email_addr)
-    if token and token.get("access_token"):
+    # Step 1: Acquire access_token via client_credentials grant
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    token_data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scope": "https://outlook.office365.com/.default",
+        "grant_type": "client_credentials",
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(token_url, data=token_data, timeout=15.0)
+
+        if resp.status_code != 200:
+            error_detail = resp.json().get("error_description", resp.text)
+            return {"status": "failed", "message": f"Token request failed: {error_detail}"}
+
+        access_token = resp.json()["access_token"]
+        expires_in = resp.json().get("expires_in", 3600)
+    except Exception as e:
+        return {"status": "failed", "message": f"Token request error: {e}"}
+
+    # Step 2: Connect IMAP with XOAUTH2
+    try:
+        ctx = ssl.create_default_context()
+        imap = imaplib.IMAP4_SSL("outlook.office365.com", 993, ssl_context=ctx)
+
+        auth_string = f"user={email_addr}\x01auth=Bearer {access_token}\x01\x01"
+        imap.authenticate("XOAUTH2", lambda x: auth_string.encode())
+
+        status, data = imap.select("INBOX", readonly=True)
+        msg_count = int(data[0]) if status == "OK" else 0
+
+        # Count unread
+        _, unseen = imap.search(None, "UNSEEN")
+        unseen_count = len(unseen[0].split()) if unseen[0] else 0
+
+        imap.logout()
+
         return {
             "status": "ok",
-            "message": f"OAuth token found for {email_addr}",
-            "details": {"expires_at": token.get("expires_at")},
+            "message": f"Connected to outlook.office365.com as {email_addr}",
+            "details": {
+                "server": "outlook.office365.com",
+                "auth": "OAuth2 XOAUTH2",
+                "messages_in_inbox": msg_count,
+                "unread_messages": unseen_count,
+                "token_expires_in": expires_in,
+            },
         }
-
-    return {
-        "status": "failed",
-        "message": "No OAuth token found. Complete the OAuth flow first.",
-    }
+    except imaplib.IMAP4.error as e:
+        return {"status": "failed", "message": f"IMAP XOAUTH2 auth failed: {e}"}
+    except Exception as e:
+        return {"status": "failed", "message": f"IMAP connection failed: {e}"}
 
 
 async def _test_cd_api(config: dict) -> dict:

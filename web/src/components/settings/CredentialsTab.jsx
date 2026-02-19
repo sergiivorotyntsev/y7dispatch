@@ -3,9 +3,6 @@ import { useSettings } from './SettingsContext'
 import api from '../../api'
 
 const SERVICES = [
-  { id: 'email_imap', label: 'Email (IMAP)', group: 'email' },
-  { id: 'email_forwarding', label: 'Email (Forwarding)', group: 'email' },
-  { id: 'email_oauth', label: 'Email (Microsoft OAuth)', group: 'email' },
   { id: 'sheets', label: 'Google Sheets', group: 'sheets' },
   { id: 'anthropic', label: 'Anthropic (Claude)', group: 'anthropic' },
 ]
@@ -15,7 +12,6 @@ export default function CredentialsTab() {
   const [credentials, setCredentials] = useState({})
   const [loading, setLoading] = useState(true)
   const [expandedCard, setExpandedCard] = useState(null)
-  const [emailProvider, setEmailProvider] = useState('email_imap')
   const [testResults, setTestResults] = useState({})
   const [testing, setTesting] = useState({})
 
@@ -30,11 +26,6 @@ export default function CredentialsTab() {
       const byService = {}
       data.forEach(c => { byService[c.service] = c })
       setCredentials(byService)
-
-      // Set email provider based on what's configured
-      if (byService.email_oauth) setEmailProvider('email_oauth')
-      else if (byService.email_forwarding) setEmailProvider('email_forwarding')
-      else if (byService.email_imap) setEmailProvider('email_imap')
     } catch (err) {
       showMessage('error', 'Failed to load credentials: ' + err.message)
     } finally {
@@ -103,68 +94,6 @@ export default function CredentialsTab() {
       {/* Status Summary */}
       <StatusSummary credentials={credentials} />
 
-      {/* Email Credentials */}
-      <CredentialCard
-        title="Email Ingestion"
-        expanded={expandedCard === 'email'}
-        onToggle={() => setExpandedCard(expandedCard === 'email' ? null : 'email')}
-        configured={!!(credentials.email_imap || credentials.email_forwarding || credentials.email_oauth)}
-        testStatus={testResults[emailProvider]}
-        dbTestStatus={credentials[emailProvider]?.last_test_status}
-      >
-        <div className="mb-4">
-          <label className="form-label">Provider</label>
-          <select
-            value={emailProvider}
-            onChange={e => setEmailProvider(e.target.value)}
-            className="form-select w-full max-w-xs"
-          >
-            <option value="email_imap">IMAP (Direct)</option>
-            <option value="email_forwarding">Email Forwarding (Webhook)</option>
-            <option value="email_oauth">Microsoft OAuth</option>
-          </select>
-        </div>
-
-        {emailProvider === 'email_imap' && (
-          <ImapForm
-            initial={credentials.email_imap?.config || {}}
-            enabled={credentials.email_imap?.enabled || false}
-            onSave={(config, enabled) => handleSave('email_imap', config, enabled)}
-            onTest={() => handleTest('email_imap')}
-            onDelete={() => handleDelete('email_imap')}
-            testing={testing.email_imap}
-            testResult={testResults.email_imap}
-            hasCredential={!!credentials.email_imap}
-          />
-        )}
-
-        {emailProvider === 'email_forwarding' && (
-          <ForwardingForm
-            initial={credentials.email_forwarding?.config || {}}
-            enabled={credentials.email_forwarding?.enabled || false}
-            onSave={(config, enabled) => handleSave('email_forwarding', config, enabled)}
-            onTest={() => handleTest('email_forwarding')}
-            onDelete={() => handleDelete('email_forwarding')}
-            testing={testing.email_forwarding}
-            testResult={testResults.email_forwarding}
-            hasCredential={!!credentials.email_forwarding}
-          />
-        )}
-
-        {emailProvider === 'email_oauth' && (
-          <OAuthForm
-            initial={credentials.email_oauth?.config || {}}
-            enabled={credentials.email_oauth?.enabled || false}
-            onSave={(config, enabled) => handleSave('email_oauth', config, enabled)}
-            onTest={() => handleTest('email_oauth')}
-            onDelete={() => handleDelete('email_oauth')}
-            testing={testing.email_oauth}
-            testResult={testResults.email_oauth}
-            hasCredential={!!credentials.email_oauth}
-          />
-        )}
-      </CredentialCard>
-
       {/* Google Sheets */}
       <CredentialCard
         title="Google Sheets"
@@ -217,9 +146,6 @@ export default function CredentialsTab() {
 
 function StatusSummary({ credentials }) {
   const services = [
-    { key: 'email_imap', label: 'Email IMAP' },
-    { key: 'email_forwarding', label: 'Email Forwarding' },
-    { key: 'email_oauth', label: 'Email OAuth' },
     { key: 'sheets', label: 'Google Sheets' },
     { key: 'anthropic', label: 'Anthropic' },
   ]
@@ -320,127 +246,6 @@ function EnableToggle({ enabled, onChange }) {
 // =============================================================================
 // Service-specific forms
 // =============================================================================
-
-function ImapForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
-  const [config, setConfig] = useState(initial)
-  const [enabled, setEnabled] = useState(initEnabled)
-  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
-
-  return (
-    <div>
-      <EnableToggle enabled={enabled} onChange={setEnabled} />
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="form-label">IMAP Server</label>
-          <input type="text" value={config.imap_server || ''} onChange={e => update('imap_server', e.target.value)} placeholder="imap.gmail.com" className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Port</label>
-          <input type="number" value={config.imap_port || 993} onChange={e => update('imap_port', parseInt(e.target.value))} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Email Address</label>
-          <input type="email" value={config.email_address || ''} onChange={e => update('email_address', e.target.value)} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Password / App Password</label>
-          <input type="password" value={config.password || ''} onChange={e => update('password', e.target.value)} className="form-input w-full" />
-        </div>
-      </div>
-      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
-      <TestResultBanner result={testResult} />
-    </div>
-  )
-}
-
-function ForwardingForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
-  const [config, setConfig] = useState(initial)
-  const [enabled, setEnabled] = useState(initEnabled)
-  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
-
-  return (
-    <div>
-      <EnableToggle enabled={enabled} onChange={setEnabled} />
-      <div className="grid grid-cols-1 gap-4">
-        <div>
-          <label className="form-label">Webhook URL</label>
-          <input type="text" value={config.webhook_url || ''} onChange={e => update('webhook_url', e.target.value)} placeholder="https://your-server.com/api/integrations/webhook/inbound" className="form-input w-full" />
-          <p className="text-xs text-gray-400 mt-1">Configure your email provider to forward to this URL</p>
-        </div>
-        <div>
-          <label className="form-label">Secret Key (for HMAC verification)</label>
-          <input type="password" value={config.secret_key || ''} onChange={e => update('secret_key', e.target.value)} className="form-input w-full" />
-        </div>
-      </div>
-      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
-      <TestResultBanner result={testResult} />
-    </div>
-  )
-}
-
-function OAuthForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
-  const [config, setConfig] = useState(initial)
-  const [enabled, setEnabled] = useState(initEnabled)
-  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
-
-  async function handleAuthorize() {
-    try {
-      const result = await api.request('/integrations/oauth/microsoft/init', { method: 'POST' })
-      if (result.auth_url) {
-        window.open(result.auth_url, '_blank')
-      }
-    } catch (err) {
-      alert('OAuth init failed: ' + err.message)
-    }
-  }
-
-  return (
-    <div>
-      <EnableToggle enabled={enabled} onChange={setEnabled} />
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="form-label">Email Address</label>
-          <input type="email" value={config.email_address || ''} onChange={e => update('email_address', e.target.value)} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Provider</label>
-          <select value={config.provider || 'microsoft'} onChange={e => update('provider', e.target.value)} className="form-select w-full">
-            <option value="microsoft">Microsoft 365</option>
-          </select>
-        </div>
-        <div>
-          <label className="form-label">Client ID (Azure AD App)</label>
-          <input type="text" value={config.client_id || ''} onChange={e => update('client_id', e.target.value)} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Tenant ID</label>
-          <input type="text" value={config.tenant_id || ''} onChange={e => update('tenant_id', e.target.value)} placeholder="common" className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Client Secret</label>
-          <input type="password" value={config.client_secret || ''} onChange={e => update('client_secret', e.target.value)} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Redirect URI</label>
-          <input type="text" value={config.redirect_uri || 'http://localhost:8000/api/integrations/oauth/callback'} onChange={e => update('redirect_uri', e.target.value)} className="form-input w-full" />
-        </div>
-      </div>
-      <div className="flex space-x-3 mt-4">
-        <button onClick={() => onSave(config, enabled)} className="btn btn-primary">Save</button>
-        {hasCredential && (
-          <>
-            <button onClick={handleAuthorize} className="btn btn-secondary">Authorize</button>
-            <button onClick={onTest} disabled={testing} className="btn btn-secondary">
-              {testing ? 'Testing...' : 'Test Token'}
-            </button>
-            <button onClick={onDelete} className="btn btn-secondary text-red-600">Delete</button>
-          </>
-        )}
-      </div>
-      <TestResultBanner result={testResult} />
-    </div>
-  )
-}
 
 function SheetsForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
   const [config, setConfig] = useState(initial)

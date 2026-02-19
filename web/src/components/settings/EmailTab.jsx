@@ -3,33 +3,79 @@ import { useSettings } from './SettingsContext'
 import api from '../../api'
 
 export default function EmailTab() {
-  const { settings, showMessage, setSaving, testConnection, testResults } = useSettings()
-  const [email, setEmail] = useState(settings.email || {})
+  const { showMessage, setSaving } = useSettings()
+  const [authMode, setAuthMode] = useState('oauth2') // 'oauth2' or 'imap'
+  const [config, setConfig] = useState({})
   const [rules, setRules] = useState([])
   const [activity, setActivity] = useState([])
   const [polling, setPolling] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadRulesAndActivity()
+    loadAll()
   }, [])
 
-  async function loadRulesAndActivity() {
+  async function loadAll() {
+    setLoading(true)
     try {
+      // Load credential store for both email services
       const [rulesData, activityData] = await Promise.all([
         api.getEmailRules().catch(() => []),
         api.getEmailActivity().catch(() => []),
       ])
       setRules(rulesData)
       setActivity(activityData)
+
+      // Check which credential is configured
+      try {
+        const creds = await api.getCredentials()
+        const byService = {}
+        creds.forEach(c => { byService[c.service] = c })
+
+        if (byService.email_oauth) {
+          setAuthMode('oauth2')
+          setConfig(byService.email_oauth.config || {})
+        } else if (byService.email_imap) {
+          setAuthMode('imap')
+          setConfig(byService.email_imap.config || {})
+        }
+      } catch (err) {
+        console.debug('No email credentials found:', err.message)
+      }
     } catch (err) {
       console.error('Failed to load email data:', err)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  function updateField(field, value) {
+    setConfig(prev => ({ ...prev, [field]: value }))
   }
 
   async function handleSave() {
     setSaving(true)
     try {
-      await api.updateEmailConfig(email)
+      const service = authMode === 'oauth2' ? 'email_oauth' : 'email_imap'
+      // Save to credential store
+      await api.saveCredential(service, config, true)
+
+      // Also save allowed_senders + rules config to settings for the worker
+      await api.updateEmailConfig({
+        auth_type: authMode === 'oauth2' ? 'oauth2' : 'password',
+        email_address: config.email_address,
+        imap_server: authMode === 'oauth2' ? 'outlook.office365.com' : config.imap_server,
+        imap_port: authMode === 'oauth2' ? 993 : (config.imap_port || 993),
+        password: authMode === 'imap' ? config.password : undefined,
+        allowed_senders: config.allowed_senders || [],
+        // OAuth2 fields for worker
+        tenant_id: config.tenant_id,
+        client_id: config.client_id,
+        client_secret: config.client_secret,
+      })
+
       showMessage('success', 'Email settings saved')
     } catch (err) {
       showMessage('error', err.message)
@@ -39,7 +85,23 @@ export default function EmailTab() {
   }
 
   async function handleTest() {
-    await testConnection('email', api.testEmailConnection)
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const service = authMode === 'oauth2' ? 'email_oauth' : 'email_imap'
+      const result = await api.testCredential(service)
+      setTestResult(result)
+      if (result.status === 'ok') {
+        showMessage('success', result.message)
+      } else {
+        showMessage('error', result.message)
+      }
+    } catch (err) {
+      setTestResult({ status: 'failed', message: err.message })
+      showMessage('error', err.message)
+    } finally {
+      setTesting(false)
+    }
   }
 
   async function handlePollNow() {
@@ -47,7 +109,7 @@ export default function EmailTab() {
     try {
       const result = await api.pollEmailNow()
       showMessage('success', 'Polled ' + result.processed + ' emails, ' + result.skipped + ' skipped')
-      loadRulesAndActivity()
+      loadAll()
     } catch (err) {
       showMessage('error', err.message)
     } finally {
@@ -67,11 +129,14 @@ export default function EmailTab() {
     }
   }
 
-  function updateField(field, value) {
-    setEmail(prev => ({ ...prev, [field]: value }))
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+        <span className="ml-2 text-gray-500">Loading email settings...</span>
+      </div>
+    )
   }
-
-  const result = testResults.email
 
   return (
     <div className="space-y-6">
@@ -79,57 +144,135 @@ export default function EmailTab() {
         <h3 className="text-lg font-medium mb-4">Email Ingestion Settings</h3>
       </div>
 
-      {/* IMAP Settings */}
+      {/* Connection Settings */}
       <div className="border rounded-lg p-4">
-        <h4 className="font-medium mb-3">IMAP Connection</h4>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="form-label">IMAP Server</label>
-            <input
-              type="text"
-              value={email.imap_server || ''}
-              onChange={e => updateField('imap_server', e.target.value)}
-              placeholder="imap.gmail.com"
-              className="form-input w-full"
-            />
-          </div>
-          <div>
-            <label className="form-label">Port</label>
-            <input
-              type="number"
-              value={email.imap_port || 993}
-              onChange={e => updateField('imap_port', parseInt(e.target.value))}
-              className="form-input w-full"
-            />
-          </div>
+        <h4 className="font-medium mb-3">Connection</h4>
+
+        {/* Auth Mode Toggle */}
+        <div className="mb-4">
+          <label className="form-label">Authentication Method</label>
+          <select
+            value={authMode}
+            onChange={e => {
+              setAuthMode(e.target.value)
+              setTestResult(null)
+              // Pre-fill defaults for OAuth2
+              if (e.target.value === 'oauth2') {
+                setConfig(prev => ({
+                  ...prev,
+                  imap_server: 'outlook.office365.com',
+                  imap_port: 993,
+                }))
+              }
+            }}
+            className="form-select w-full max-w-xs"
+          >
+            <option value="oauth2">Microsoft OAuth2 (Recommended)</option>
+            <option value="imap">IMAP Password</option>
+          </select>
+          {authMode === 'oauth2' && (
+            <p className="text-xs text-gray-500 mt-1">
+              Uses Azure AD Client Credentials to authenticate with Microsoft 365 / GoDaddy M365 mailboxes.
+              IMAP basic auth is blocked by Microsoft.
+            </p>
+          )}
+        </div>
+
+        {/* Common: Email Address */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label className="form-label">Email Address</label>
             <input
               type="email"
-              value={email.email_address || ''}
+              value={config.email_address || ''}
               onChange={e => updateField('email_address', e.target.value)}
               className="form-input w-full"
-            />
-          </div>
-          <div>
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              value={email.password || ''}
-              onChange={e => updateField('password', e.target.value)}
-              className="form-input w-full"
+              placeholder="dispatch@yourcompany.com"
             />
           </div>
         </div>
+
+        {/* OAuth2 Fields */}
+        {authMode === 'oauth2' && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Tenant ID</label>
+              <input
+                type="text"
+                value={config.tenant_id || ''}
+                onChange={e => updateField('tenant_id', e.target.value)}
+                className="form-input w-full"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              />
+              <p className="text-xs text-gray-400 mt-1">Azure AD Tenant ID (from Azure Portal)</p>
+            </div>
+            <div>
+              <label className="form-label">Client ID</label>
+              <input
+                type="text"
+                value={config.client_id || ''}
+                onChange={e => updateField('client_id', e.target.value)}
+                className="form-input w-full"
+                placeholder="App (client) ID from Azure AD"
+              />
+            </div>
+            <div>
+              <label className="form-label">Client Secret</label>
+              <input
+                type="password"
+                value={config.client_secret || ''}
+                onChange={e => updateField('client_secret', e.target.value)}
+                className="form-input w-full"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* IMAP Password Fields */}
+        {authMode === 'imap' && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">IMAP Server</label>
+              <input
+                type="text"
+                value={config.imap_server || ''}
+                onChange={e => updateField('imap_server', e.target.value)}
+                placeholder="imap.gmail.com"
+                className="form-input w-full"
+              />
+            </div>
+            <div>
+              <label className="form-label">Port</label>
+              <input
+                type="number"
+                value={config.imap_port || 993}
+                onChange={e => updateField('imap_port', parseInt(e.target.value))}
+                className="form-input w-full"
+              />
+            </div>
+            <div>
+              <label className="form-label">Password / App Password</label>
+              <input
+                type="password"
+                value={config.password || ''}
+                onChange={e => updateField('password', e.target.value)}
+                className="form-input w-full"
+              />
+            </div>
+          </div>
+        )}
+
         <div className="flex space-x-3 mt-4">
           <button onClick={handleSave} className="btn btn-primary">Save</button>
-          <button onClick={handleTest} className="btn btn-secondary">Test Connection</button>
+          <button onClick={handleTest} disabled={testing} className="btn btn-secondary">
+            {testing ? 'Testing...' : 'Test Connection'}
+          </button>
           <button onClick={handlePollNow} disabled={polling} className="btn btn-secondary">
             {polling ? 'Polling...' : 'Poll Now'}
           </button>
         </div>
 
-        {result && <TestResultCard result={result} />}
+        {testResult && <TestResultCard result={testResult} />}
       </div>
 
       {/* Sender Filter */}
@@ -139,13 +282,13 @@ export default function EmailTab() {
           Only process emails from these senders. Leave empty to accept all senders.
         </p>
         <div className="space-y-2">
-          {(email.allowed_senders || []).map((sender, idx) => (
+          {(config.allowed_senders || []).map((sender, idx) => (
             <div key={idx} className="flex items-center space-x-2">
               <input
                 type="text"
                 value={sender}
                 onChange={e => {
-                  const updated = [...(email.allowed_senders || [])]
+                  const updated = [...(config.allowed_senders || [])]
                   updated[idx] = e.target.value
                   updateField('allowed_senders', updated)
                 }}
@@ -154,7 +297,7 @@ export default function EmailTab() {
               />
               <button
                 onClick={() => {
-                  const updated = (email.allowed_senders || []).filter((_, i) => i !== idx)
+                  const updated = (config.allowed_senders || []).filter((_, i) => i !== idx)
                   updateField('allowed_senders', updated)
                 }}
                 className="text-red-600 hover:text-red-800 p-1"
@@ -164,7 +307,7 @@ export default function EmailTab() {
             </div>
           ))}
           <button
-            onClick={() => updateField('allowed_senders', [...(email.allowed_senders || []), ''])}
+            onClick={() => updateField('allowed_senders', [...(config.allowed_senders || []), ''])}
             className="btn btn-sm btn-secondary"
           >
             Add Sender
@@ -273,7 +416,7 @@ export default function EmailTab() {
       <div className="border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <h4 className="font-medium">Recent Activity</h4>
-          <button onClick={loadRulesAndActivity} className="btn btn-sm btn-secondary">
+          <button onClick={loadAll} className="btn btn-sm btn-secondary">
             Refresh
           </button>
         </div>
@@ -324,6 +467,9 @@ function TestResultCard({ result }) {
         <div className="text-xs mt-2">
           {result.details.unread_messages !== undefined && (
             <p>Unread: {result.details.unread_messages}</p>
+          )}
+          {result.details.expires_at && (
+            <p>Token expires: {new Date(result.details.expires_at).toLocaleString()}</p>
           )}
         </div>
       )}

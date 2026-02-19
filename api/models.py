@@ -658,6 +658,7 @@ class Document:
     is_test: bool = False
     created_at: Optional[str] = None
     uploaded_by: Optional[str] = None
+    email_metadata_json: Optional[str] = None
 
 
 @dataclass
@@ -680,6 +681,7 @@ class ExtractionRun:
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
     error_message: Optional[str] = None
+    attachments_json: Optional[str] = None
 
 
 @dataclass
@@ -1040,6 +1042,7 @@ class DocumentRepository:
         source: str = "upload",
         is_test: bool = False,
         page_count: int = None,
+        email_metadata_json: str = None,
     ) -> int:
         """Create a new document."""
         doc_uuid = str(uuid.uuid4())
@@ -1047,8 +1050,8 @@ class DocumentRepository:
         with get_connection() as conn:
             cursor = conn.execute(
                 """INSERT INTO documents
-                   (uuid, auction_type_id, dataset_split, filename, file_path, file_size, sha256, raw_text, uploaded_by, source, is_test, page_count)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (uuid, auction_type_id, dataset_split, filename, file_path, file_size, sha256, raw_text, uploaded_by, source, is_test, page_count, email_metadata_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     doc_uuid,
                     auction_type_id,
@@ -1062,6 +1065,7 @@ class DocumentRepository:
                     source,
                     is_test,
                     page_count,
+                    email_metadata_json,
                 ),
             )
             conn.commit()
@@ -2333,6 +2337,18 @@ def _run_migrations():
         # Migration: Add target column to export_jobs
         try:
             conn.execute("ALTER TABLE export_jobs ADD COLUMN target TEXT NOT NULL DEFAULT 'central_dispatch'")
+        except Exception:
+            pass  # Column already exists
+
+        # Migration: Add email_metadata_json to documents (stores sender, subject, message_id, date)
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN email_metadata_json TEXT")
+        except Exception:
+            pass  # Column already exists
+
+        # Migration: Add attachments_json to extraction_runs
+        try:
+            conn.execute("ALTER TABLE extraction_runs ADD COLUMN attachments_json TEXT DEFAULT '[]'")
         except Exception:
             pass  # Column already exists
 

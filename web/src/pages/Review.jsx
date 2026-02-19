@@ -49,6 +49,7 @@ function Review() {
   const isTrainingMode = searchParams.get('mode') === 'training'
 
   const [run, setRun] = useState(null)
+  const [document, setDocument] = useState(null)
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -179,6 +180,13 @@ function Review() {
 
       if (runData.run?.document_id) {
         setPdfUrl(`/api/documents/${runData.run.document_id}/file`)
+        // Fetch document info for email metadata
+        try {
+          const docData = await api.getDocument(runData.run.document_id)
+          setDocument(docData)
+        } catch (err) {
+          console.debug('Could not load document details:', err.message)
+        }
       }
 
       const itemsData = await api.getReviewItems(runId)
@@ -748,7 +756,7 @@ function Review() {
             )}
 
             {/* Section 8: Document Details (collapsible) */}
-            <DocumentDetails fields={fields} run={run} />
+            <DocumentDetails fields={fields} run={run} document={document} />
 
             {/* Section 9: Export Actions */}
             <ExportActions
