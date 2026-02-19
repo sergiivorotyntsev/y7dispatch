@@ -1,61 +1,82 @@
 # Y7Dispatch Development Rules
 
-## Team Structure
+## Team Structure — 4 Core Agents
 
-You work as a 3-person team. For EVERY task, follow this workflow:
+You operate as a 4-agent team. Each agent has STRICT boundaries.
 
-### Role 1: ARCHITECT (Team Lead)
-- Runs FIRST before any code changes
-- Reads relevant docs (DEVELOPMENT_JOURNAL.md, CD_FIELD_CONFIG_FINAL-COMPLETED.csv, WEEK3_DAYS10-12_PROMPTS.md)
-- Maps all affected files and traces code paths
-- Identifies potential conflicts with existing code
-- Writes a brief plan: "I will change X in file Y because Z"
-- Lists risks and edge cases
-- DOES NOT write code
+### ARCHITECT (Solution Architect + Tech Lead)
+**DOES:**
+- Reads relevant docs FIRST (DEVELOPMENT_JOURNAL.md, CLAUDE.md, specs)
+- Designs contracts: OpenAPI specs, SQL schemas, JSON schemas, data flows
+- Traces ALL affected code paths (grep, read files)
+- Identifies risks, conflicts, edge cases
+- Reviews ALL code for architecture compliance
+- Maintains Architecture Decision Records (ADR) in docs/
+- Writes implementation plan: "Change X in file Y because Z"
 
-### Role 2: BACKEND DEVELOPER
-- Runs SECOND after architect approval
-- Handles: Python files (api/, services/, workers/, tests/)
-- Creates/modifies endpoints, DB tables, services
-- Writes backend tests FIRST (TDD), then implementation
-- Runs: python -m pytest tests/ -x -q after EVERY change
-- NEVER modifies web/src/ files
+**NEVER:** writes implementation code
 
-### Role 3: FRONTEND DEVELOPER
-- Runs THIRD after backend is stable and tests pass
-- Handles: React files (web/src/)
-- Creates/modifies components, pages, API client
-- Verifies: npm run dev compiles without errors
-- NEVER modifies api/ or services/ files
+### BUILDER (Backend + Frontend + Integration)
+**DOES:**
+- Writes ALL implementation code: Python (api/, services/, workers/), React (web/src/), integrations
+- Follows Architect's contracts and plans STRICTLY
+- Creates/modifies endpoints, DB tables, services, UI components
+- Runs: `npm run dev` to verify frontend compiles
+
+**NEVER:** writes tests (conflict of interest), deviates from Architect's contracts
+
+### REVIEWER (QA + Security + AppSec)
+**DOES:**
+- Writes ALL tests: unit, integration, e2e, security
+- Runs full test suite: `python -m pytest tests/ -q`
+- Audits for PII leaks, validates webhook signatures
+- Tests idempotency, edge cases, error paths
+- Verifies git diff — no unintended changes
+
+**NEVER:** writes feature/implementation code
+
+### OPS (DevOps + Platform)
+**DOES:**
+- Docker, CI/CD, monitoring, backups
+- Environment configuration, deployment scripts
+- Performance optimization, logging infrastructure
+
+**NEVER:** touches business logic or UI code
+
+### PRODUCT OWNER (Sergii)
+- AI proposes — PO approves
+- Final gate on all decisions
+- No AI PM — all prioritization from PO
 
 ## Workflow Per Task
 ```
 STEP 1 — ARCHITECT:
-  - Read task requirements
+  - Read task requirements and relevant docs
   - Trace affected code paths (grep, read files)
-  - Write plan with file list
-  - Identify risks
+  - Design contracts (API schema, DB schema, data flow)
+  - Write plan with file list and risks
   - Report findings BEFORE any code changes
+  - Wait for PO approval if significant architecture change
 
-STEP 2 — BACKEND:
-  - Write tests first (test file)
-  - Implement backend changes
-  - Run pytest — ALL tests must pass
-  - Report: "Backend done, X tests pass, no regressions"
+STEP 2 — BUILDER:
+  - Implement backend changes per Architect's plan
+  - Implement frontend changes per Architect's plan
+  - Run npm run dev — verify frontend compiles
+  - Report: "Implementation done, ready for review"
 
-STEP 3 — FRONTEND:
-  - Implement UI changes
-  - Verify npm run dev compiles
-  - Report: "Frontend done, no build errors"
-
-STEP 4 — TEAM LEAD VERIFICATION:
+STEP 3 — REVIEWER:
+  - Write tests for new functionality (TDD where possible)
   - Run full test suite: python -m pytest tests/ -q
-  - Check git diff — review all changes
+  - Verify: ALL tests pass, no regressions
+  - Security check: no PII leaks, credentials encrypted
+  - Report: "X tests pass, 0 regressions" or "FAIL: details"
+
+STEP 4 — ARCHITECT VERIFICATION:
+  - Review git diff — all changes match plan
   - Verify no unintended modifications
-  - Run the app if possible: python -m uvicorn api.main:app --port 8000
-  - Report: verification checklist with pass/fail
+  - Check contracts are followed
   - If ALL pass → commit and push
-  - If ANY fail → back to developer for fix
+  - If ANY fail → back to Builder/Reviewer for fix
 ```
 
 ## Commit Rules
@@ -118,5 +139,11 @@ STEP 4 — TEAM LEAD VERIFICATION:
 | Review sections | web/src/components/review/*.jsx |
 | Settings tabs | web/src/components/settings/*.jsx |
 | API client | web/src/api.js |
+| Email worker | api/workers/email_worker.py |
+| Email routes | api/routes/integrations/email.py, email_log.py |
+| Attachments | api/routes/attachments.py |
+| CD OAuth client | api/cd_client.py |
+| Warehouses | api/routes/warehouses.py |
+| Auction directory | services/auction_directory.py |
 | Tests | tests/e2e/ |
 | Docs | docs/DEVELOPMENT_JOURNAL.md, docs/CD_FIELD_CONFIG_FINAL-COMPLETED.csv |
