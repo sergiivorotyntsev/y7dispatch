@@ -178,6 +178,86 @@ class EmailWorker:
 
         return 'unknown'
 
+    @staticmethod
+    def _count_pdf_pages(pdf_bytes: bytes) -> int:
+        """Count pages in a PDF from raw bytes without external libraries.
+
+        Uses the PDF internal structure: counts /Type /Page objects
+        minus /Type /Pages (parent node) to get leaf page count.
+        """
+        if not pdf_bytes:
+            return 1
+        try:
+            count = pdf_bytes.count(b'/Type /Page')
+            # /Type /Pages is the parent node, not a leaf page
+            count -= pdf_bytes.count(b'/Type /Pages')
+            return max(count, 1)
+        except Exception:
+            return 1
+
+    def _get_attachment_bytes(self, msg: 'EmailMessage', filename: str) -> bytes | None:
+        """Get raw bytes for a specific attachment by filename."""
+        for part in msg.raw_message.walk():
+            part_filename = part.get_filename()
+            if part_filename:
+                part_filename = self._decode_header_value(part_filename)
+            if part_filename == filename:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return payload
+        return None
+
+    def _pick_best_invoice(
+        self, msg: 'EmailMessage', invoice_filenames: list[str],
+    ) -> tuple[list[str], list[str]]:
+        """When multiple PDFs are classified as 'invoice', pick the real Buyer Receipt.
+
+        IAA Buyer Receipts are 1-page, ~145-170 KB PDFs with structured data.
+        Listing pages masquerading as ShowReport are 3-page, ~200-250 KB PDFs.
+
+        Returns: (best_invoices, demoted_to_listing)
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if len(invoice_filenames) <= 1:
+            return invoice_filenames, []
+
+        # Get page counts and sizes for each candidate
+        candidates = []
+        for fn in invoice_filenames:
+            pdf_bytes = self._get_attachment_bytes(msg, fn)
+            page_count = self._count_pdf_pages(pdf_bytes) if pdf_bytes else 1
+            size = len(pdf_bytes) if pdf_bytes else 0
+            candidates.append({"filename": fn, "pages": page_count, "size": size})
+            logger.info("[EmailWorker] Invoice candidate: '%s' (%d pages, %d bytes)", fn, page_count, size)
+
+        # 1-page PDFs are almost certainly Buyer Receipts
+        one_pagers = [c for c in candidates if c["pages"] == 1]
+        multi_pagers = [c for c in candidates if c["pages"] > 1]
+
+        if one_pagers:
+            # Pick smallest 1-pager as the invoice
+            best = min(one_pagers, key=lambda x: x["size"])
+            demoted = [c for c in candidates if c["filename"] != best["filename"]]
+            for d in demoted:
+                logger.info(
+                    "[EmailWorker] Demoted '%s' (%d pages, %d bytes) to listing_page — not a Buyer Receipt",
+                    d["filename"], d["pages"], d["size"],
+                )
+            return [best["filename"]], [d["filename"] for d in demoted]
+
+        # No 1-pagers: pick smallest multi-pager
+        candidates.sort(key=lambda x: x["size"])
+        best = candidates[0]
+        demoted = candidates[1:]
+        for d in demoted:
+            logger.info(
+                "[EmailWorker] Demoted '%s' (%d pages) to listing_page — picking smaller candidate",
+                d["filename"], d["pages"],
+            )
+        return [best["filename"]], [d["filename"] for d in demoted]
+
     def _classify_and_rank_attachments(
         self, msg: 'EmailMessage',
     ) -> dict[str, list[str]]:
@@ -193,6 +273,8 @@ class EmailWorker:
            - Single unknown → it's the invoice
            - Multiple unknowns → SMALLEST by file size (text-based PDFs
              are smaller than photo-heavy listing pages)
+        4. If multiple invoices, pick the 1-page Buyer Receipt over multi-page listings
+        5. If single invoice is 3+ pages and a listing page is 1 page, swap them
         """
         import logging
         logger = logging.getLogger(__name__)
@@ -252,6 +334,35 @@ class EmailWorker:
                 promoted = classified["condition_report"].pop(0)
                 classified["invoice"].append(promoted)
                 logger.info("[EmailWorker] No invoice.pdf — promoted condition report '%s' to invoice (last resort)", promoted)
+
+        # CONTENT-AWARE DISAMBIGUATION: When multiple PDFs are classified as
+        # invoice (e.g., two ShowReport variants), pick the 1-page Buyer Receipt
+        # over 3-page listing pages masquerading as ShowReport.
+        if len(classified["invoice"]) > 1:
+            best, demoted = self._pick_best_invoice(msg, classified["invoice"])
+            classified["invoice"] = best
+            classified["listing_page"].extend(demoted)
+
+        # SWAP CHECK: If the single invoice is a multi-page listing and a
+        # "listing_page" is actually a 1-page receipt, swap them.
+        if len(classified["invoice"]) == 1 and classified["listing_page"]:
+            inv_fn = classified["invoice"][0]
+            inv_bytes = self._get_attachment_bytes(msg, inv_fn)
+            inv_pages = self._count_pdf_pages(inv_bytes) if inv_bytes else 1
+
+            if inv_pages >= 3:
+                for lp_fn in classified["listing_page"]:
+                    lp_bytes = self._get_attachment_bytes(msg, lp_fn)
+                    lp_pages = self._count_pdf_pages(lp_bytes) if lp_bytes else 3
+                    if lp_pages == 1:
+                        logger.info(
+                            "[EmailWorker] Swapping: '%s' (%dp) → listing, '%s' (%dp) → invoice",
+                            inv_fn, inv_pages, lp_fn, lp_pages,
+                        )
+                        classified["invoice"] = [lp_fn]
+                        classified["listing_page"].remove(lp_fn)
+                        classified["listing_page"].append(inv_fn)
+                        break
 
         # Log classification
         total = sum(len(v) for v in classified.values())

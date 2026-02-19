@@ -829,3 +829,183 @@ class TestClassificationInvariant:
         errors, warnings = self._check_invariants(metrics, outputs)
         assert len(errors) == 0
         assert len(warnings) == 0
+
+
+# =============================================================================
+# Buyer Receipt Selection Tests (Day 13A — content-aware disambiguation)
+# =============================================================================
+
+
+class TestBuyerReceiptSelection:
+    """Test _pick_best_invoice and content-aware classification.
+
+    IAA Buyer Receipts are 1-page (~145-170 KB) PDFs.
+    Listing pages masquerading as ShowReport are 3-page (~200-250 KB) PDFs.
+    When multiple PDFs are classified as invoice, pick the 1-page one.
+    """
+
+    def _make_pdf_bytes(self, page_count: int, extra_size: int = 0) -> bytes:
+        """Build minimal PDF bytes with N pages for _count_pdf_pages.
+
+        Creates a valid-enough structure: one /Type /Pages parent
+        and N /Type /Page leaf entries.
+        """
+        pages = b"/Type /Pages /Kids ["
+        for i in range(page_count):
+            pages += f" {i + 3} 0 R".encode()
+        pages += b"]"
+        page_objects = b""
+        for i in range(page_count):
+            page_objects += b"/Type /Page /Parent 2 0 R\n"
+        padding = b"\x00" * extra_size
+        return b"%PDF-1.4\n" + pages + b"\n" + page_objects + padding
+
+    def _make_email_msg(self, attachments: list[tuple[str, bytes]]):
+        """Build EmailMessage with raw MIME parts for the given attachments."""
+        import email.mime.base
+        import email.mime.multipart
+        import email.mime.text
+
+        from api.workers.email_worker import EmailMessage
+
+        mime = email.mime.multipart.MIMEMultipart()
+        mime["From"] = "test@example.com"
+        mime["Subject"] = "IAA test"
+        mime["Message-ID"] = "<buyer-receipt-test@example.com>"
+        mime["Date"] = "Wed, 19 Feb 2026 12:00:00 -0500"
+        mime.attach(email.mime.text.MIMEText("Body"))
+
+        filenames = []
+        for fn, payload in attachments:
+            part = email.mime.base.MIMEBase("application", "pdf")
+            part.set_payload(payload)
+            part.add_header("Content-Disposition", "attachment", filename=fn)
+            mime.attach(part)
+            filenames.append(fn)
+
+        raw_bytes = mime.as_bytes()
+        parsed = email.message_from_bytes(raw_bytes)
+
+        return EmailMessage(
+            message_id="<buyer-receipt-test@example.com>",
+            uid="1",
+            subject="IAA test",
+            sender="test@example.com",
+            date="2026-02-19",
+            has_pdf=True,
+            pdf_filenames=filenames,
+            raw_message=parsed,
+        )
+
+    def test_count_pdf_pages_1page(self):
+        from api.workers.email_worker import EmailWorker
+        pdf = self._make_pdf_bytes(1)
+        assert EmailWorker._count_pdf_pages(pdf) == 1
+
+    def test_count_pdf_pages_3pages(self):
+        from api.workers.email_worker import EmailWorker
+        pdf = self._make_pdf_bytes(3)
+        assert EmailWorker._count_pdf_pages(pdf) == 3
+
+    def test_count_pdf_pages_empty(self):
+        from api.workers.email_worker import EmailWorker
+        assert EmailWorker._count_pdf_pages(b"") == 1
+
+    def test_single_showreport_unchanged(self):
+        """Single ShowReport (1 page) stays as invoice — no disambiguation needed."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+
+        receipt_bytes = self._make_pdf_bytes(1, extra_size=170_000)
+        msg = self._make_email_msg([("ShowReport.pdf", receipt_bytes)])
+        classified = worker._classify_and_rank_attachments(msg)
+
+        assert classified["invoice"] == ["ShowReport.pdf"]
+        assert classified["listing_page"] == []
+
+    def test_two_showreports_picks_1page(self):
+        """Two ShowReports: 1-page (170KB) wins over 3-page (240KB)."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+
+        receipt_bytes = self._make_pdf_bytes(1, extra_size=170_000)
+        listing_bytes = self._make_pdf_bytes(3, extra_size=240_000)
+
+        msg = self._make_email_msg([
+            ("ShowReport (1).pdf", listing_bytes),  # 3-page listing
+            ("ShowReport.pdf", receipt_bytes),       # 1-page buyer receipt
+        ])
+        classified = worker._classify_and_rank_attachments(msg)
+
+        assert classified["invoice"] == ["ShowReport.pdf"]
+        assert "ShowReport (1).pdf" in classified["listing_page"]
+
+    def test_two_showreports_listing_first_still_picks_receipt(self):
+        """Order doesn't matter — 1-page wins regardless of list position."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+
+        receipt_bytes = self._make_pdf_bytes(1, extra_size=145_000)
+        listing_bytes = self._make_pdf_bytes(3, extra_size=200_000)
+
+        msg = self._make_email_msg([
+            ("ShowReport.pdf", receipt_bytes),       # 1-page buyer receipt first
+            ("ShowReport (2).pdf", listing_bytes),   # 3-page listing second
+        ])
+        classified = worker._classify_and_rank_attachments(msg)
+
+        assert classified["invoice"] == ["ShowReport.pdf"]
+        assert "ShowReport (2).pdf" in classified["listing_page"]
+
+    def test_showreport_3pages_plus_listing_1page_swaps(self):
+        """ShowReport is 3 pages (listing content), IAA listing is 1 page (receipt) → swap."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+
+        showreport_bytes = self._make_pdf_bytes(3, extra_size=240_000)
+        listing_bytes = self._make_pdf_bytes(1, extra_size=170_000)
+
+        msg = self._make_email_msg([
+            ("ShowReport.pdf", showreport_bytes),
+            ("2024 HYUNDAI KONA for Auction - IAA.pdf", listing_bytes),
+        ])
+        classified = worker._classify_and_rank_attachments(msg)
+
+        # Swap: listing page (1p) becomes invoice, ShowReport (3p) becomes listing
+        assert classified["invoice"] == ["2024 HYUNDAI KONA for Auction - IAA.pdf"]
+        assert "ShowReport.pdf" in classified["listing_page"]
+
+    def test_no_swap_when_both_multipage(self):
+        """Both PDFs are multi-page — no swap, ShowReport stays as invoice."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+
+        showreport_bytes = self._make_pdf_bytes(3, extra_size=240_000)
+        listing_bytes = self._make_pdf_bytes(3, extra_size=200_000)
+
+        msg = self._make_email_msg([
+            ("ShowReport.pdf", showreport_bytes),
+            ("2024 HYUNDAI KONA for Auction - IAA.pdf", listing_bytes),
+        ])
+        classified = worker._classify_and_rank_attachments(msg)
+
+        # No swap — both are multi-page, ShowReport stays as invoice
+        assert classified["invoice"] == ["ShowReport.pdf"]
+        assert classified["listing_page"] == ["2024 HYUNDAI KONA for Auction - IAA.pdf"]
+
+    def test_copart_invoice_unaffected(self):
+        """Copart with invoice.pdf + listing — no disambiguation needed."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+
+        invoice_bytes = self._make_pdf_bytes(1, extra_size=136_000)
+        listing_bytes = self._make_pdf_bytes(3, extra_size=300_000)
+
+        msg = self._make_email_msg([
+            ("invoice.pdf", invoice_bytes),
+            ("2023 FORD ESCAPE _ Run and Drive _ Copart.pdf", listing_bytes),
+        ])
+        classified = worker._classify_and_rank_attachments(msg)
+
+        assert classified["invoice"] == ["invoice.pdf"]
+        assert classified["listing_page"] == ["2023 FORD ESCAPE _ Run and Drive _ Copart.pdf"]
