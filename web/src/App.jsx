@@ -3,10 +3,12 @@ import Settings from './pages/Settings'
 import TestLab from './pages/TestLab'
 import Documents from './pages/Documents'
 import Review from './pages/Review'
+import EmailLog from './pages/EmailLog'
 
 function App() {
   const navItems = [
     { path: '/', label: 'Documents', icon: DocumentsIcon },
+    { path: '/email-log', label: 'Email Log', icon: EmailLogIcon },
     { path: '/test-lab', label: 'Test Lab', icon: TestLabIcon },
     { path: '/settings', label: 'Settings', icon: SettingsIcon },
   ]
@@ -50,6 +52,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Documents />} />
           <Route path="/review/:runId" element={<Review />} />
+          <Route path="/email-log" element={<EmailLog />} />
           <Route path="/test-lab" element={<TestLab />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
@@ -80,6 +83,14 @@ function DocumentsIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
+function EmailLogIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
     </svg>
   )
 }

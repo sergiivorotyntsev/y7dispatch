@@ -731,6 +731,9 @@ function Documents() {
                     className="form-checkbox h-4 w-4 text-primary-600"
                   />
                 </th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Load ID
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   VIN
                 </th>
@@ -775,6 +778,7 @@ function Documents() {
                     : rawOutputs
                 ) : {}
 
+                const loadId = doc.load_id || outputs.load_id || ''
                 const vin = doc.vin || outputs.vehicle_vin || ''
                 const vehicleYear = doc.vehicle_year || outputs.vehicle_year || ''
                 const vehicleMake = doc.vehicle_make || outputs.vehicle_make || ''
@@ -816,6 +820,11 @@ function Documents() {
                         onChange={(e) => toggleSelectDoc(doc.id, e)}
                         className="form-checkbox h-4 w-4 text-primary-600"
                       />
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="font-mono text-xs font-medium text-primary-700">
+                        {loadId || '-'}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs text-gray-900" title={vin}>

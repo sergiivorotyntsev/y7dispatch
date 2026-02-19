@@ -115,6 +115,7 @@ class DocumentResponse(BaseModel):
     pending_reason: Optional[str] = None
 
     # Enriched fields from latest extraction run
+    load_id: Optional[str] = None
     vin: Optional[str] = None
     vehicle_year: Optional[str] = None
     vehicle_make: Optional[str] = None
@@ -513,6 +514,7 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
     def _str(val):
         return str(val) if val is not None else None
 
+    doc_dict["load_id"] = _str(outputs.get("load_id"))
     doc_dict["vin"] = _str(outputs.get("vehicle_vin"))
     doc_dict["vehicle_year"] = _str(outputs.get("vehicle_year"))
     doc_dict["vehicle_make"] = _str(outputs.get("vehicle_make"))
