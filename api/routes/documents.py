@@ -510,15 +510,18 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
         except Exception:
             pass
 
-    doc_dict["vin"] = outputs.get("vehicle_vin")
-    doc_dict["vehicle_year"] = outputs.get("vehicle_year")
-    doc_dict["vehicle_make"] = outputs.get("vehicle_make")
-    doc_dict["vehicle_model"] = outputs.get("vehicle_model")
-    doc_dict["vehicle_lot"] = outputs.get("vehicle_lot")
-    doc_dict["pickup_city"] = outputs.get("pickup_city")
-    doc_dict["pickup_state"] = outputs.get("pickup_state")
-    doc_dict["pickup_name"] = outputs.get("pickup_name")
-    doc_dict["gate_pass"] = outputs.get("gate_pass")
+    def _str(val):
+        return str(val) if val is not None else None
+
+    doc_dict["vin"] = _str(outputs.get("vehicle_vin"))
+    doc_dict["vehicle_year"] = _str(outputs.get("vehicle_year"))
+    doc_dict["vehicle_make"] = _str(outputs.get("vehicle_make"))
+    doc_dict["vehicle_model"] = _str(outputs.get("vehicle_model"))
+    doc_dict["vehicle_lot"] = _str(outputs.get("vehicle_lot"))
+    doc_dict["pickup_city"] = _str(outputs.get("pickup_city"))
+    doc_dict["pickup_state"] = _str(outputs.get("pickup_state"))
+    doc_dict["pickup_name"] = _str(outputs.get("pickup_name"))
+    doc_dict["gate_pass"] = _str(outputs.get("gate_pass"))
 
     return doc_dict
 
