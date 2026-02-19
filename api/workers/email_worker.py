@@ -77,16 +77,24 @@ class EmailWorker:
     # ------------------------------------------------------------------
 
     def _extract_gate_pass(self, body_text: str) -> str | None:
-        """Extract Gate Pass PIN from email body text."""
+        """Extract Gate Pass PIN from email body text.
+
+        Handles variants: "Gate Pass PIN:", "Gate Pass Pin:", "gate pass pin",
+        "PIN:", "pin:", "Gate pass is ABC", etc.
+        """
         patterns = [
-            r'[Gg]ate\s*[Pp]ass\s*(?:PIN|pin|Pin)?\s*[:\-]?\s*(\w{4,10})',
-            r'[Pp][Ii][Nn]\s*[:\-]?\s*(\w{4,10})',
-            r'[Gg]ate\s*[Pp]ass\s*(?:is|:)\s*(\w{4,10})',
+            r'gate\s*pass\s*pin\s*[:\-]?\s*(\w{3,10})',
+            r'gate\s*pass\s*[:\-]\s*(\w{3,10})',
+            r'gate\s*pass\s*(?:is)\s+(\w{3,10})',
+            r'\bpin\s*[:\-]\s*(\w{3,10})',
         ]
         for pattern in patterns:
-            match = re.search(pattern, body_text)
+            match = re.search(pattern, body_text, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                result = match.group(1).strip()
+                # Reject common false positives
+                if result.lower() not in ('pin', 'pass', 'gate', 'the', 'is', 'see'):
+                    return result
         return None
 
     def _get_email_body_text(self, msg: email.message.Message) -> str:
@@ -113,33 +121,55 @@ class EmailWorker:
 
     def _classify_attachment(self, filename: str) -> str:
         """
-        Classify PDF by filename:
-        - "invoice" — auction invoice/bill of sale (run through HaikuExtractor)
-        - "vehicle_release" — Manheim release doc (save for carrier, link to run)
-        - "condition_report" — vehicle condition (extract inoperable status)
-        - "unknown" — can't determine from filename alone
-        """
-        fn_lower = filename.lower()
+        Classify PDF by filename.
 
-        # Vehicle release (Manheim)
+        Returns:
+          "invoice"          — auction invoice/bill of sale (extract via HaikuExtractor)
+          "listing_page"     — auction listing with photos (save as attachment)
+          "condition_report" — vehicle condition report
+          "vehicle_release"  — Manheim release doc
+          "unknown"          — can't determine from filename alone
+
+        Priority order:
+          1. Exact invoice names ("invoice.pdf", etc.)
+          2. Invoice keywords ("invoice", "bill", "receipt")
+          3. Listing page indicators (auction slug with vehicle + location)
+          4. Condition / inspection report
+          5. Vehicle release
+          6. Unknown (fallback)
+        """
+        fn_lower = filename.lower().strip()
+
+        # 1. Exact or near-exact invoice names (highest priority)
+        if fn_lower in ('invoice.pdf', 'bill_of_sale.pdf', 'receipt.pdf',
+                        'sales_receipt.pdf'):
+            return 'invoice'
+
+        # 2. Filename contains invoice keywords
+        if any(w in fn_lower for w in ['invoice', 'bill_of_sale', 'receipt',
+                                       'sales_receipt']):
+            return 'invoice'
+
+        # 3. Listing page indicators — auction document with vehicle info + photos
+        #    Pattern: "{Year} {Make} {Model} _ {status} _ {date} _ {location} _ {Auction}.pdf"
+        #    These are NOT invoices — they have photos and vehicle listing data.
+        listing_indicators = ['run and drive', 'run_and_drive',
+                              'for auction', 'for_auction',
+                              'enhanced vehicle', 'enhanced_vehicle']
+        auction_suffix = (fn_lower.endswith('copart.pdf')
+                          or fn_lower.endswith('iaa.pdf')
+                          or fn_lower.endswith('manheim.pdf'))
+        if any(ind in fn_lower for ind in listing_indicators) or auction_suffix:
+            return 'listing_page'
+
+        # 4. Condition / inspection report
+        if any(w in fn_lower for w in ['condition', 'inspection', 'showreport',
+                                       'show_report', 'show report']):
+            return 'condition_report'
+
+        # 5. Vehicle release (Manheim)
         if any(w in fn_lower for w in ['release', 'vehicle release', 'onsite']):
             return 'vehicle_release'
-
-        # Invoice / bill of sale — check BEFORE condition_report because
-        # Copart listing filenames contain "Run and Drive" as vehicle status,
-        # not as a condition report indicator
-        if any(w in fn_lower for w in ['invoice', 'bill', 'receipt', 'sale', 'buyer']):
-            return 'invoice'
-        if 'for auction' in fn_lower or 'copart' in fn_lower:
-            return 'invoice'
-
-        # Condition / inspection report
-        # IAA uses "ShowReport", Copart uses "condition", "inspection"
-        if any(w in fn_lower for w in [
-            'condition', 'inspection', 'showreport', 'show_report', 'show report',
-            'run_and_drive', 'run and drive', 'enhanced vehicle',
-        ]):
-            return 'condition_report'
 
         return 'unknown'
 
@@ -149,20 +179,22 @@ class EmailWorker:
         """
         Classify all PDF attachments and pick which to extract.
 
-        Returns dict: {"invoice": [...], "condition_report": [...],
-                        "vehicle_release": [...]}
+        Returns dict with keys: invoice, listing_page, condition_report, vehicle_release.
 
         Logic:
         1. Classify each PDF by filename
-        2. If no explicit invoice found but unknowns exist:
-           - Single PDF → it's the invoice
-           - Multiple unknowns → largest by file size is the invoice
+        2. Listing pages are saved as attachments (not extracted)
+        3. If no explicit invoice found but unknowns exist:
+           - Single unknown → it's the invoice
+           - Multiple unknowns → SMALLEST by file size (text-based PDFs
+             are smaller than photo-heavy listing pages)
         """
         import logging
         logger = logging.getLogger(__name__)
 
         classified = {
             "invoice": [],
+            "listing_page": [],
             "condition_report": [],
             "vehicle_release": [],
         }
@@ -182,7 +214,9 @@ class EmailWorker:
                 classified["invoice"].append(unknowns[0])
                 unknowns = []
             else:
-                # Multiple unknowns, no explicit invoice → pick largest as invoice
+                # Multiple unknowns, no explicit invoice → pick SMALLEST as invoice
+                # Invoices are text-based PDFs (~100-200 KB), listing pages with photos
+                # are larger (~300-600 KB)
                 sizes = {}
                 for part in msg.raw_message.walk():
                     part_filename = part.get_filename()
@@ -193,18 +227,19 @@ class EmailWorker:
                         sizes[part_filename] = len(payload) if payload else 0
 
                 if sizes:
-                    largest = max(sizes, key=sizes.get)
-                    classified["invoice"].append(largest)
-                    unknowns.remove(largest)
+                    smallest = min(sizes, key=sizes.get)
+                    classified["invoice"].append(smallest)
+                    unknowns.remove(smallest)
 
-        # Remaining unknowns → treat as invoices (safe default)
-        classified["invoice"].extend(unknowns)
+        # Remaining unknowns → save as listing pages (don't extract)
+        classified["listing_page"].extend(unknowns)
 
         # Log classification
         total = sum(len(v) for v in classified.values())
         logger.info(
-            "[EmailWorker] Classified %d PDFs: %d invoice, %d condition, %d release",
+            "[EmailWorker] Classified %d PDFs: %d invoice, %d listing, %d condition, %d release",
             total, len(classified["invoice"]),
+            len(classified["listing_page"]),
             len(classified["condition_report"]),
             len(classified["vehicle_release"]),
         )
@@ -227,8 +262,9 @@ class EmailWorker:
     # Enhancement 3: Attachment storage
     # ------------------------------------------------------------------
 
-    def _save_vehicle_release(self, msg: EmailMessage, filename: str, run_id: int) -> dict | None:
-        """Save vehicle release PDF to data/attachments/{run_id}/ and record in DB."""
+    def _save_vehicle_release(self, msg: EmailMessage, filename: str, run_id: int,
+                              att_type: str = "vehicle_release") -> dict | None:
+        """Save attachment PDF to data/attachments/{run_id}/ and record in DB."""
         for part in msg.raw_message.walk():
             part_filename = part.get_filename()
             if part_filename:
@@ -250,7 +286,7 @@ class EmailWorker:
                 attachment_info = {
                     "filename": safe_filename,
                     "original_filename": filename,
-                    "type": "vehicle_release",
+                    "type": att_type,
                     "path": str(file_path),
                     "url": f"/api/documents/{run_id}/attachments/{safe_filename}",
                 }
@@ -1174,17 +1210,30 @@ class EmailWorker:
                                 if gate_pass and run_id:
                                     self._save_gate_pass_to_run(run_id, gate_pass)
 
-                        # 2. Save CONDITION REPORTS as attachments + extract inoperable hint
+                        # 2. Save LISTING PAGES as attachments (photos + vehicle info)
+                        for pdf_filename in classified["listing_page"]:
+                            if last_run_id:
+                                self._save_vehicle_release(msg, pdf_filename, last_run_id,
+                                                           att_type="listing_page")
+                            else:
+                                self._save_attachment(msg, pdf_filename)
+                            # Listing page filenames can indicate operable status
+                            is_inoperable = self._detect_inoperable_from_filename(pdf_filename)
+                            if is_inoperable is not None and last_run_id:
+                                self._save_inoperable_to_run(last_run_id, is_inoperable)
+
+                        # 3. Save CONDITION REPORTS as attachments + extract inoperable hint
                         for pdf_filename in classified["condition_report"]:
                             if last_run_id:
-                                self._save_vehicle_release(msg, pdf_filename, last_run_id)
+                                self._save_vehicle_release(msg, pdf_filename, last_run_id,
+                                                           att_type="condition_report")
                             else:
                                 self._save_attachment(msg, pdf_filename)
                             is_inoperable = self._detect_inoperable_from_filename(pdf_filename)
                             if is_inoperable is not None and last_run_id:
                                 self._save_inoperable_to_run(last_run_id, is_inoperable)
 
-                        # 3. Save VEHICLE RELEASE PDFs as attachments
+                        # 4. Save VEHICLE RELEASE PDFs as attachments
                         for pdf_filename in classified["vehicle_release"]:
                             if last_run_id:
                                 self._save_vehicle_release(msg, pdf_filename, last_run_id)

@@ -90,9 +90,14 @@ function AdditionalInfoSection({
                       ? 'bg-blue-100 text-blue-700'
                       : att.type === 'condition_report'
                         ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-gray-100 text-gray-600'
+                        : att.type === 'listing_page'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-gray-100 text-gray-600'
                   }`}>
-                    {att.type === 'vehicle_release' ? 'Vehicle Release' : att.type === 'condition_report' ? 'Condition Report' : att.type}
+                    {att.type === 'vehicle_release' ? 'Vehicle Release'
+                      : att.type === 'condition_report' ? 'Condition Report'
+                      : att.type === 'listing_page' ? 'Listing Page'
+                      : att.type}
                   </span>
                 </div>
                 <div className="flex items-center gap-1">

@@ -402,15 +402,27 @@ class TestPDFClassification:
     def test_invoice_buyer_receipt(self):
         assert self._classify("Buyer_Receipt.pdf") == "invoice"
 
-    def test_for_auction_iaa(self):
-        """IAA auction listing page should be classified as invoice."""
-        assert self._classify("2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf") == "invoice"
+    def test_invoice_exact_name(self):
+        """Exact filename 'invoice.pdf' is always invoice (highest priority)."""
+        assert self._classify("invoice.pdf") == "invoice"
 
-    def test_copart_listing(self):
-        """Copart condition page with 'Copart' in name."""
+    def test_for_auction_iaa_is_listing(self):
+        """IAA auction listing page is a listing_page, NOT invoice."""
+        assert self._classify("2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf") == "listing_page"
+
+    def test_copart_listing_is_listing(self):
+        """Copart listing with 'Run and Drive' and ending in 'Copart.pdf' is listing_page."""
         assert self._classify(
             "2023 FORD ESCAPE ST-LINE ELITE _ Run and Drive _ Feb 17, 2026 _ IL - CHICAGO _ Copart.pdf"
-        ) == "invoice"
+        ) == "listing_page"
+
+    def test_copart_suffix_only_is_listing(self):
+        """Any PDF ending in 'Copart.pdf' is a listing page."""
+        assert self._classify("2015 BMW 428 I _ Run and Drive _ MN _ Copart.pdf") == "listing_page"
+
+    def test_iaa_suffix_only_is_listing(self):
+        """Any PDF ending in 'IAA.pdf' is a listing page."""
+        assert self._classify("2020 CHRYSLER PACIFICA TOURING for Auction - IAA.pdf") == "listing_page"
 
     # Condition report patterns
     def test_showreport_is_condition(self):
@@ -429,8 +441,11 @@ class TestPDFClassification:
     def test_inspection_is_condition(self):
         assert self._classify("Inspection_Report.pdf") == "condition_report"
 
-    def test_enhanced_vehicle_is_condition(self):
-        assert self._classify("Enhanced Vehicles report.pdf") == "condition_report"
+    def test_enhanced_vehicle_is_listing(self):
+        """Copart 'Enhanced Vehicles' status in filename = listing page."""
+        assert self._classify(
+            "2021 JEEP RENEGADE LIMITED _ Enhanced Vehicles _ Feb 17, 2026 _ IL _ Copart.pdf"
+        ) == "listing_page"
 
     # Vehicle release patterns
     def test_vehicle_release(self):
@@ -461,9 +476,10 @@ class TestPDFClassification:
         assert classified["invoice"] == ["document.pdf"]
         assert classified["condition_report"] == []
 
-    # Two PDFs: invoice + condition (real-world IAA pattern)
-    def test_iaa_invoice_and_showreport(self):
-        """Real IAA email: 'for Auction - IAA.pdf' = invoice, 'ShowReport.pdf' = condition."""
+    # Two PDFs: listing page + condition (real-world IAA pattern — no invoice.pdf)
+    def test_iaa_listing_and_showreport(self):
+        """Real IAA email: 'for Auction - IAA.pdf' = listing_page, 'ShowReport.pdf' = condition.
+        No invoice PDF in this email — IAA doesn't always include one."""
         from api.workers.email_worker import EmailMessage, EmailWorker
 
         worker = EmailWorker()
@@ -477,11 +493,12 @@ class TestPDFClassification:
             raw_message=MagicMock(),
         )
         classified = worker._classify_and_rank_attachments(msg)
-        assert classified["invoice"] == ["2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf"]
+        assert classified["invoice"] == []
+        assert classified["listing_page"] == ["2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf"]
         assert classified["condition_report"] == ["ShowReport (1).pdf"]
 
-    def test_copart_invoice_and_condition(self):
-        """Real Copart email pattern."""
+    def test_copart_invoice_and_listing(self):
+        """Real Copart email: 'invoice.pdf' = invoice, listing PDF = listing_page."""
         from api.workers.email_worker import EmailMessage, EmailWorker
 
         worker = EmailWorker()
@@ -495,7 +512,10 @@ class TestPDFClassification:
             raw_message=MagicMock(),
         )
         classified = worker._classify_and_rank_attachments(msg)
-        assert "invoice.pdf" in classified["invoice"]
+        assert classified["invoice"] == ["invoice.pdf"]
+        assert classified["listing_page"] == [
+            "2023 FORD ESCAPE ST LINE SELECT _ Run and Drive _ Feb 17, 2026 _ OK - OKLAHOMA CITY _ Copart.pdf"
+        ]
         assert classified["condition_report"] == []
 
 
@@ -692,3 +712,84 @@ class TestGatePassExtraction:
         """'PIN: 12345' format."""
         body = "Your PIN: 12345\nPlease pickup"
         assert self._extract(body) == "12345"
+
+
+# =============================================================================
+# Classification Invariant Tests
+# =============================================================================
+
+
+class TestClassificationInvariant:
+    """Test INV_CLASSIFICATION is a warning (not error) when fields are extracted.
+
+    IAA listing pages contain useful data (VIN, make/model, stock#) but the
+    pattern extractor can't classify them as a known auction type. These should
+    reach 'needs_review' status, not 'failed'.
+    """
+
+    def _check_invariants(self, metrics, outputs):
+        """Simulate the invariant check logic from extractions.py."""
+        invariant_errors = []
+        _classification_warning = None
+
+        # Invariant 2 logic (simplified from extractions.py)
+        if not metrics.get("detected_source"):
+            classification_issue = {
+                "code": "INV_CLASSIFICATION",
+                "message": "Document classification failed - unknown auction type",
+                "details": f"classification_score={metrics.get('classification_score', 0)}",
+            }
+            if outputs and len(outputs) >= 3:
+                classification_issue["severity"] = "warning"
+                _classification_warning = classification_issue
+            else:
+                invariant_errors.append(classification_issue)
+        else:
+            _classification_warning = None
+
+        invariant_warnings = []
+        if _classification_warning is not None:
+            invariant_warnings.append(_classification_warning)
+
+        return invariant_errors, invariant_warnings
+
+    def test_no_source_no_fields_is_error(self):
+        """No classification AND no fields → error (truly unreadable doc)."""
+        metrics = {"detected_source": None, "classification_score": 0}
+        outputs = {}
+        errors, warnings = self._check_invariants(metrics, outputs)
+        assert len(errors) == 1
+        assert errors[0]["code"] == "INV_CLASSIFICATION"
+        assert len(warnings) == 0
+
+    def test_no_source_few_fields_is_error(self):
+        """No classification AND only 2 fields → error (not enough data)."""
+        metrics = {"detected_source": None, "classification_score": 0}
+        outputs = {"vehicle_vin": "ABC123", "vehicle_year": "2024"}
+        errors, warnings = self._check_invariants(metrics, outputs)
+        assert len(errors) == 1
+        assert errors[0]["code"] == "INV_CLASSIFICATION"
+
+    def test_no_source_with_fields_is_warning(self):
+        """No classification BUT 3+ fields extracted → warning (IAA listing page)."""
+        metrics = {"detected_source": None, "classification_score": 0}
+        outputs = {
+            "vehicle_vin": "KM8HECA31RU073488",
+            "vehicle_make": "HYUNDAI",
+            "vehicle_model": "KONA",
+            "vehicle_year": "2024",
+            "reference_id": "43999238",
+        }
+        errors, warnings = self._check_invariants(metrics, outputs)
+        assert len(errors) == 0
+        assert len(warnings) == 1
+        assert warnings[0]["code"] == "INV_CLASSIFICATION"
+        assert warnings[0]["severity"] == "warning"
+
+    def test_with_source_no_warning(self):
+        """Classification succeeded → no error or warning."""
+        metrics = {"detected_source": "copart", "classification_score": 0.85}
+        outputs = {"vehicle_vin": "ABC123"}
+        errors, warnings = self._check_invariants(metrics, outputs)
+        assert len(errors) == 0
+        assert len(warnings) == 0

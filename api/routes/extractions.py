@@ -1090,16 +1090,24 @@ def run_extraction(
                     }
                 )
 
-        # Invariant 2: Classification must succeed
+        # Invariant 2: Classification should succeed
         # detected_source must be set with reasonable confidence
+        # Note: downgraded to warning when fields were extracted (e.g. IAA listing pages
+        # contain useful vehicle data but don't match invoice patterns)
         if not metrics.get("detected_source"):
-            invariant_errors.append(
-                {
-                    "code": "INV_CLASSIFICATION",
-                    "message": "Document classification failed - unknown auction type",
-                    "details": f"classification_score={metrics.get('classification_score', 0)}",
-                }
-            )
+            classification_issue = {
+                "code": "INV_CLASSIFICATION",
+                "message": "Document classification failed - unknown auction type",
+                "details": f"classification_score={metrics.get('classification_score', 0)}",
+            }
+            # If outputs have at least some fields, treat as warning not error
+            if outputs and len(outputs) >= 3:
+                classification_issue["severity"] = "warning"
+                # Will be added to warnings below after anchor check
+                _classification_warning = classification_issue
+            else:
+                invariant_errors.append(classification_issue)
+                _classification_warning = None
         elif metrics.get("classification_score", 0) < 0.1:
             invariant_errors.append(
                 {
@@ -1108,6 +1116,9 @@ def run_extraction(
                     "details": f"classification_score={metrics.get('classification_score', 0)}, detected={metrics.get('detected_source')}",
                 }
             )
+            _classification_warning = None
+        else:
+            _classification_warning = None
 
         # Invariant 3: At least 3 anchor fields must be extracted
         # Anchor fields: VIN/lot/stock (one of), pickup city/state, facility name/address
@@ -1143,6 +1154,10 @@ def run_extraction(
         # - 2/3 anchors: needs_review with warning (not blocking)
         # - < 2 anchors: failed (not enough data)
         invariant_warnings = []
+
+        # Add classification warning if classification failed but fields were extracted
+        if _classification_warning is not None:
+            invariant_warnings.append(_classification_warning)
 
         if anchor_count < 2:
             # Critical failure - not enough data to proceed

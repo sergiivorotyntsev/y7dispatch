@@ -211,6 +211,23 @@ function Review() {
           required: item.required || false,
         }
       }
+      // Inject gate_pass from outputs_json if not already in review_items
+      // (gate_pass comes from email body, stored in extraction run outputs)
+      if (!initialFields.gate_pass && runData.run?.outputs?.gate_pass) {
+        initialFields.gate_pass = {
+          key: 'gate_pass',
+          label: 'Gate Pass',
+          predicted: runData.run.outputs.gate_pass,
+          corrected: runData.run.outputs.gate_pass,
+          confidence: 1.0,
+          status: 'correct',
+          export: true,
+          section: 'additional',
+          fieldType: 'text',
+          required: false,
+        }
+      }
+
       setFields(initialFields)
 
       // Initialize dates based on extraction data
