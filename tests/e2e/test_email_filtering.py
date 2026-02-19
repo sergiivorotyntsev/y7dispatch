@@ -378,3 +378,155 @@ class TestEmailLogAPI:
 
         resp = client.post("/api/email-log/9999/skip")
         assert resp.status_code == 404
+
+
+# =============================================================================
+# PDF Classification Tests (Day 13A)
+# =============================================================================
+
+
+class TestPDFClassification:
+    """Test _classify_attachment() recognizes real-world filenames."""
+
+    def _classify(self, filename):
+        from api.workers.email_worker import EmailWorker
+        return EmailWorker()._classify_attachment(filename)
+
+    # Invoice patterns
+    def test_invoice_by_filename(self):
+        assert self._classify("Copart_Invoice_123.pdf") == "invoice"
+
+    def test_invoice_bill_of_sale(self):
+        assert self._classify("Bill_of_Sale_Feb2026.pdf") == "invoice"
+
+    def test_invoice_buyer_receipt(self):
+        assert self._classify("Buyer_Receipt.pdf") == "invoice"
+
+    def test_for_auction_iaa(self):
+        """IAA auction listing page should be classified as invoice."""
+        assert self._classify("2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf") == "invoice"
+
+    def test_copart_listing(self):
+        """Copart condition page with 'Copart' in name."""
+        assert self._classify(
+            "2023 FORD ESCAPE ST-LINE ELITE _ Run and Drive _ Feb 17, 2026 _ IL - CHICAGO _ Copart.pdf"
+        ) == "invoice"
+
+    # Condition report patterns
+    def test_showreport_is_condition(self):
+        """IAA's ShowReport is a condition report, NOT an invoice."""
+        assert self._classify("ShowReport.pdf") == "condition_report"
+
+    def test_showreport_numbered_is_condition(self):
+        assert self._classify("ShowReport (1).pdf") == "condition_report"
+
+    def test_showreport3_is_condition(self):
+        assert self._classify("ShowReport3.pdf") == "condition_report"
+
+    def test_condition_explicit(self):
+        assert self._classify("Vehicle_Condition_Report.pdf") == "condition_report"
+
+    def test_inspection_is_condition(self):
+        assert self._classify("Inspection_Report.pdf") == "condition_report"
+
+    def test_enhanced_vehicle_is_condition(self):
+        assert self._classify("Enhanced Vehicles report.pdf") == "condition_report"
+
+    # Vehicle release patterns
+    def test_vehicle_release(self):
+        assert self._classify("Vehicle_Release.pdf") == "vehicle_release"
+
+    def test_release_document(self):
+        assert self._classify("release_document.pdf") == "vehicle_release"
+
+    # Unknown / fallback
+    def test_generic_filename_unknown(self):
+        assert self._classify("document.pdf") == "unknown"
+
+    def test_attachment_unknown(self):
+        assert self._classify("attachment.pdf") == "unknown"
+
+    # Single PDF = invoice (via _classify_and_rank_attachments)
+    def test_single_unknown_pdf_becomes_invoice(self):
+        """When only one PDF and it's unknown, rank it as invoice."""
+        from api.workers.email_worker import EmailMessage, EmailWorker
+
+        worker = EmailWorker()
+        msg = EmailMessage(
+            message_id="<test@local>", uid="1", subject="Test",
+            sender="a@x.com", date="2026-01-01", has_pdf=True,
+            pdf_filenames=["document.pdf"], raw_message=MagicMock(),
+        )
+        classified = worker._classify_and_rank_attachments(msg)
+        assert classified["invoice"] == ["document.pdf"]
+        assert classified["condition_report"] == []
+
+    # Two PDFs: invoice + condition (real-world IAA pattern)
+    def test_iaa_invoice_and_showreport(self):
+        """Real IAA email: 'for Auction - IAA.pdf' = invoice, 'ShowReport.pdf' = condition."""
+        from api.workers.email_worker import EmailMessage, EmailWorker
+
+        worker = EmailWorker()
+        msg = EmailMessage(
+            message_id="<test@local>", uid="1", subject="Test",
+            sender="a@x.com", date="2026-01-01", has_pdf=True,
+            pdf_filenames=[
+                "2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf",
+                "ShowReport (1).pdf",
+            ],
+            raw_message=MagicMock(),
+        )
+        classified = worker._classify_and_rank_attachments(msg)
+        assert classified["invoice"] == ["2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf"]
+        assert classified["condition_report"] == ["ShowReport (1).pdf"]
+
+    def test_copart_invoice_and_condition(self):
+        """Real Copart email pattern."""
+        from api.workers.email_worker import EmailMessage, EmailWorker
+
+        worker = EmailWorker()
+        msg = EmailMessage(
+            message_id="<test@local>", uid="1", subject="Test",
+            sender="a@x.com", date="2026-01-01", has_pdf=True,
+            pdf_filenames=[
+                "invoice.pdf",
+                "2023 FORD ESCAPE ST LINE SELECT _ Run and Drive _ Feb 17, 2026 _ OK - OKLAHOMA CITY _ Copart.pdf",
+            ],
+            raw_message=MagicMock(),
+        )
+        classified = worker._classify_and_rank_attachments(msg)
+        assert "invoice.pdf" in classified["invoice"]
+        assert classified["condition_report"] == []
+
+
+# =============================================================================
+# Email Safety Tests (Day 13A)
+# =============================================================================
+
+
+class TestEmailSafety:
+    """Verify that the worker does NOT modify the mailbox."""
+
+    def test_no_move_to_processed_method(self):
+        """_move_to_processed should not exist as a callable method."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+        assert not callable(getattr(worker, "_move_to_processed", None))
+
+    def test_no_processed_folder_attribute(self):
+        """Worker should not have a processed_folder attribute."""
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+        assert not hasattr(worker, "processed_folder")
+
+    def test_no_imap_store_in_source(self):
+        """Source code should not contain imap.store() with FLAGS."""
+        import inspect
+        from api.workers import email_worker
+        source = inspect.getsource(email_worker)
+        # Check for dangerous IMAP operations
+        assert "imap.store" not in source
+        assert "imap.copy" not in source
+        assert "imap.expunge" not in source
+        assert "\\\\Deleted" not in source
+        assert "\\\\Seen" not in source

@@ -66,7 +66,7 @@ class EmailWorker:
         self.running = False
         self.poll_interval = self.config.get("poll_interval", 300)  # 5 minutes default
         self.max_emails_per_poll = self.config.get("max_emails_per_poll", 20)
-        self.processed_folder = self.config.get("processed_folder", "Processed")
+        # READ-ONLY mailbox — no processed folder, no flags, no moves
         self.upload_path = Path(self.config.get("upload_path", "uploads/email"))
         self.upload_path.mkdir(parents=True, exist_ok=True)
         self.attachments_path = Path(self.config.get("attachments_path", "data/attachments"))
@@ -117,16 +117,102 @@ class EmailWorker:
         - "invoice" — auction invoice/bill of sale (run through HaikuExtractor)
         - "vehicle_release" — Manheim release doc (save for carrier, link to run)
         - "condition_report" — vehicle condition (extract inoperable status)
-        - "other" — unknown (treated as invoice)
+        - "unknown" — can't determine from filename alone
         """
         fn_lower = filename.lower()
+
+        # Vehicle release (Manheim)
         if any(w in fn_lower for w in ['release', 'vehicle release', 'onsite']):
             return 'vehicle_release'
-        if any(w in fn_lower for w in ['condition', 'inspection']):
-            return 'condition_report'
+
+        # Invoice / bill of sale — check BEFORE condition_report because
+        # Copart listing filenames contain "Run and Drive" as vehicle status,
+        # not as a condition report indicator
         if any(w in fn_lower for w in ['invoice', 'bill', 'receipt', 'sale', 'buyer']):
             return 'invoice'
-        return 'invoice'  # default: treat unknown PDFs as invoices
+        if 'for auction' in fn_lower or 'copart' in fn_lower:
+            return 'invoice'
+
+        # Condition / inspection report
+        # IAA uses "ShowReport", Copart uses "condition", "inspection"
+        if any(w in fn_lower for w in [
+            'condition', 'inspection', 'showreport', 'show_report', 'show report',
+            'run_and_drive', 'run and drive', 'enhanced vehicle',
+        ]):
+            return 'condition_report'
+
+        return 'unknown'
+
+    def _classify_and_rank_attachments(
+        self, msg: 'EmailMessage',
+    ) -> dict[str, list[str]]:
+        """
+        Classify all PDF attachments and pick which to extract.
+
+        Returns dict: {"invoice": [...], "condition_report": [...],
+                        "vehicle_release": [...]}
+
+        Logic:
+        1. Classify each PDF by filename
+        2. If no explicit invoice found but unknowns exist:
+           - Single PDF → it's the invoice
+           - Multiple unknowns → largest by file size is the invoice
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        classified = {
+            "invoice": [],
+            "condition_report": [],
+            "vehicle_release": [],
+        }
+
+        unknowns = []
+        for pdf_filename in msg.pdf_filenames:
+            att_type = self._classify_attachment(pdf_filename)
+            if att_type == "unknown":
+                unknowns.append(pdf_filename)
+            else:
+                classified[att_type].append(pdf_filename)
+
+        # Resolve unknowns
+        if unknowns and not classified["invoice"]:
+            if len(unknowns) == 1:
+                # Only one PDF and it's unknown → must be the invoice
+                classified["invoice"].append(unknowns[0])
+                unknowns = []
+            else:
+                # Multiple unknowns, no explicit invoice → pick largest as invoice
+                sizes = {}
+                for part in msg.raw_message.walk():
+                    part_filename = part.get_filename()
+                    if part_filename:
+                        part_filename = self._decode_header_value(part_filename)
+                    if part_filename in unknowns:
+                        payload = part.get_payload(decode=True)
+                        sizes[part_filename] = len(payload) if payload else 0
+
+                if sizes:
+                    largest = max(sizes, key=sizes.get)
+                    classified["invoice"].append(largest)
+                    unknowns.remove(largest)
+
+        # Remaining unknowns → treat as invoices (safe default)
+        classified["invoice"].extend(unknowns)
+
+        # Log classification
+        total = sum(len(v) for v in classified.values())
+        logger.info(
+            "[EmailWorker] Classified %d PDFs: %d invoice, %d condition, %d release",
+            total, len(classified["invoice"]),
+            len(classified["condition_report"]),
+            len(classified["vehicle_release"]),
+        )
+        for cat, files in classified.items():
+            for f in files:
+                logger.info("[EmailWorker]   %s → %s", f, cat)
+
+        return classified
 
     def _detect_inoperable_from_filename(self, filename: str) -> bool | None:
         """Detect inoperable status from condition report filename."""
@@ -869,21 +955,9 @@ class EmailWorker:
             )
             conn.commit()
 
-    def _move_to_processed(self, uid: str):
-        """Move email to processed folder."""
-        try:
-            # Create folder if not exists
-            self.imap.create(self.processed_folder)
-        except Exception:
-            pass  # Folder may already exist
-
-        try:
-            # Copy and delete
-            self.imap.copy(uid, self.processed_folder)
-            self.imap.store(uid, "+FLAGS", "\\Deleted")
-            self.imap.expunge()
-        except Exception:
-            pass
+    # NOTE: _move_to_processed was REMOVED (Day 13A).
+    # READ-ONLY mailbox access — no flags, no moves, no deletes.
+    # All tracking is internal via email_log table (message_id UNIQUE dedup).
 
     def poll_once(self) -> list[ProcessingResult]:
         """
@@ -1024,7 +1098,7 @@ class EmailWorker:
                                 rule_matched=rule_name, document_id=None,
                                 run_id=None, error="Rule action: ignore",
                             ))
-                            self._move_to_processed(uid)
+                            # READ-ONLY mailbox — email stays in Inbox
                             continue
                     else:
                         # No rules configured — auto-process any email with PDF
@@ -1052,7 +1126,6 @@ class EmailWorker:
                         # Mark as processing
                         self._update_email_log(msg.message_id, status="processing")
 
-                        # Build email metadata for document trail
                         email_metadata = {
                             "sender": msg.sender,
                             "subject": msg.subject,
@@ -1060,56 +1133,59 @@ class EmailWorker:
                             "date": msg.date,
                         }
 
-                        # Process PDF attachments with classification
+                        # Classify ALL attachments, pick invoice(s) for extraction
+                        classified = self._classify_and_rank_attachments(msg)
                         auction_type_id = auction_type_id_from_rule
                         last_doc_id = None
                         last_run_id = None
                         run_ids = []
 
-                        for pdf_filename in msg.pdf_filenames:
-                            attachment_type = self._classify_attachment(pdf_filename)
+                        # 1. Process INVOICE PDFs through extraction
+                        for pdf_filename in classified["invoice"]:
+                            file_path = self._save_attachment(msg, pdf_filename)
+                            if file_path:
+                                if not auction_type_id:
+                                    try:
+                                        with open(file_path, "rb") as f:
+                                            import pdfplumber
+                                            with pdfplumber.open(f) as pdf:
+                                                text = ""
+                                                for page in pdf.pages[:3]:
+                                                    t = page.extract_text()
+                                                    if t:
+                                                        text += t
+                                        auction_type_id = self._detect_auction_type(text)
+                                    except Exception:
+                                        auction_type_id = 1
 
-                            if attachment_type == "invoice" or attachment_type == "other":
-                                file_path = self._save_attachment(msg, pdf_filename)
+                                doc_id, run_id = self._process_pdf(
+                                    file_path, auction_type_id,
+                                    email_metadata=email_metadata,
+                                )
+                                last_doc_id = doc_id
+                                last_run_id = run_id
+                                if run_id:
+                                    run_ids.append(run_id)
 
-                                if file_path:
-                                    if not auction_type_id:
-                                        try:
-                                            with open(file_path, "rb") as f:
-                                                import pdfplumber
-                                                with pdfplumber.open(f) as pdf:
-                                                    text = ""
-                                                    for page in pdf.pages[:3]:
-                                                        t = page.extract_text()
-                                                        if t:
-                                                            text += t
-                                            auction_type_id = self._detect_auction_type(text)
-                                        except Exception:
-                                            auction_type_id = 1
+                                if gate_pass and run_id:
+                                    self._save_gate_pass_to_run(run_id, gate_pass)
 
-                                    doc_id, run_id = self._process_pdf(
-                                        file_path, auction_type_id,
-                                        email_metadata=email_metadata,
-                                    )
-                                    last_doc_id = doc_id
-                                    last_run_id = run_id
-                                    if run_id:
-                                        run_ids.append(run_id)
+                        # 2. Save CONDITION REPORTS as attachments + extract inoperable hint
+                        for pdf_filename in classified["condition_report"]:
+                            if last_run_id:
+                                self._save_vehicle_release(msg, pdf_filename, last_run_id)
+                            else:
+                                self._save_attachment(msg, pdf_filename)
+                            is_inoperable = self._detect_inoperable_from_filename(pdf_filename)
+                            if is_inoperable is not None and last_run_id:
+                                self._save_inoperable_to_run(last_run_id, is_inoperable)
 
-                                    if gate_pass and run_id:
-                                        self._save_gate_pass_to_run(run_id, gate_pass)
-
-                            elif attachment_type == "vehicle_release":
-                                if last_run_id:
-                                    self._save_vehicle_release(msg, pdf_filename, last_run_id)
-                                else:
-                                    file_path = self._save_attachment(msg, pdf_filename)
-
-                            elif attachment_type == "condition_report":
-                                is_inoperable = self._detect_inoperable_from_filename(pdf_filename)
-                                if is_inoperable is not None and last_run_id:
-                                    self._save_inoperable_to_run(last_run_id, is_inoperable)
-                                file_path = self._save_attachment(msg, pdf_filename)
+                        # 3. Save VEHICLE RELEASE PDFs as attachments
+                        for pdf_filename in classified["vehicle_release"]:
+                            if last_run_id:
+                                self._save_vehicle_release(msg, pdf_filename, last_run_id)
+                            else:
+                                self._save_attachment(msg, pdf_filename)
 
                         # Update email_log with results
                         self._update_email_log(
@@ -1131,7 +1207,7 @@ class EmailWorker:
                             run_id=last_run_id, error=None,
                         ))
 
-                        self._move_to_processed(uid)
+                        # READ-ONLY mailbox — email stays in Inbox
 
                 except Exception as e:
                     logger.error("[EmailWorker] Error processing uid=%s: %s", uid_str, e)
