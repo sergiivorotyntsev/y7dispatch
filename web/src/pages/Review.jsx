@@ -211,10 +211,14 @@ function Review() {
           required: item.required || false,
         }
       }
-      // Inject gate_pass from outputs_json if not already in review_items
-      // (gate_pass comes from email body, stored in extraction run outputs)
-      if (!initialFields.gate_pass && runData.run?.outputs?.gate_pass) {
+      // Inject gate_pass from outputs_json if review_items has no value for it.
+      // gate_pass comes from email body → saved to extraction_run outputs_json.
+      // Review_items may have an empty gate_pass placeholder (predicted_value=null),
+      // so check the actual value, not just key existence.
+      const existingGatePass = initialFields.gate_pass?.corrected || initialFields.gate_pass?.predicted
+      if (!existingGatePass && runData.run?.outputs?.gate_pass) {
         initialFields.gate_pass = {
+          ...initialFields.gate_pass,
           key: 'gate_pass',
           label: 'Gate Pass',
           predicted: runData.run.outputs.gate_pass,
