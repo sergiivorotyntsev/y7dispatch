@@ -326,24 +326,26 @@ class EmailWorker:
     def _build_search_criteria(allowed_senders: list[str]) -> str:
         """Build IMAP SEARCH criteria with server-side sender filtering.
 
-        No senders     → 'UNSEEN'
-        One sender     → '(UNSEEN FROM "a@x.com")'
-        Two senders    → '(UNSEEN (OR FROM "a@x.com" FROM "b@x.com"))'
-        Three+ senders → nested OR: '(UNSEEN (OR FROM "a" (OR FROM "b" FROM "c")))'
+        Uses SINCE today (not UNSEEN) so read emails are also visible in the
+        Email Log. Dedup via email_log.message_id UNIQUE prevents reprocessing.
+
+        No senders     → '(SINCE 19-Feb-2026)'
+        One sender     → '(SINCE 19-Feb-2026 FROM "a@x.com")'
+        Two senders    → '(SINCE 19-Feb-2026 (OR FROM "a@x.com" FROM "b@x.com"))'
+        Three+ senders → nested OR
         """
+        from datetime import datetime
+        today = datetime.now().strftime("%d-%b-%Y")  # IMAP date format: 19-Feb-2026
+
         if not allowed_senders:
-            return "UNSEEN"
+            return f"(SINCE {today})"
 
         # Filter out domain-only entries (@domain.com) — IMAP FROM doesn't support domain-only
         email_senders = [s for s in allowed_senders if not s.startswith("@")]
-        domain_senders = [s for s in allowed_senders if s.startswith("@")]
 
-        # If only domain filters, can't do server-side — fall back to UNSEEN
+        # If only domain filters, can't do server-side — fall back to SINCE
         if not email_senders:
-            return "UNSEEN"
-
-        if len(email_senders) == 1:
-            return f'(UNSEEN FROM "{email_senders[0]}")'
+            return f"(SINCE {today})"
 
         # Build nested OR for 2+ senders
         # IMAP OR takes exactly 2 arguments: OR <search1> <search2>
@@ -352,11 +354,13 @@ class EmailWorker:
                 return f'FROM "{items[0]}"'
             if len(items) == 2:
                 return f'(OR FROM "{items[0]}" FROM "{items[1]}")'
-            # Recursive: OR FROM "first" (OR ...)
             return f'(OR FROM "{items[0]}" {_nest_or(items[1:])})'
 
+        if len(email_senders) == 1:
+            return f'(SINCE {today} FROM "{email_senders[0]}")'
+
         or_clause = _nest_or(email_senders)
-        return f"(UNSEEN {or_clause})"
+        return f"(SINCE {today} {or_clause})"
 
     # ------------------------------------------------------------------
     # Email Log table management
@@ -618,20 +622,25 @@ class EmailWorker:
         sender = self._decode_header_value(msg.get("From", ""))
         date = msg.get("Date", "")
 
-        # Find PDF attachments
+        # Find PDF attachments (generous detection)
         pdf_filenames = []
         for part in msg.walk():
             content_type = part.get_content_type()
             filename = part.get_filename()
+            disposition = str(part.get("Content-Disposition") or "")
 
             if filename:
                 filename = self._decode_header_value(filename)
 
-            if content_type == "application/pdf" or (
-                filename and filename.lower().endswith(".pdf")
-            ):
-                if filename:
-                    pdf_filenames.append(filename)
+            is_pdf = (
+                content_type == "application/pdf"
+                or (filename and filename.lower().endswith(".pdf"))
+                or (content_type == "application/octet-stream"
+                    and filename and filename.lower().endswith(".pdf"))
+            )
+
+            if is_pdf and filename:
+                pdf_filenames.append(filename)
 
         return EmailMessage(
             message_id=message_id,
@@ -973,39 +982,70 @@ class EmailWorker:
                         ))
                         continue
 
-                    # Match rules
+                    # Match rules — if rules exist, use them; if empty, auto-process PDFs
                     rule = self._match_rule(msg, rules)
+                    rule_name = None
+                    action = "process"  # default
+                    auction_type_id_from_rule = None
 
-                    if not rule:
+                    if rules:
+                        # Rules exist — require a match
+                        if not rule:
+                            skip_reason = "No matching rule"
+                            if not msg.has_pdf:
+                                skip_reason = "No PDF attachments"
+                            self._update_email_log(msg.message_id, status="skipped",
+                                                   skip_reason=skip_reason)
+                            self._log_activity(
+                                msg.message_id, msg.subject, "skipped",
+                                sender=msg.sender, error=skip_reason,
+                            )
+                            results.append(ProcessingResult(
+                                message_id=msg.message_id, status="skipped",
+                                rule_matched=None, document_id=None, run_id=None,
+                                error=skip_reason,
+                            ))
+                            continue
+
+                        action = rule.get("action", "process")
+                        rule_name = rule.get("name")
+                        auction_type_id_from_rule = rule.get("auction_type_id")
+
+                        if action == "ignore":
+                            self._update_email_log(msg.message_id, status="skipped",
+                                                   skip_reason=f"Rule '{rule_name}': ignore")
+                            self._log_activity(
+                                msg.message_id, msg.subject, "skipped",
+                                sender=msg.sender, rule_matched=rule_name,
+                                error="Rule action: ignore",
+                            )
+                            results.append(ProcessingResult(
+                                message_id=msg.message_id, status="skipped",
+                                rule_matched=rule_name, document_id=None,
+                                run_id=None, error="Rule action: ignore",
+                            ))
+                            self._move_to_processed(uid)
+                            continue
+                    else:
+                        # No rules configured — auto-process any email with PDF
+                        # from allowed senders (sender already filtered above)
+                        rule_name = "auto (no rules)"
+                        logger.info("[EmailWorker] No rules configured, auto-processing: %s",
+                                    msg.subject)
+
+                    if not msg.has_pdf:
                         self._update_email_log(msg.message_id, status="skipped",
-                                               skip_reason="No matching rule")
+                                               skip_reason="No PDF attachments")
                         self._log_activity(
                             msg.message_id, msg.subject, "skipped",
-                            sender=msg.sender, error="No matching rule",
+                            sender=msg.sender, rule_matched=rule_name,
+                            error="No PDF attachments",
                         )
                         results.append(ProcessingResult(
                             message_id=msg.message_id, status="skipped",
-                            rule_matched=None, document_id=None, run_id=None,
-                            error="No matching rule",
+                            rule_matched=rule_name, document_id=None,
+                            run_id=None, error="No PDF attachments",
                         ))
-                        continue
-
-                    action = rule.get("action", "process")
-
-                    if action == "ignore":
-                        self._update_email_log(msg.message_id, status="skipped",
-                                               skip_reason=f"Rule '{rule.get('name')}': ignore")
-                        self._log_activity(
-                            msg.message_id, msg.subject, "skipped",
-                            sender=msg.sender, rule_matched=rule.get("name"),
-                            error="Rule action: ignore",
-                        )
-                        results.append(ProcessingResult(
-                            message_id=msg.message_id, status="skipped",
-                            rule_matched=rule.get("name"), document_id=None,
-                            run_id=None, error="Rule action: ignore",
-                        ))
-                        self._move_to_processed(uid)
                         continue
 
                     if action == "process" and msg.has_pdf:
@@ -1021,7 +1061,7 @@ class EmailWorker:
                         }
 
                         # Process PDF attachments with classification
-                        auction_type_id = rule.get("auction_type_id")
+                        auction_type_id = auction_type_id_from_rule
                         last_doc_id = None
                         last_run_id = None
                         run_ids = []
@@ -1082,30 +1122,16 @@ class EmailWorker:
 
                         self._log_activity(
                             msg.message_id, msg.subject, "processed",
-                            sender=msg.sender, rule_matched=rule.get("name"),
+                            sender=msg.sender, rule_matched=rule_name,
                             run_id=last_run_id,
                         )
                         results.append(ProcessingResult(
                             message_id=msg.message_id, status="processed",
-                            rule_matched=rule.get("name"), document_id=last_doc_id,
+                            rule_matched=rule_name, document_id=last_doc_id,
                             run_id=last_run_id, error=None,
                         ))
 
                         self._move_to_processed(uid)
-                    else:
-                        skip_reason = "No PDF attachment" if not msg.has_pdf else f"Unsupported action: {action}"
-                        self._update_email_log(msg.message_id, status="skipped",
-                                               skip_reason=skip_reason)
-                        self._log_activity(
-                            msg.message_id, msg.subject, "skipped",
-                            sender=msg.sender, rule_matched=rule.get("name"),
-                            error=skip_reason,
-                        )
-                        results.append(ProcessingResult(
-                            message_id=msg.message_id, status="skipped",
-                            rule_matched=rule.get("name"), document_id=None,
-                            run_id=None, error=skip_reason,
-                        ))
 
                 except Exception as e:
                     logger.error("[EmailWorker] Error processing uid=%s: %s", uid_str, e)

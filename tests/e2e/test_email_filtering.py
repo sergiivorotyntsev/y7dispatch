@@ -15,47 +15,163 @@ import pytest
 
 
 class TestIMAPSearchCriteria:
-    """Test _build_search_criteria() generates correct IMAP SEARCH strings."""
+    """Test _build_search_criteria() generates correct IMAP SEARCH strings.
+
+    Uses SINCE today (not UNSEEN) so read emails are also visible.
+    """
 
     def _build(self, senders):
         from api.workers.email_worker import EmailWorker
         return EmailWorker._build_search_criteria(senders)
 
-    def test_no_senders_returns_unseen(self):
-        assert self._build([]) == "UNSEEN"
+    def _today(self):
+        from datetime import datetime
+        return datetime.now().strftime("%d-%b-%Y")
 
-    def test_none_senders_returns_unseen(self):
-        assert self._build([]) == "UNSEEN"
+    def test_no_senders_returns_since_today(self):
+        result = self._build([])
+        assert result == f"(SINCE {self._today()})"
 
     def test_one_sender_returns_from_filter(self):
         result = self._build(["autausapl@gmail.com"])
-        assert result == '(UNSEEN FROM "autausapl@gmail.com")'
+        assert result == f'(SINCE {self._today()} FROM "autausapl@gmail.com")'
 
     def test_two_senders_returns_or_chain(self):
         result = self._build(["a@x.com", "b@x.com"])
-        assert result == '(UNSEEN (OR FROM "a@x.com" FROM "b@x.com"))'
+        assert result == f'(SINCE {self._today()} (OR FROM "a@x.com" FROM "b@x.com"))'
 
     def test_three_senders_returns_nested_or(self):
         result = self._build(["a@x.com", "b@x.com", "c@x.com"])
-        assert result == '(UNSEEN (OR FROM "a@x.com" (OR FROM "b@x.com" FROM "c@x.com")))'
+        assert result == f'(SINCE {self._today()} (OR FROM "a@x.com" (OR FROM "b@x.com" FROM "c@x.com")))'
 
     def test_four_senders_nested(self):
         result = self._build(["a@x.com", "b@x.com", "c@x.com", "d@x.com"])
-        assert result == '(UNSEEN (OR FROM "a@x.com" (OR FROM "b@x.com" (OR FROM "c@x.com" FROM "d@x.com"))))'
+        assert result == f'(SINCE {self._today()} (OR FROM "a@x.com" (OR FROM "b@x.com" (OR FROM "c@x.com" FROM "d@x.com"))))'
 
-    def test_domain_only_falls_back_to_unseen(self):
+    def test_domain_only_falls_back_to_since(self):
         """Domain-only filters can't be expressed in IMAP FROM."""
         result = self._build(["@domain.com"])
-        assert result == "UNSEEN"
+        assert result == f"(SINCE {self._today()})"
 
     def test_mixed_domain_and_email(self):
         """Domain entries are excluded; only email addresses go to IMAP."""
         result = self._build(["user@x.com", "@domain.com"])
-        assert result == '(UNSEEN FROM "user@x.com")'
+        assert result == f'(SINCE {self._today()} FROM "user@x.com")'
 
     def test_mixed_two_emails_one_domain(self):
         result = self._build(["a@x.com", "@domain.com", "b@x.com"])
-        assert result == '(UNSEEN (OR FROM "a@x.com" FROM "b@x.com"))'
+        assert result == f'(SINCE {self._today()} (OR FROM "a@x.com" FROM "b@x.com"))'
+
+
+# =============================================================================
+# PDF Detection Tests
+# =============================================================================
+
+
+class TestPDFDetection:
+    """Test that _parse_message detects PDFs correctly."""
+
+    def _make_raw_email(self, attachments):
+        """Build a raw email with given attachments.
+
+        attachments: list of (filename, content_type, payload)
+        """
+        import email.mime.base
+        import email.mime.multipart
+        import email.mime.text
+
+        msg = email.mime.multipart.MIMEMultipart()
+        msg["From"] = "test@example.com"
+        msg["Subject"] = "Test with attachments"
+        msg["Message-ID"] = "<detect-test@example.com>"
+        msg["Date"] = "Wed, 18 Feb 2026 12:00:00 -0500"
+        msg.attach(email.mime.text.MIMEText("Body text"))
+
+        for filename, content_type, payload in attachments:
+            maintype, subtype = content_type.split("/", 1)
+            part = email.mime.base.MIMEBase(maintype, subtype)
+            part.set_payload(payload)
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(part)
+
+        return msg.as_bytes()
+
+    def test_standard_pdf_content_type(self):
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+        raw = self._make_raw_email([("invoice.pdf", "application/pdf", b"%PDF-1.4")])
+        msg = worker._parse_message("1", raw)
+        assert msg.has_pdf is True
+        assert msg.pdf_filenames == ["invoice.pdf"]
+
+    def test_octet_stream_with_pdf_extension(self):
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+        raw = self._make_raw_email([("report.pdf", "application/octet-stream", b"%PDF-1.4")])
+        msg = worker._parse_message("1", raw)
+        assert msg.has_pdf is True
+        assert msg.pdf_filenames == ["report.pdf"]
+
+    def test_no_attachments_returns_empty(self):
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+        raw = self._make_raw_email([])
+        msg = worker._parse_message("1", raw)
+        assert msg.has_pdf is False
+        assert msg.pdf_filenames == []
+
+    def test_non_pdf_attachment_ignored(self):
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+        raw = self._make_raw_email([("photo.jpg", "image/jpeg", b"\xff\xd8")])
+        msg = worker._parse_message("1", raw)
+        assert msg.has_pdf is False
+
+    def test_multiple_pdfs_detected(self):
+        from api.workers.email_worker import EmailWorker
+        worker = EmailWorker()
+        raw = self._make_raw_email([
+            ("invoice.pdf", "application/pdf", b"%PDF"),
+            ("release.pdf", "application/octet-stream", b"%PDF"),
+        ])
+        msg = worker._parse_message("1", raw)
+        assert msg.has_pdf is True
+        assert len(msg.pdf_filenames) == 2
+
+
+# =============================================================================
+# Auto-Process Flow Tests (no rules configured)
+# =============================================================================
+
+
+class TestAutoProcessFlow:
+    """Test that emails are auto-processed when no rules are configured."""
+
+    def test_match_rule_returns_none_when_no_rules(self):
+        from api.workers.email_worker import EmailMessage, EmailWorker
+        worker = EmailWorker()
+        msg = EmailMessage(
+            message_id="<test@local>", uid="1", subject="Test",
+            sender="a@x.com", date="2026-01-01", has_pdf=True,
+            pdf_filenames=["doc.pdf"], raw_message=MagicMock(),
+        )
+        result = worker._match_rule(msg, [])
+        assert result is None
+
+    def test_match_rule_returns_rule_when_matched(self):
+        from api.workers.email_worker import EmailMessage, EmailWorker
+        worker = EmailWorker()
+        msg = EmailMessage(
+            message_id="<test@local>", uid="1", subject="Invoice from auction",
+            sender="a@x.com", date="2026-01-01", has_pdf=True,
+            pdf_filenames=["doc.pdf"], raw_message=MagicMock(),
+        )
+        rules = [{"name": "Auction", "enabled": True,
+                   "condition_type": "subject_contains", "condition_value": "invoice",
+                   "action": "process"}]
+        result = worker._match_rule(msg, rules)
+        assert result is not None
+        assert result["name"] == "Auction"
 
 
 # =============================================================================
