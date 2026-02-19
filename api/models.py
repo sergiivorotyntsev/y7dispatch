@@ -659,6 +659,7 @@ class Document:
     created_at: Optional[str] = None
     uploaded_by: Optional[str] = None
     email_metadata_json: Optional[str] = None
+    pending_reason: Optional[str] = None
 
 
 @dataclass
@@ -2349,6 +2350,12 @@ def _run_migrations():
         # Migration: Add attachments_json to extraction_runs
         try:
             conn.execute("ALTER TABLE extraction_runs ADD COLUMN attachments_json TEXT DEFAULT '[]'")
+        except Exception:
+            pass  # Column already exists
+
+        # Migration: Add pending_reason to documents (for PENDING status)
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN pending_reason TEXT")
         except Exception:
             pass  # Column already exists
 

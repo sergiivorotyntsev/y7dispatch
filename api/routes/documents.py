@@ -111,6 +111,22 @@ class DocumentResponse(BaseModel):
     created_at: Optional[str] = None
     uploaded_by: Optional[str] = None
 
+    # Pending status
+    pending_reason: Optional[str] = None
+
+    # Enriched fields from latest extraction run
+    vin: Optional[str] = None
+    vehicle_year: Optional[str] = None
+    vehicle_make: Optional[str] = None
+    vehicle_model: Optional[str] = None
+    vehicle_lot: Optional[str] = None
+    pickup_city: Optional[str] = None
+    pickup_state: Optional[str] = None
+    pickup_name: Optional[str] = None
+    gate_pass: Optional[str] = None
+    extraction_status: Optional[str] = None
+    extraction_run_id: Optional[int] = None
+
     class Config:
         from_attributes = True
 
@@ -469,15 +485,117 @@ async def check_vin_duplicate(vin: str, exclude_run_id: Optional[int] = None):
     return {"is_duplicate": False, "duplicate": None}
 
 
+def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
+    """Enrich a document dict with fields from its latest extraction run."""
+    doc_id = doc_dict.get("id")
+    if not doc_id:
+        return doc_dict
+
+    row = conn.execute(
+        """SELECT id, status, outputs_json FROM extraction_runs
+           WHERE document_id = ? ORDER BY id DESC LIMIT 1""",
+        (doc_id,),
+    ).fetchone()
+
+    if not row:
+        return doc_dict
+
+    doc_dict["extraction_run_id"] = row["id"]
+    doc_dict["extraction_status"] = row["status"]
+
+    outputs = {}
+    if row["outputs_json"]:
+        try:
+            outputs = json.loads(row["outputs_json"])
+        except Exception:
+            pass
+
+    doc_dict["vin"] = outputs.get("vehicle_vin")
+    doc_dict["vehicle_year"] = outputs.get("vehicle_year")
+    doc_dict["vehicle_make"] = outputs.get("vehicle_make")
+    doc_dict["vehicle_model"] = outputs.get("vehicle_model")
+    doc_dict["vehicle_lot"] = outputs.get("vehicle_lot")
+    doc_dict["pickup_city"] = outputs.get("pickup_city")
+    doc_dict["pickup_state"] = outputs.get("pickup_state")
+    doc_dict["pickup_name"] = outputs.get("pickup_name")
+    doc_dict["gate_pass"] = outputs.get("gate_pass")
+
+    return doc_dict
+
+
 @router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     auction_type_id: Optional[int] = Query(None, description="Filter by auction type"),
     dataset_split: Optional[str] = Query(None, description="Filter by split: train or test"),
+    search: Optional[str] = Query(None, description="Search by VIN, make, model, or lot"),
     exclude_test_lab: bool = Query(True, description="Exclude Test Lab documents from list"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """List documents with optional filtering."""
+    """List documents with optional filtering and search."""
+    from api.database import get_connection
+
+    if search and search.strip():
+        # Search across extraction outputs (VIN, make, model, lot)
+        q = f"%{search.strip()}%"
+        q_upper = f"%{search.strip().upper()}%"
+
+        with get_connection() as conn:
+            # Join documents with their latest extraction run outputs
+            sql = """
+                SELECT d.*, er.outputs_json, er.id as _run_id, er.status as _run_status
+                FROM documents d
+                LEFT JOIN extraction_runs er ON er.document_id = d.id
+                    AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
+                WHERE (d.is_test IS NULL OR d.is_test = 0)
+                  AND (d.source IS NULL OR d.source != 'test_lab')
+                  AND (
+                    json_extract(er.outputs_json, '$.vehicle_vin') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_make') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_model') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_lot') LIKE ?
+                    OR json_extract(er.outputs_json, '$.gate_pass') LIKE ?
+                    OR d.filename LIKE ?
+                  )
+                ORDER BY d.created_at DESC
+                LIMIT ? OFFSET ?
+            """
+            rows = conn.execute(sql, [q_upper, q, q, q, q, q, limit, offset]).fetchall()
+
+            items = []
+            for row in rows:
+                d = dict(row)
+                # Remove join artifacts before constructing Document
+                d.pop("outputs_json", None)
+                d.pop("_run_id", None)
+                d.pop("_run_status", None)
+                doc = Document(**d)
+                at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
+                enriched = _enrich_doc_with_extraction(doc.__dict__.copy(), conn)
+                enriched["auction_type_code"] = at.code if at else None
+                items.append(DocumentResponse(**enriched))
+
+            # Total count for search
+            count_sql = """
+                SELECT COUNT(*)
+                FROM documents d
+                LEFT JOIN extraction_runs er ON er.document_id = d.id
+                    AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
+                WHERE (d.is_test IS NULL OR d.is_test = 0)
+                  AND (d.source IS NULL OR d.source != 'test_lab')
+                  AND (
+                    json_extract(er.outputs_json, '$.vehicle_vin') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_make') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_model') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_lot') LIKE ?
+                    OR json_extract(er.outputs_json, '$.gate_pass') LIKE ?
+                    OR d.filename LIKE ?
+                  )
+            """
+            total = conn.execute(count_sql, [q_upper, q, q, q, q, q]).fetchone()[0]
+
+        return DocumentListResponse(items=items, total=total)
+
     if auction_type_id:
         docs = DocumentRepository.list_by_auction_type(
             auction_type_id=auction_type_id,
@@ -487,9 +605,6 @@ async def list_documents(
         )
         counts = DocumentRepository.count_by_auction_type(auction_type_id)
     else:
-        # List all documents (need to implement in repository)
-        from api.database import get_connection
-
         sql = "SELECT * FROM documents WHERE 1=1"
         params = []
 
@@ -522,16 +637,14 @@ async def list_documents(
             ).fetchone()[0]
             counts = {"train": train_count, "test": test_count}
 
-    # Enrich with auction type codes
+    # Enrich with auction type codes and extraction data
     items = []
-    for doc in docs:
-        at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
-        items.append(
-            DocumentResponse(
-                **doc.__dict__,
-                auction_type_code=at.code if at else None,
-            )
-        )
+    with get_connection() as conn:
+        for doc in docs:
+            at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
+            enriched = _enrich_doc_with_extraction(doc.__dict__.copy(), conn)
+            enriched["auction_type_code"] = at.code if at else None
+            items.append(DocumentResponse(**enriched))
 
     return DocumentListResponse(
         items=items,
@@ -841,6 +954,49 @@ async def get_document_export_preview(id: int):
         "blocking_issues": blocking_issues,
         "order_id": extracted_fields.get("order_id", {}).get("value"),
     }
+
+
+class SetPendingRequest(BaseModel):
+    """Request model for setting pending status."""
+    reason: str
+
+
+@router.post("/{id}/set-pending")
+async def set_pending(id: int, request: SetPendingRequest):
+    """Mark a document as pending with a reason (e.g. awaiting gate pass, vehicle release)."""
+    from api.database import get_connection
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE documents SET pending_reason = ? WHERE id = ?",
+            (request.reason, id),
+        )
+        conn.commit()
+
+    return {"success": True, "id": id, "pending_reason": request.reason}
+
+
+@router.post("/{id}/clear-pending")
+async def clear_pending(id: int):
+    """Clear the pending status from a document."""
+    from api.database import get_connection
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE documents SET pending_reason = NULL WHERE id = ?",
+            (id,),
+        )
+        conn.commit()
+
+    return {"success": True, "id": id, "pending_reason": None}
 
 
 @router.delete("/{id}", status_code=204)
