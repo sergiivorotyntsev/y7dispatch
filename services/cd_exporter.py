@@ -356,6 +356,15 @@ class CDDefaultsLoader:
             if hasattr(self.defaults, key):
                 setattr(self.defaults, key, value)
 
+        # Override marketplace_id from credential store if available
+        try:
+            from services.credential_store import get_credential_for_service
+            cd_creds = get_credential_for_service("cd_api")
+            if cd_creds and cd_creds.get("marketplace_id"):
+                self.defaults.marketplace_id = int(cd_creds["marketplace_id"])
+        except Exception:
+            pass
+
         # Parse rules
         for rule_dict in config.get("rules", []):
             self.rules.append(

@@ -6,7 +6,6 @@ const SERVICES = [
   { id: 'email_imap', label: 'Email (IMAP)', group: 'email' },
   { id: 'email_forwarding', label: 'Email (Forwarding)', group: 'email' },
   { id: 'email_oauth', label: 'Email (Microsoft OAuth)', group: 'email' },
-  { id: 'cd_api', label: 'Central Dispatch API', group: 'cd' },
   { id: 'sheets', label: 'Google Sheets', group: 'sheets' },
   { id: 'anthropic', label: 'Anthropic (Claude)', group: 'anthropic' },
 ]
@@ -166,27 +165,6 @@ export default function CredentialsTab() {
         )}
       </CredentialCard>
 
-      {/* Central Dispatch */}
-      <CredentialCard
-        title="Central Dispatch API"
-        expanded={expandedCard === 'cd'}
-        onToggle={() => setExpandedCard(expandedCard === 'cd' ? null : 'cd')}
-        configured={!!credentials.cd_api}
-        testStatus={testResults.cd_api}
-        dbTestStatus={credentials.cd_api?.last_test_status}
-      >
-        <CdForm
-          initial={credentials.cd_api?.config || {}}
-          enabled={credentials.cd_api?.enabled || false}
-          onSave={(config, enabled) => handleSave('cd_api', config, enabled)}
-          onTest={() => handleTest('cd_api')}
-          onDelete={() => handleDelete('cd_api')}
-          testing={testing.cd_api}
-          testResult={testResults.cd_api}
-          hasCredential={!!credentials.cd_api}
-        />
-      </CredentialCard>
-
       {/* Google Sheets */}
       <CredentialCard
         title="Google Sheets"
@@ -242,7 +220,6 @@ function StatusSummary({ credentials }) {
     { key: 'email_imap', label: 'Email IMAP' },
     { key: 'email_forwarding', label: 'Email Forwarding' },
     { key: 'email_oauth', label: 'Email OAuth' },
-    { key: 'cd_api', label: 'Central Dispatch' },
     { key: 'sheets', label: 'Google Sheets' },
     { key: 'anthropic', label: 'Anthropic' },
   ]
@@ -460,41 +437,6 @@ function OAuthForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, te
           </>
         )}
       </div>
-      <TestResultBanner result={testResult} />
-    </div>
-  )
-}
-
-function CdForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
-  const [config, setConfig] = useState(initial)
-  const [enabled, setEnabled] = useState(initEnabled)
-  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
-
-  return (
-    <div>
-      <EnableToggle enabled={enabled} onChange={setEnabled} />
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="form-label">Username</label>
-          <input type="text" value={config.username || ''} onChange={e => update('username', e.target.value)} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Password</label>
-          <input type="password" value={config.password || ''} onChange={e => update('password', e.target.value)} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Shipper ID</label>
-          <input type="text" value={config.shipper_id || ''} onChange={e => update('shipper_id', e.target.value)} className="form-input w-full" />
-        </div>
-        <div>
-          <label className="form-label">Environment</label>
-          <select value={config.sandbox ? 'sandbox' : 'production'} onChange={e => update('sandbox', e.target.value === 'sandbox')} className="form-select w-full">
-            <option value="sandbox">Sandbox</option>
-            <option value="production">Production</option>
-          </select>
-        </div>
-      </div>
-      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
       <TestResultBanner result={testResult} />
     </div>
   )

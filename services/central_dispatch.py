@@ -40,7 +40,16 @@ class CentralDispatchClient:
     ):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.marketplace_id = marketplace_id or self.PROD_MARKETPLACE_ID
+        if marketplace_id:
+            self.marketplace_id = marketplace_id
+        else:
+            # Try credential store, then fall back to default
+            try:
+                from services.credential_store import get_credential_for_service
+                cd_creds = get_credential_for_service("cd_api")
+                self.marketplace_id = int(cd_creds["marketplace_id"]) if cd_creds and cd_creds.get("marketplace_id") else self.PROD_MARKETPLACE_ID
+            except Exception:
+                self.marketplace_id = self.PROD_MARKETPLACE_ID
         self.token_url = self.PROD_TOKEN_URL
         self.api_base = self.PROD_API_BASE
         self._token_info: Optional[TokenInfo] = None

@@ -619,11 +619,17 @@ def build_cd_payload(
     requires_inspection = (overrides.requires_inspection if overrides and overrides.requires_inspection is not None else True)
 
     # =================================================================
-    # MARKETPLACES (CD V2 — public marketplace)
+    # MARKETPLACES (CD V2 — from credential store)
     # =================================================================
+    try:
+        from services.credential_store import get_credential_for_service
+        cd_creds = get_credential_for_service("cd_api")
+        _mp_id = int(cd_creds.get("marketplace_id", "10000")) if cd_creds else 10000
+    except Exception:
+        _mp_id = 10000
     marketplaces = [
         {
-            "marketplaceId": 10000,
+            "marketplaceId": _mp_id,
             "searchable": True,
         }
     ]

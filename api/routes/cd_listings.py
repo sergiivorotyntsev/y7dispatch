@@ -80,7 +80,13 @@ def _build_draft_from_run(run_id: int, warehouse_code: str | None = None) -> tup
 
     # Add default marketplace if missing
     if not raw_payload.get("marketplaces"):
-        raw_payload["marketplaces"] = [{"marketplaceId": 10000, "searchable": True}]
+        try:
+            from services.credential_store import get_credential_for_service
+            cd_creds = get_credential_for_service("cd_api")
+            _mp_id = int(cd_creds.get("marketplace_id", "10000")) if cd_creds else 10000
+        except Exception:
+            _mp_id = 10000
+        raw_payload["marketplaces"] = [{"marketplaceId": _mp_id, "searchable": True}]
 
     # Validate through Pydantic model
     try:
