@@ -249,11 +249,48 @@ class EmailWorker:
             conn.commit()
 
     def _load_config(self) -> dict[str, Any]:
-        """Load email config from settings."""
-        from api.routes.settings import load_settings
+        """Load email config from credential store (same source as test_connection).
 
-        settings = load_settings()
-        return settings.get("email", {})
+        Checks email_oauth first, then email_imap. Merges in allowed_senders
+        and rules from settings.json (non-secret config lives there).
+        """
+        import logging
+
+        from services.credential_store import get_credential_raw
+
+        logger = logging.getLogger(__name__)
+
+        # Try OAuth2 credential first
+        raw = get_credential_raw("email_oauth")
+        if raw and raw.get("enabled"):
+            config = dict(raw["config"])
+            config["auth_type"] = "oauth2"
+            logger.info("[EmailWorker] Loaded OAuth2 config for %s", config.get("email_address", "?"))
+        else:
+            # Fall back to IMAP password credential
+            raw = get_credential_raw("email_imap")
+            if raw and raw.get("enabled"):
+                config = dict(raw["config"])
+                config["auth_type"] = "password"
+                logger.info("[EmailWorker] Loaded IMAP config for %s", config.get("email_address", "?"))
+            else:
+                logger.warning("[EmailWorker] No email credentials found in credential store")
+                return {}
+
+        # Merge non-secret settings (allowed_senders, rules) from settings.json
+        try:
+            from api.routes.settings import load_settings
+
+            settings = load_settings()
+            email_settings = settings.get("email", {})
+            # Only merge non-secret keys that aren't already in credential config
+            for key in ("allowed_senders", "poll_interval", "max_emails_per_poll"):
+                if key in email_settings and key not in config:
+                    config[key] = email_settings[key]
+        except Exception:
+            pass
+
+        return config
 
     def _load_rules(self) -> list[dict[str, Any]]:
         """Load email processing rules."""
@@ -286,14 +323,22 @@ class EmailWorker:
         return False
 
     def _acquire_oauth2_token(self, config: dict) -> str | None:
-        """Acquire access token via Microsoft client_credentials grant."""
-        import requests as _requests
+        """Acquire access token via Microsoft client_credentials grant.
+
+        Same logic as _test_email_oauth() in credentials.py.
+        """
+        import logging
+
+        import httpx
+
+        logger = logging.getLogger(__name__)
 
         tenant_id = config.get("tenant_id", "")
         client_id = config.get("client_id", "")
         client_secret = config.get("client_secret", "")
 
         if not all([tenant_id, client_id, client_secret]):
+            logger.error("[EmailWorker] OAuth2 token: missing tenant_id/client_id/client_secret")
             return None
 
         token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
@@ -305,31 +350,66 @@ class EmailWorker:
         }
 
         try:
-            resp = _requests.post(token_url, data=data, timeout=15)
+            logger.info("[EmailWorker] POST %s", token_url)
+            resp = httpx.post(token_url, data=data, timeout=15.0)
             if resp.status_code == 200:
-                return resp.json()["access_token"]
+                token = resp.json()["access_token"]
+                expires_in = resp.json().get("expires_in", "?")
+                logger.info("[EmailWorker] Token acquired, expires in %ss", expires_in)
+                return token
             else:
-                error = resp.json().get("error_description", resp.text)
+                error = resp.json().get("error_description", resp.text[:300])
+                logger.error("[EmailWorker] Token request failed (%d): %s", resp.status_code, error)
                 self._log_activity("SYSTEM", "oauth2_token", "failed", error=f"Token request failed: {error}")
                 return None
         except Exception as e:
+            logger.error("[EmailWorker] Token request error: %s", e)
             self._log_activity("SYSTEM", "oauth2_token", "failed", error=str(e))
             return None
 
     def _connect(self) -> bool:
-        """Connect to IMAP server. Supports password auth and OAuth2 client_credentials."""
+        """Connect to IMAP server. Supports password auth and OAuth2 client_credentials.
+
+        Uses the same credential store as test_connection() in credentials.py.
+        """
+        import logging
+        import ssl
+
+        logger = logging.getLogger(__name__)
+
         config = self._load_config()
+
+        if not config:
+            self._log_activity("SYSTEM", "connect", "failed", error="No email credentials configured")
+            return False
 
         auth_type = config.get("auth_type", "password")
         email_addr = config.get("email_address")
 
         if not email_addr:
-            self._log_activity("SYSTEM", "connect", "failed", error="Email not configured")
+            self._log_activity("SYSTEM", "connect", "failed", error="No email_address in credentials")
             return False
+
+        logger.info("[EmailWorker] Connecting as %s via %s", email_addr, auth_type)
 
         try:
             if auth_type == "oauth2":
                 # Microsoft OAuth2: acquire token via client_credentials, connect XOAUTH2
+                # (identical to _test_email_oauth in credentials.py)
+                tenant_id = config.get("tenant_id", "")
+                client_id = config.get("client_id", "")
+                client_secret = config.get("client_secret", "")
+
+                if not all([tenant_id, client_id, client_secret]):
+                    missing = []
+                    if not tenant_id: missing.append("tenant_id")
+                    if not client_id: missing.append("client_id")
+                    if not client_secret: missing.append("client_secret")
+                    error_msg = f"Missing OAuth2 fields: {', '.join(missing)}"
+                    logger.error("[EmailWorker] %s", error_msg)
+                    self._log_activity("SYSTEM", "connect", "failed", error=error_msg)
+                    return False
+
                 access_token = self._acquire_oauth2_token(config)
                 if not access_token:
                     self._log_activity(
@@ -340,25 +420,30 @@ class EmailWorker:
                 server = "outlook.office365.com"
                 port = 993
 
-                self.imap = imaplib.IMAP4_SSL(server, port)
+                ctx = ssl.create_default_context()
+                self.imap = imaplib.IMAP4_SSL(server, port, ssl_context=ctx)
                 auth_string = f"user={email_addr}\x01auth=Bearer {access_token}\x01\x01"
                 self.imap.authenticate("XOAUTH2", lambda x: auth_string.encode())
+                logger.info("[EmailWorker] OAuth2 IMAP connected to %s", server)
             else:
                 # Standard IMAP password auth
                 server = config.get("imap_server")
-                port = config.get("imap_port", 993)
+                port = int(config.get("imap_port", 993))
                 password = config.get("password")
 
                 if not all([server, password]):
-                    self._log_activity("SYSTEM", "connect", "failed", error="IMAP not configured")
+                    self._log_activity("SYSTEM", "connect", "failed", error="IMAP server/password not configured")
                     return False
 
-                self.imap = imaplib.IMAP4_SSL(server, port)
+                ctx = ssl.create_default_context()
+                self.imap = imaplib.IMAP4_SSL(server, port, ssl_context=ctx)
                 self.imap.login(email_addr, password)
+                logger.info("[EmailWorker] IMAP connected to %s:%d", server, port)
 
             return True
 
         except Exception as e:
+            logger.error("[EmailWorker] Connect failed: %s", e)
             self._log_activity("SYSTEM", "connect", "failed", error=str(e))
             return False
 
