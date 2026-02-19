@@ -100,6 +100,9 @@ function Review() {
   const [balancePaymentTime, setBalancePaymentTime] = useState('2_BUSINESS_DAYS_QUICK_PAY')
   const [balanceTermsBeginOn, setBalanceTermsBeginOn] = useState('RECEIVING_SIGNED_BOL')
 
+  // Day 13: Attachments (vehicle release, condition reports)
+  const [attachments, setAttachments] = useState([])
+
   // Load pricing recommendation
   const loadPricing = useCallback(async (urg) => {
     if (!runId) return
@@ -207,6 +210,15 @@ function Review() {
 
       await loadWarehouses()
       await loadPricing()
+
+      // Load attachments (vehicle release, condition reports)
+      try {
+        const attData = await api.listAttachments(runId)
+        setAttachments(attData.attachments || [])
+      } catch (err) {
+        // Attachments are optional — don't fail the page
+        console.debug('No attachments for run:', err.message)
+      }
 
       // Set initial Load-Specific Terms for production mode
       if (!isTrainingMode && runData.run?.auction_type_code) {
@@ -731,6 +743,7 @@ function Review() {
                 setTransportSpecialInstructions={setTransportSpecialInstructions}
                 requiresInspection={requiresInspection}
                 setRequiresInspection={setRequiresInspection}
+                attachments={attachments}
               />
             )}
 

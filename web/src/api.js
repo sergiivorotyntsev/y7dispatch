@@ -345,6 +345,10 @@ export const api = {
   startEmailWorker: () => request('/email/worker/start', { method: 'POST' }),
   stopEmailWorker: () => request('/email/worker/stop', { method: 'POST' }),
 
+  // Attachments
+  listAttachments: (runId) => request(`/documents/${runId}/attachments`),
+  getAttachmentUrl: (runId, filename) => `${BASE_URL}/documents/${runId}/attachments/${encodeURIComponent(filename)}`,
+
   // Exports
   exportToCD: (runIds, dryRun = true, sandbox = true, force = false, overrides = null) => request(`/exports/central-dispatch?force=${force}`, {
     method: 'POST',

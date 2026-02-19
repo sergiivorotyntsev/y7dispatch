@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 /**
  * Section 7: Additional Info
- * Load ID (auto, readonly), gate pass, additional vehicle info, load-specific terms, transport instructions, CD App checkbox.
+ * Load ID (auto, readonly), gate pass, attachments, additional vehicle info, load-specific terms, transport instructions, CD App checkbox.
  */
 function AdditionalInfoSection({
   loadId,
@@ -11,8 +11,10 @@ function AdditionalInfoSection({
   loadSpecificTerms, setLoadSpecificTerms,
   transportSpecialInstructions, setTransportSpecialInstructions,
   requiresInspection, setRequiresInspection,
+  attachments,
 }) {
   const [copied, setCopied] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(null)
 
   function copyLoadId() {
     if (loadId) {
@@ -67,6 +69,60 @@ function AdditionalInfoSection({
           placeholder="Gate pass from email (if available)"
         />
       </div>
+
+      {/* Attachments */}
+      {attachments && attachments.length > 0 && (
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Attachments
+            <span className="ml-1 text-gray-400 font-normal">({attachments.length} file{attachments.length > 1 ? 's' : ''})</span>
+          </label>
+          <div className="space-y-1">
+            {attachments.map((att, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-gray-50 rounded px-3 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">
+                    {att.type === 'vehicle_release' ? '\u{1F4C4}' : '\u{1F4CE}'}
+                  </span>
+                  <span className="font-medium text-gray-700">{att.original_filename || att.filename}</span>
+                  <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium ${
+                    att.type === 'vehicle_release'
+                      ? 'bg-blue-100 text-blue-700'
+                      : att.type === 'condition_report'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {att.type === 'vehicle_release' ? 'Vehicle Release' : att.type === 'condition_report' ? 'Condition Report' : att.type}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <a
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-100"
+                  >
+                    Download
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fullUrl = window.location.origin + att.url
+                      navigator.clipboard.writeText(fullUrl).then(() => {
+                        setCopiedLink(idx)
+                        setTimeout(() => setCopiedLink(null), 2000)
+                      })
+                    }}
+                    className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-100"
+                  >
+                    {copiedLink === idx ? 'Copied!' : 'Copy Link'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Additional Vehicle Information */}
       <div className="mb-3">

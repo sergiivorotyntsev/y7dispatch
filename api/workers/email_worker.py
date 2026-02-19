@@ -69,6 +69,184 @@ class EmailWorker:
         self.processed_folder = self.config.get("processed_folder", "Processed")
         self.upload_path = Path(self.config.get("upload_path", "uploads/email"))
         self.upload_path.mkdir(parents=True, exist_ok=True)
+        self.attachments_path = Path(self.config.get("attachments_path", "data/attachments"))
+        self.attachments_path.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # Enhancement 1: Gate Pass PIN extraction
+    # ------------------------------------------------------------------
+
+    def _extract_gate_pass(self, body_text: str) -> str | None:
+        """Extract Gate Pass PIN from email body text."""
+        patterns = [
+            r'[Gg]ate\s*[Pp]ass\s*(?:PIN|pin|Pin)?\s*[:\-]?\s*(\w{4,10})',
+            r'[Pp][Ii][Nn]\s*[:\-]?\s*(\w{4,10})',
+            r'[Gg]ate\s*[Pp]ass\s*(?:is|:)\s*(\w{4,10})',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, body_text)
+            if match:
+                return match.group(1).strip()
+        return None
+
+    def _get_email_body_text(self, msg: email.message.Message) -> str:
+        """Extract plain text body from email message."""
+        body = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        charset = part.get_content_charset() or "utf-8"
+                        body += payload.decode(charset, errors="replace")
+        else:
+            if msg.get_content_type() == "text/plain":
+                payload = msg.get_payload(decode=True)
+                if payload:
+                    charset = msg.get_content_charset() or "utf-8"
+                    body = payload.decode(charset, errors="replace")
+        return body
+
+    # ------------------------------------------------------------------
+    # Enhancement 2: Attachment classification
+    # ------------------------------------------------------------------
+
+    def _classify_attachment(self, filename: str) -> str:
+        """
+        Classify PDF by filename:
+        - "invoice" — auction invoice/bill of sale (run through HaikuExtractor)
+        - "vehicle_release" — Manheim release doc (save for carrier, link to run)
+        - "condition_report" — vehicle condition (extract inoperable status)
+        - "other" — unknown (treated as invoice)
+        """
+        fn_lower = filename.lower()
+        if any(w in fn_lower for w in ['release', 'vehicle release', 'onsite']):
+            return 'vehicle_release'
+        if any(w in fn_lower for w in ['condition', 'inspection']):
+            return 'condition_report'
+        if any(w in fn_lower for w in ['invoice', 'bill', 'receipt', 'sale', 'buyer']):
+            return 'invoice'
+        return 'invoice'  # default: treat unknown PDFs as invoices
+
+    def _detect_inoperable_from_filename(self, filename: str) -> bool | None:
+        """Detect inoperable status from condition report filename."""
+        fn_lower = filename.lower()
+        if any(w in fn_lower for w in ['run_and_drive', 'runs_and_drives', 'run and drive']):
+            return False  # operable
+        if any(w in fn_lower for w in ['inop', 'non_run', 'non run', 'does_not_run']):
+            return True  # inoperable
+        return None  # unknown
+
+    # ------------------------------------------------------------------
+    # Enhancement 3: Attachment storage
+    # ------------------------------------------------------------------
+
+    def _save_vehicle_release(self, msg: EmailMessage, filename: str, run_id: int) -> dict | None:
+        """Save vehicle release PDF to data/attachments/{run_id}/ and record in DB."""
+        for part in msg.raw_message.walk():
+            part_filename = part.get_filename()
+            if part_filename:
+                part_filename = self._decode_header_value(part_filename)
+
+            if part_filename == filename:
+                payload = part.get_payload(decode=True)
+                if not payload:
+                    continue
+
+                # Save to data/attachments/{run_id}/
+                run_dir = self.attachments_path / str(run_id)
+                run_dir.mkdir(parents=True, exist_ok=True)
+
+                safe_filename = re.sub(r"[^\w.-]", "_", filename)
+                file_path = run_dir / safe_filename
+                file_path.write_bytes(payload)
+
+                attachment_info = {
+                    "filename": safe_filename,
+                    "original_filename": filename,
+                    "type": "vehicle_release",
+                    "path": str(file_path),
+                    "url": f"/api/documents/{run_id}/attachments/{safe_filename}",
+                }
+
+                # Store reference in extraction_runs.attachments_json
+                self._update_run_attachments(run_id, attachment_info)
+
+                return attachment_info
+        return None
+
+    def _update_run_attachments(self, run_id: int, attachment_info: dict):
+        """Add attachment info to extraction_runs.attachments_json."""
+        with get_connection() as conn:
+            # Ensure column exists
+            try:
+                conn.execute("ALTER TABLE extraction_runs ADD COLUMN attachments_json TEXT DEFAULT '[]'")
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
+            row = conn.execute(
+                "SELECT attachments_json FROM extraction_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+
+            existing = []
+            if row and row["attachments_json"]:
+                try:
+                    existing = json.loads(row["attachments_json"])
+                except Exception:
+                    existing = []
+
+            existing.append(attachment_info)
+
+            conn.execute(
+                "UPDATE extraction_runs SET attachments_json = ? WHERE id = ?",
+                (json.dumps(existing), run_id),
+            )
+            conn.commit()
+
+    def _save_gate_pass_to_run(self, run_id: int, gate_pass: str):
+        """Save gate pass PIN to extraction_run outputs_json."""
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+
+            outputs = {}
+            if row and row["outputs_json"]:
+                try:
+                    outputs = json.loads(row["outputs_json"])
+                except Exception:
+                    outputs = {}
+
+            outputs["gate_pass"] = gate_pass
+
+            conn.execute(
+                "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+                (json.dumps(outputs), run_id),
+            )
+            conn.commit()
+
+    def _save_inoperable_to_run(self, run_id: int, is_inoperable: bool):
+        """Save inoperable hint to extraction_run outputs_json."""
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+
+            outputs = {}
+            if row and row["outputs_json"]:
+                try:
+                    outputs = json.loads(row["outputs_json"])
+                except Exception:
+                    outputs = {}
+
+            outputs["vehicle_is_inoperable"] = is_inoperable
+
+            conn.execute(
+                "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+                (json.dumps(outputs), run_id),
+            )
+            conn.commit()
 
     def _load_config(self) -> dict[str, Any]:
         """Load email config from settings."""
@@ -85,6 +263,27 @@ class EmailWorker:
         rules = settings.get("email_rules", [])
         # Sort by priority
         return sorted(rules, key=lambda r: r.get("priority", 0), reverse=True)
+
+    def _load_allowed_senders(self) -> list[str]:
+        """Load allowed senders list from email config."""
+        config = self._load_config()
+        return [s.strip().lower() for s in config.get("allowed_senders", []) if s.strip()]
+
+    def _is_sender_allowed(self, sender: str, allowed: list[str]) -> bool:
+        """Check if sender matches allowed senders list. Empty list = allow all."""
+        if not allowed:
+            return True
+        sender_lower = sender.lower()
+        for entry in allowed:
+            if entry.startswith("@"):
+                # Domain match
+                if entry in sender_lower:
+                    return True
+            else:
+                # Email address match
+                if entry in sender_lower:
+                    return True
+        return False
 
     def _connect(self) -> bool:
         """Connect to IMAP server."""
@@ -429,6 +628,7 @@ class EmailWorker:
 
         try:
             rules = self._load_rules()
+            allowed_senders = self._load_allowed_senders()
 
             # Select inbox
             self.imap.select("INBOX")
@@ -451,6 +651,27 @@ class EmailWorker:
 
                     raw_email = data[0][1]
                     msg = self._parse_message(uid_str, raw_email)
+
+                    # Check sender filter
+                    if not self._is_sender_allowed(msg.sender, allowed_senders):
+                        self._log_activity(
+                            msg.message_id,
+                            msg.subject,
+                            "skipped",
+                            sender=msg.sender,
+                            error="Sender not in allowed list",
+                        )
+                        results.append(
+                            ProcessingResult(
+                                message_id=msg.message_id,
+                                status="skipped",
+                                rule_matched=None,
+                                document_id=None,
+                                run_id=None,
+                                error="Sender not in allowed list",
+                            )
+                        )
+                        continue
 
                     # Match rules
                     rule = self._match_rule(msg, rules)
@@ -501,49 +722,83 @@ class EmailWorker:
                         continue
 
                     if action == "process" and msg.has_pdf:
-                        # Process PDF attachments
+                        # Extract gate pass from email body
+                        body_text = self._get_email_body_text(msg.raw_message)
+                        gate_pass = self._extract_gate_pass(body_text)
+
+                        # Process PDF attachments with classification
                         auction_type_id = rule.get("auction_type_id")
+                        last_doc_id = None
+                        last_run_id = None
 
                         for pdf_filename in msg.pdf_filenames:
-                            file_path = self._save_attachment(msg, pdf_filename)
+                            attachment_type = self._classify_attachment(pdf_filename)
 
-                            if file_path:
-                                # Auto-detect auction type if not specified
-                                if not auction_type_id:
-                                    try:
-                                        with open(file_path, "rb") as f:
-                                            import pdfplumber
+                            if attachment_type == "invoice" or attachment_type == "other":
+                                # Standard flow: save + extract
+                                file_path = self._save_attachment(msg, pdf_filename)
 
-                                            with pdfplumber.open(f) as pdf:
-                                                text = ""
-                                                for page in pdf.pages[:3]:
-                                                    t = page.extract_text()
-                                                    if t:
-                                                        text += t
-                                        auction_type_id = self._detect_auction_type(text)
-                                    except Exception:
-                                        auction_type_id = 1  # Default
+                                if file_path:
+                                    # Auto-detect auction type if not specified
+                                    if not auction_type_id:
+                                        try:
+                                            with open(file_path, "rb") as f:
+                                                import pdfplumber
 
-                                doc_id, run_id = self._process_pdf(file_path, auction_type_id)
+                                                with pdfplumber.open(f) as pdf:
+                                                    text = ""
+                                                    for page in pdf.pages[:3]:
+                                                        t = page.extract_text()
+                                                        if t:
+                                                            text += t
+                                            auction_type_id = self._detect_auction_type(text)
+                                        except Exception:
+                                            auction_type_id = 1  # Default
 
-                                self._log_activity(
-                                    msg.message_id,
-                                    msg.subject,
-                                    "processed",
-                                    sender=msg.sender,
-                                    rule_matched=rule.get("name"),
-                                    run_id=run_id,
-                                )
-                                results.append(
-                                    ProcessingResult(
-                                        message_id=msg.message_id,
-                                        status="processed",
-                                        rule_matched=rule.get("name"),
-                                        document_id=doc_id,
-                                        run_id=run_id,
-                                        error=None,
-                                    )
-                                )
+                                    doc_id, run_id = self._process_pdf(file_path, auction_type_id)
+                                    last_doc_id = doc_id
+                                    last_run_id = run_id
+
+                                    # Save gate pass to this run if found
+                                    if gate_pass and run_id:
+                                        self._save_gate_pass_to_run(run_id, gate_pass)
+
+                            elif attachment_type == "vehicle_release":
+                                # Save release PDF for carrier download
+                                if last_run_id:
+                                    self._save_vehicle_release(msg, pdf_filename, last_run_id)
+                                else:
+                                    # Process invoice first, then attach release
+                                    # Save to temp and link after invoice processing
+                                    file_path = self._save_attachment(msg, pdf_filename)
+
+                            elif attachment_type == "condition_report":
+                                # Extract inoperable hint from filename
+                                is_inoperable = self._detect_inoperable_from_filename(pdf_filename)
+                                if is_inoperable is not None and last_run_id:
+                                    self._save_inoperable_to_run(last_run_id, is_inoperable)
+                                # Also save as regular attachment
+                                file_path = self._save_attachment(msg, pdf_filename)
+
+                        # Log and record result for the email
+                        self._log_activity(
+                            msg.message_id,
+                            msg.subject,
+                            "processed",
+                            sender=msg.sender,
+                            rule_matched=rule.get("name"),
+                            run_id=last_run_id,
+                        )
+                        results.append(
+                            ProcessingResult(
+                                message_id=msg.message_id,
+                                status="processed",
+                                rule_matched=rule.get("name"),
+                                document_id=last_doc_id,
+                                run_id=last_run_id,
+                                error=None,
+                            )
+                        )
 
                         self._move_to_processed(uid)
                     else:

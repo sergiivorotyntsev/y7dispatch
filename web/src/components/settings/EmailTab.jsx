@@ -132,6 +132,46 @@ export default function EmailTab() {
         {result && <TestResultCard result={result} />}
       </div>
 
+      {/* Sender Filter */}
+      <div className="border rounded-lg p-4">
+        <h4 className="font-medium mb-2">Sender Filter</h4>
+        <p className="text-sm text-gray-500 mb-3">
+          Only process emails from these senders. Leave empty to accept all senders.
+        </p>
+        <div className="space-y-2">
+          {(email.allowed_senders || []).map((sender, idx) => (
+            <div key={idx} className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={sender}
+                onChange={e => {
+                  const updated = [...(email.allowed_senders || [])]
+                  updated[idx] = e.target.value
+                  updateField('allowed_senders', updated)
+                }}
+                className="form-input flex-1"
+                placeholder="email@example.com or @domain.com"
+              />
+              <button
+                onClick={() => {
+                  const updated = (email.allowed_senders || []).filter((_, i) => i !== idx)
+                  updateField('allowed_senders', updated)
+                }}
+                className="text-red-600 hover:text-red-800 p-1"
+              >
+                X
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => updateField('allowed_senders', [...(email.allowed_senders || []), ''])}
+            className="btn btn-sm btn-secondary"
+          >
+            Add Sender
+          </button>
+        </div>
+      </div>
+
       {/* Rules */}
       <div className="border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
