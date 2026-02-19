@@ -1009,3 +1009,71 @@ class TestBuyerReceiptSelection:
 
         assert classified["invoice"] == ["invoice.pdf"]
         assert classified["listing_page"] == ["2023 FORD ESCAPE _ Run and Drive _ Copart.pdf"]
+
+
+# =============================================================================
+# VIN From Email Subject Tests (scanned PDF fallback)
+# =============================================================================
+
+
+class TestVINFromSubject:
+    """Test _extract_vin_from_subject() for scanned PDF fallback."""
+
+    def _extract(self, subject):
+        from api.workers.email_worker import EmailWorker
+        return EmailWorker()._extract_vin_from_subject(subject)
+
+    def test_vin_at_start(self):
+        """Standard format: VIN at start of subject."""
+        assert self._extract(
+            "3PCAJ5KRXPF117042 Request a car pickup from the auction for DAYTONACARGO"
+        ) == "3PCAJ5KRXPF117042"
+
+    def test_vin_with_spaces(self):
+        """VIN followed by spaces and text."""
+        assert self._extract(
+            "WBA3V5C55FP752955 Request a car pickup from the auction for DAYTONAC"
+        ) == "WBA3V5C55FP752955"
+
+    def test_vin_bmw(self):
+        assert self._extract(
+            "3MW89CW07S8F74134 Request a car pickup from the auction for DAYTONAC"
+        ) == "3MW89CW07S8F74134"
+
+    def test_vin_ford(self):
+        assert self._extract(
+            "1FMCU0MN1PUB12117 Request a car pickup from the auction for DAYTONAC"
+        ) == "1FMCU0MN1PUB12117"
+
+    def test_no_vin_returns_none(self):
+        """No VIN in subject."""
+        assert self._extract("Re: Hello world") is None
+
+    def test_short_string_not_vin(self):
+        """Less than 17 chars — not a VIN."""
+        assert self._extract("ABC123 Request for pickup") is None
+
+    def test_empty_subject(self):
+        assert self._extract("") is None
+
+    def test_none_subject(self):
+        assert self._extract(None) is None
+
+    def test_vin_excludes_ioq(self):
+        """VINs never contain I, O, or Q (ISO 3779)."""
+        # This has an 'O' at position 5 — not a valid VIN
+        assert self._extract("1FMCO9NA8PUB29559 Request") is None
+
+    def test_request_for_transportation(self):
+        """Subject without VIN — just 'REQUEST for transportation'."""
+        assert self._extract("REQUEST for transportation") is None
+
+    def test_fwd_warehouse(self):
+        """Forwarded email with no VIN."""
+        assert self._extract("Fwd: warehouse") is None
+
+    def test_reply_with_vin(self):
+        """Re: prefix before VIN."""
+        assert self._extract(
+            "Re: WDDWJ4JB1HF411033 Request a car pickup from the auction for DAYT"
+        ) == "WDDWJ4JB1HF411033"

@@ -379,6 +379,44 @@ class EmailWorker:
 
         return classified
 
+    def _extract_vin_from_subject(self, subject: str) -> str | None:
+        """Extract VIN from email subject line.
+
+        VIN is always 17 alphanumeric chars (no I/O/Q per ISO 3779).
+        Common format: "VIN Request a car pickup from the auction for COMPANY"
+        """
+        if not subject:
+            return None
+        match = re.search(r'\b([A-HJ-NPR-Z0-9]{17})\b', subject.upper())
+        return match.group(1) if match else None
+
+    def _save_vin_to_run(self, run_id: int, vin: str):
+        """Save VIN extracted from email subject to extraction_run outputs_json."""
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+
+            outputs = {}
+            if row and row["outputs_json"]:
+                try:
+                    outputs = json.loads(row["outputs_json"])
+                except Exception:
+                    outputs = {}
+
+            # Don't overwrite VIN already extracted from PDF
+            if outputs.get("vehicle_vin"):
+                return
+
+            outputs["vehicle_vin"] = vin
+            outputs["vin_source"] = "email_subject"
+
+            conn.execute(
+                "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+                (json.dumps(outputs), run_id),
+            )
+            conn.commit()
+
     def _detect_inoperable_from_filename(self, filename: str) -> bool | None:
         """Detect inoperable status from condition report filename."""
         fn_lower = filename.lower()
@@ -1377,6 +1415,13 @@ class EmailWorker:
                         if gate_pass and run_ids:
                             for rid in run_ids:
                                 self._save_gate_pass_to_run(rid, gate_pass)
+
+                        # VIN fallback: extract from email subject for scanned PDFs
+                        if run_ids:
+                            subject_vin = self._extract_vin_from_subject(msg.subject)
+                            if subject_vin:
+                                for rid in run_ids:
+                                    self._save_vin_to_run(rid, subject_vin)
 
                         # Update email_log with results
                         self._update_email_log(
