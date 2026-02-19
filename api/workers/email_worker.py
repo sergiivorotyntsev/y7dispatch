@@ -409,29 +409,27 @@ class EmailWorker:
         return False
 
     @staticmethod
-    def _build_search_criteria(allowed_senders: list[str]) -> str:
+    def _build_search_criteria(allowed_senders: list[str], since_days: int = 0) -> str:
         """Build IMAP SEARCH criteria with server-side sender filtering.
 
-        Uses SINCE today (not UNSEEN) so read emails are also visible in the
+        Uses SINCE date (not UNSEEN) so read emails are also visible in the
         Email Log. Dedup via email_log.message_id UNIQUE prevents reprocessing.
 
-        No senders     → '(SINCE 19-Feb-2026)'
-        One sender     → '(SINCE 19-Feb-2026 FROM "a@x.com")'
-        Two senders    → '(SINCE 19-Feb-2026 (OR FROM "a@x.com" FROM "b@x.com"))'
-        Three+ senders → nested OR
+        Args:
+            since_days: Look back N days (0 = today only, 7 = past week).
         """
-        from datetime import datetime
-        today = datetime.now().strftime("%d-%b-%Y")  # IMAP date format: 19-Feb-2026
+        from datetime import datetime, timedelta
+        since_date = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
 
         if not allowed_senders:
-            return f"(SINCE {today})"
+            return f"(SINCE {since_date})"
 
         # Filter out domain-only entries (@domain.com) — IMAP FROM doesn't support domain-only
         email_senders = [s for s in allowed_senders if not s.startswith("@")]
 
         # If only domain filters, can't do server-side — fall back to SINCE
         if not email_senders:
-            return f"(SINCE {today})"
+            return f"(SINCE {since_date})"
 
         # Build nested OR for 2+ senders
         # IMAP OR takes exactly 2 arguments: OR <search1> <search2>
@@ -443,10 +441,10 @@ class EmailWorker:
             return f'(OR FROM "{items[0]}" {_nest_or(items[1:])})'
 
         if len(email_senders) == 1:
-            return f'(SINCE {today} FROM "{email_senders[0]}")'
+            return f'(SINCE {since_date} FROM "{email_senders[0]}")'
 
         or_clause = _nest_or(email_senders)
-        return f"(SINCE {today} {or_clause})"
+        return f"(SINCE {since_date} {or_clause})"
 
     # ------------------------------------------------------------------
     # Email Log table management
@@ -959,12 +957,15 @@ class EmailWorker:
     # READ-ONLY mailbox access — no flags, no moves, no deletes.
     # All tracking is internal via email_log table (message_id UNIQUE dedup).
 
-    def poll_once(self) -> list[ProcessingResult]:
+    def poll_once(self, since_days: int = 0) -> list[ProcessingResult]:
         """
         Poll inbox once and process emails.
 
         Uses server-side IMAP SEARCH filtering for allowed senders,
         logs every email to email_log table, and handles thread dedup.
+
+        Args:
+            since_days: Look back N days (0 = today only, 7 = past week).
         """
         import logging
         from datetime import datetime
@@ -983,7 +984,7 @@ class EmailWorker:
             self.imap.select("INBOX")
 
             # Server-side sender filtering via IMAP SEARCH
-            criteria = self._build_search_criteria(allowed_senders)
+            criteria = self._build_search_criteria(allowed_senders, since_days=since_days)
             logger.info("[EmailWorker] IMAP SEARCH: %s", criteria)
             status, messages = self.imap.search(None, criteria)
             if status != "OK":
@@ -1284,3 +1285,146 @@ async def stop_worker():
             await _worker_task
         except asyncio.CancelledError:
             pass
+
+
+# =============================================================================
+# RECOVERY OPERATIONS (standalone — outside EmailWorker class)
+#
+# These functions use IMAP COPY/STORE/EXPUNGE intentionally to undo
+# damage from the old _move_to_processed() code. Normal polling
+# (EmailWorker.poll_once) remains READ-ONLY on the mailbox.
+# =============================================================================
+
+
+def recover_processed_emails() -> dict:
+    """One-time recovery: move emails from Processed folder back to Inbox.
+
+    Returns dict with 'recovered' count and any errors.
+    """
+    import logging
+    import ssl
+
+    logger = logging.getLogger(__name__)
+
+    worker = get_worker()
+    config = worker._load_config()
+    if not config:
+        return {"error": "No email credentials configured", "recovered": 0}
+
+    auth_type = config.get("auth_type", "password")
+    email_addr = config.get("email_address")
+
+    try:
+        if auth_type == "oauth2":
+            access_token = worker._acquire_oauth2_token(config)
+            if not access_token:
+                return {"error": "Failed to acquire OAuth2 token", "recovered": 0}
+
+            ctx = ssl.create_default_context()
+            imap = imaplib.IMAP4_SSL("outlook.office365.com", 993, ssl_context=ctx)
+            auth_string = f"user={email_addr}\x01auth=Bearer {access_token}\x01\x01"
+            imap.authenticate("XOAUTH2", lambda x: auth_string.encode())
+        else:
+            ctx = ssl.create_default_context()
+            server = config.get("imap_server", "outlook.office365.com")
+            port = int(config.get("imap_port", 993))
+            imap = imaplib.IMAP4_SSL(server, port, ssl_context=ctx)
+            imap.login(email_addr, config.get("password", ""))
+
+        logger.info("[Recovery] Connected to IMAP as %s", email_addr)
+
+        # Check if Processed folder exists
+        try:
+            status, _ = imap.select("Processed")
+        except Exception:
+            imap.logout()
+            return {"recovered": 0, "message": "No Processed folder found"}
+
+        if status != "OK":
+            imap.logout()
+            return {"recovered": 0, "message": "Cannot select Processed folder"}
+
+        status, msgs = imap.search(None, "ALL")
+        if not msgs[0]:
+            imap.logout()
+            return {"recovered": 0, "message": "Processed folder is empty"}
+
+        uids = msgs[0].split()
+        recovered = 0
+
+        for uid in uids:
+            try:
+                imap.copy(uid, "INBOX")
+                imap.store(uid, "+FLAGS", "\\Deleted")
+                recovered += 1
+                logger.info("[Recovery] Moved UID %s from Processed → Inbox", uid.decode())
+            except Exception as e:
+                logger.error("[Recovery] Failed UID %s: %s", uid.decode(), e)
+
+        imap.expunge()
+        imap.logout()
+
+        logger.info("[Recovery] Recovered %d emails from Processed folder", recovered)
+        return {"recovered": recovered}
+
+    except Exception as e:
+        logger.error("[Recovery] Error: %s", e)
+        return {"error": str(e), "recovered": 0}
+
+
+def reset_email_data() -> dict:
+    """Delete all email-sourced data from DB.
+
+    Clears: email_log, email-sourced documents, extraction_runs, review_items.
+    Preserves manually uploaded documents.
+
+    Returns dict with counts of deleted rows.
+    """
+    deleted = {"email_log": 0, "documents": 0, "extraction_runs": 0, "review_items": 0}
+
+    with get_connection() as conn:
+        # Find email-sourced document IDs
+        docs = conn.execute(
+            "SELECT id FROM documents WHERE source = 'email'"
+        ).fetchall()
+        doc_ids = [d["id"] for d in docs]
+
+        if doc_ids:
+            ph = ",".join("?" * len(doc_ids))
+            # Find linked extraction_runs
+            runs = conn.execute(
+                f"SELECT id FROM extraction_runs WHERE document_id IN ({ph})",
+                doc_ids,
+            ).fetchall()
+            run_ids = [r["id"] for r in runs]
+
+            if run_ids:
+                rph = ",".join("?" * len(run_ids))
+                # Delete review_items first (FK dependency)
+                c = conn.execute(
+                    f"DELETE FROM review_items WHERE extraction_run_id IN ({rph})",
+                    run_ids,
+                )
+                deleted["review_items"] = c.rowcount
+
+                # Delete extraction_runs
+                c = conn.execute(
+                    f"DELETE FROM extraction_runs WHERE id IN ({rph})",
+                    run_ids,
+                )
+                deleted["extraction_runs"] = c.rowcount
+
+            # Delete documents
+            c = conn.execute(
+                f"DELETE FROM documents WHERE id IN ({ph})",
+                doc_ids,
+            )
+            deleted["documents"] = c.rowcount
+
+        # Delete all email_log entries
+        c = conn.execute("DELETE FROM email_log")
+        deleted["email_log"] = c.rowcount
+
+        conn.commit()
+
+    return deleted

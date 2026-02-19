@@ -165,6 +165,85 @@ async def skip_email(email_id: int) -> dict[str, Any]:
     return {"success": True, "status": "skipped", "id": email_id}
 
 
+@router.post("/{email_id}/reprocess")
+async def reprocess_email_from_source(email_id: int) -> dict[str, Any]:
+    """
+    Re-process an email: delete its linked data, reset log entry,
+    and re-poll to re-fetch and re-classify with current logic.
+    """
+    init_email_log_table()
+
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM email_log WHERE id = ?", (email_id,)).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Email log entry {email_id} not found")
+
+    message_id = row["message_id"]
+
+    # Delete linked documents/runs
+    with get_connection() as conn:
+        run_ids_json = row["extraction_run_ids"]
+        if run_ids_json:
+            try:
+                run_ids = json.loads(run_ids_json)
+                if run_ids:
+                    ph = ",".join("?" * len(run_ids))
+                    # Get doc IDs before deleting runs
+                    docs = conn.execute(
+                        f"SELECT document_id FROM extraction_runs WHERE id IN ({ph})",
+                        run_ids,
+                    ).fetchall()
+                    doc_ids = [d["document_id"] for d in docs if d["document_id"]]
+
+                    conn.execute(
+                        f"DELETE FROM review_items WHERE extraction_run_id IN ({ph})",
+                        run_ids,
+                    )
+                    conn.execute(
+                        f"DELETE FROM extraction_runs WHERE id IN ({ph})",
+                        run_ids,
+                    )
+
+                    if doc_ids:
+                        dph = ",".join("?" * len(doc_ids))
+                        conn.execute(
+                            f"DELETE FROM documents WHERE id IN ({dph})",
+                            doc_ids,
+                        )
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Delete email_log entry so dedup allows re-ingestion
+        conn.execute("DELETE FROM email_log WHERE id = ?", (email_id,))
+        conn.commit()
+
+    # Re-poll with 7-day lookback to find the original email
+    from api.workers.email_worker import get_worker
+
+    worker = get_worker()
+    results = worker.poll_once(since_days=7)
+
+    # Find result for this specific message
+    reprocessed = None
+    for r in results:
+        if r.message_id == message_id:
+            reprocessed = {
+                "message_id": r.message_id,
+                "status": r.status,
+                "run_id": r.run_id,
+                "document_id": r.document_id,
+                "error": r.error,
+            }
+            break
+
+    return {
+        "success": True,
+        "reprocessed": reprocessed,
+        "total_poll_results": len(results),
+    }
+
+
 @router.get("/stats")
 async def get_email_stats() -> dict[str, Any]:
     """Get aggregate email log statistics."""

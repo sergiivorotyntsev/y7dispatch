@@ -25,7 +25,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -154,17 +154,17 @@ app.include_router(email_log.router)  # Email log browsing + management
 
 
 @app.post("/api/email/poll", tags=["Email"])
-async def poll_email_now():
+async def poll_email_now(since_days: int = Query(0, ge=0, le=30)):
     """
     Poll email inbox now (manual trigger).
 
     Triggers an immediate poll of the configured email inbox.
-    Returns processing results.
+    Use since_days to look back further (0 = today, 7 = past week).
     """
     from api.workers.email_worker import get_worker
 
     worker = get_worker()
-    results = worker.poll_once()
+    results = worker.poll_once(since_days=since_days)
 
     return {
         "status": "ok",
@@ -201,6 +201,67 @@ async def stop_email_worker():
 
     await stop_worker()
     return {"status": "ok", "message": "Email worker stopped"}
+
+
+@app.post("/api/email/recover", tags=["Email"])
+async def recover_email_processing(since_days: int = Query(7, ge=1, le=30)):
+    """
+    Emergency recovery: move emails from Processed folder back to Inbox,
+    reset all email-sourced data, and re-poll with correct classification.
+
+    Steps:
+    1. IMAP COPY all from Processed → Inbox
+    2. Delete email_log + email-sourced documents/runs
+    3. Re-poll with since_days lookback
+    """
+    from api.workers.email_worker import (
+        get_worker,
+        recover_processed_emails,
+        reset_email_data,
+    )
+
+    # Step 1: Move from Processed → Inbox
+    recovery = recover_processed_emails()
+
+    # Step 2: Reset DB data
+    reset = reset_email_data()
+
+    # Step 3: Re-poll with lookback
+    worker = get_worker()
+    results = worker.poll_once(since_days=since_days)
+
+    return {
+        "status": "ok",
+        "recovery": recovery,
+        "reset": reset,
+        "reprocessed": len([r for r in results if r.status == "processed"]),
+        "skipped": len([r for r in results if r.status == "skipped"]),
+        "poll_results": [
+            {
+                "message_id": r.message_id,
+                "status": r.status,
+                "rule_matched": r.rule_matched,
+                "document_id": r.document_id,
+                "run_id": r.run_id,
+                "error": r.error,
+            }
+            for r in results
+        ],
+    }
+
+
+@app.post("/api/email/reset", tags=["Email"])
+async def reset_email_data_endpoint():
+    """
+    Reset all email-sourced data (email_log, documents, extraction_runs).
+
+    Preserves manually uploaded documents. Use before re-polling to
+    re-process emails with updated classification logic.
+    """
+    from api.workers.email_worker import reset_email_data
+
+    result = reset_email_data()
+    return {"status": "ok", "deleted": result}
 
 
 # Initialize database on startup

@@ -341,9 +341,11 @@ export const api = {
   }),
 
   // Email Worker
-  pollEmailNow: () => request('/email/poll', { method: 'POST' }),
+  pollEmailNow: (sinceDays = 0) => request(`/email/poll?since_days=${sinceDays}`, { method: 'POST' }),
   startEmailWorker: () => request('/email/worker/start', { method: 'POST' }),
   stopEmailWorker: () => request('/email/worker/stop', { method: 'POST' }),
+  recoverEmails: (sinceDays = 7) => request(`/email/recover?since_days=${sinceDays}`, { method: 'POST' }),
+  resetEmailData: () => request('/email/reset', { method: 'POST' }),
 
   // Email Log
   getEmailLog: (params = {}) => {
@@ -352,6 +354,7 @@ export const api = {
   },
   processEmail: (emailId) => request(`/email-log/${emailId}/process`, { method: 'POST' }),
   skipEmail: (emailId) => request(`/email-log/${emailId}/skip`, { method: 'POST' }),
+  reprocessEmail: (emailId) => request(`/email-log/${emailId}/reprocess`, { method: 'POST' }),
   getEmailStats: () => request('/email-log/stats'),
 
   // Attachments

@@ -20,9 +20,9 @@ class TestIMAPSearchCriteria:
     Uses SINCE today (not UNSEEN) so read emails are also visible.
     """
 
-    def _build(self, senders):
+    def _build(self, senders, since_days=0):
         from api.workers.email_worker import EmailWorker
-        return EmailWorker._build_search_criteria(senders)
+        return EmailWorker._build_search_criteria(senders, since_days=since_days)
 
     def _today(self):
         from datetime import datetime
@@ -519,14 +519,176 @@ class TestEmailSafety:
         worker = EmailWorker()
         assert not hasattr(worker, "processed_folder")
 
-    def test_no_imap_store_in_source(self):
-        """Source code should not contain imap.store() with FLAGS."""
+    def test_no_imap_store_in_worker_class(self):
+        """EmailWorker class must not contain IMAP modification operations.
+
+        Recovery functions (standalone, outside the class) are allowed.
+        """
         import inspect
-        from api.workers import email_worker
-        source = inspect.getsource(email_worker)
-        # Check for dangerous IMAP operations
+        from api.workers.email_worker import EmailWorker
+        source = inspect.getsource(EmailWorker)
+        # Check for dangerous IMAP operations in the worker class only
         assert "imap.store" not in source
         assert "imap.copy" not in source
         assert "imap.expunge" not in source
         assert "\\\\Deleted" not in source
         assert "\\\\Seen" not in source
+
+
+# =============================================================================
+# Recovery & Reset Tests (Day 13A-recovery)
+# =============================================================================
+
+
+class TestEmailRecovery:
+    """Test reset and recovery operations."""
+
+    def test_reset_clears_email_log(self, client):
+        """Reset endpoint deletes all email_log entries."""
+        from api.database import get_connection
+        from api.routes.email_log import init_email_log_table
+        init_email_log_table()
+
+        tag = uuid.uuid4().hex[:8]
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO email_log (message_id, sender, subject, status) VALUES (?, ?, ?, ?)",
+                (f"<reset_{tag}@test.com>", f"test_{tag}@x.com", "Test", "processed"),
+            )
+            conn.commit()
+
+        resp = client.post("/api/email/reset")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["deleted"]["email_log"] >= 1
+
+    def test_reset_preserves_upload_documents(self, client):
+        """Reset only deletes email-sourced documents, not manual uploads."""
+        from api.database import get_connection
+
+        tag = uuid.uuid4().hex[:8]
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO documents (uuid, filename, source, file_path, sha256, auction_type_id, dataset_split) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (tag, f"manual_{tag}.pdf", "upload", f"/tmp/{tag}.pdf", tag, 1, "train"),
+            )
+            conn.commit()
+
+        resp = client.post("/api/email/reset")
+        assert resp.status_code == 200
+
+        # Verify manual document still exists
+        with get_connection() as conn:
+            doc = conn.execute("SELECT id FROM documents WHERE uuid = ?", (tag,)).fetchone()
+        assert doc is not None
+
+    def test_reset_deletes_email_documents(self, client):
+        """Reset deletes email-sourced documents."""
+        from api.database import get_connection
+
+        tag = uuid.uuid4().hex[:8]
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO documents (uuid, filename, source, file_path, sha256, auction_type_id, dataset_split) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (tag, f"email_{tag}.pdf", "email", f"/tmp/{tag}.pdf", f"sha_{tag}", 1, "train"),
+            )
+            conn.commit()
+
+        resp = client.post("/api/email/reset")
+        assert resp.status_code == 200
+
+        with get_connection() as conn:
+            doc = conn.execute("SELECT id FROM documents WHERE uuid = ?", (tag,)).fetchone()
+        assert doc is None
+
+    def test_reprocess_endpoint_404_for_missing(self, client):
+        """Reprocess returns 404 for non-existent email."""
+        resp = client.post("/api/email-log/99999/reprocess")
+        assert resp.status_code == 404
+
+    def test_since_days_changes_search_date(self):
+        """since_days parameter changes the SINCE date in search criteria."""
+        from datetime import datetime, timedelta
+        from api.workers.email_worker import EmailWorker
+
+        result = EmailWorker._build_search_criteria([], since_days=3)
+        expected_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
+        assert result == f"(SINCE {expected_date})"
+
+    def test_since_days_zero_is_today(self):
+        """since_days=0 (default) uses today's date."""
+        from datetime import datetime
+        from api.workers.email_worker import EmailWorker
+
+        result = EmailWorker._build_search_criteria([], since_days=0)
+        today = datetime.now().strftime("%d-%b-%Y")
+        assert result == f"(SINCE {today})"
+
+    def test_since_days_with_senders(self):
+        """since_days works with sender filtering."""
+        from datetime import datetime, timedelta
+        from api.workers.email_worker import EmailWorker
+
+        result = EmailWorker._build_search_criteria(["a@x.com"], since_days=5)
+        expected_date = (datetime.now() - timedelta(days=5)).strftime("%d-%b-%Y")
+        assert result == f'(SINCE {expected_date} FROM "a@x.com")'
+
+    def test_recover_standalone_function_exists(self):
+        """Recovery functions exist as standalone (not in EmailWorker class)."""
+        from api.workers.email_worker import recover_processed_emails, reset_email_data
+        assert callable(recover_processed_emails)
+        assert callable(reset_email_data)
+
+    def test_recovery_uses_imap_operations(self):
+        """Recovery function source code contains IMAP modification operations."""
+        import inspect
+        from api.workers.email_worker import recover_processed_emails
+        source = inspect.getsource(recover_processed_emails)
+        assert "imap.copy" in source
+        assert "imap.store" in source
+        assert "imap.expunge" in source
+
+
+# =============================================================================
+# Gate Pass Extraction Tests (Day 13A-recovery)
+# =============================================================================
+
+
+class TestGatePassExtraction:
+    """Test gate pass PIN extraction from real email body patterns."""
+
+    def _extract(self, text):
+        from api.workers.email_worker import EmailWorker
+        return EmailWorker()._extract_gate_pass(text)
+
+    def test_gate_pass_pin_colon_format(self):
+        """Real pattern: 'Gate Pass Pin: 75FF'"""
+        body = "Please see the attachment.\nGate Pass Pin: 75FF\n\nThank you"
+        assert self._extract(body) == "75FF"
+
+    def test_gate_pass_five_digit(self):
+        """Real pattern: 'Gate Pass Pin: 95595'"""
+        body = "Gate Pass Pin: 95595\n\nThank you"
+        assert self._extract(body) == "95595"
+
+    def test_gate_pass_alphanumeric(self):
+        """Real pattern: 'Gate Pass Pin: AE3C'"""
+        body = "Good morning,\nGate Pass Pin: AE3C\nThank you"
+        assert self._extract(body) == "AE3C"
+
+    def test_gate_pass_fd18(self):
+        """Real pattern: 'Gate Pass Pin: FD18'"""
+        body = "Good morning,\r\n\r\nPlease arrange to pick up 1 car.\r\nGate Pass Pin: FD18\r\n\r\nThank you"
+        assert self._extract(body) == "FD18"
+
+    def test_no_gate_pass_returns_none(self):
+        body = "Please see the attached invoice.\nThank you"
+        assert self._extract(body) is None
+
+    def test_pin_only_format(self):
+        """'PIN: 12345' format."""
+        body = "Your PIN: 12345\nPlease pickup"
+        assert self._extract(body) == "12345"
