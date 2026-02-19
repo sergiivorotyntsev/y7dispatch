@@ -345,6 +345,15 @@ export const api = {
   startEmailWorker: () => request('/email/worker/start', { method: 'POST' }),
   stopEmailWorker: () => request('/email/worker/stop', { method: 'POST' }),
 
+  // Email Log
+  getEmailLog: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return request(`/email-log${query ? `?${query}` : ''}`)
+  },
+  processEmail: (emailId) => request(`/email-log/${emailId}/process`, { method: 'POST' }),
+  skipEmail: (emailId) => request(`/email-log/${emailId}/skip`, { method: 'POST' }),
+  getEmailStats: () => request('/email-log/stats'),
+
   // Attachments
   listAttachments: (runId) => request(`/documents/${runId}/attachments`),
   getAttachmentUrl: (runId, filename) => `${BASE_URL}/documents/${runId}/attachments/${encodeURIComponent(filename)}`,

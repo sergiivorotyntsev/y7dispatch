@@ -43,6 +43,7 @@ from api.routes import (
     credentials,
     dlq,
     documents,
+    email_log,
     exports,
     extractions,
     field_mappings,
@@ -144,6 +145,7 @@ app.include_router(credentials.router, prefix="/api/credentials", tags=["Credent
 app.include_router(listings.router)  # Load ID generation + listing management
 app.include_router(attachments.router)  # Attachment download/list for vehicle release PDFs
 app.include_router(auction_directory.router)  # Auction phone directory lookup
+app.include_router(email_log.router)  # Email log browsing + management
 
 
 # =============================================================================
@@ -237,6 +239,10 @@ async def startup():
     from services.credential_store import init_credentials_table
 
     init_credentials_table()
+    # Initialize email log table
+    from api.routes.email_log import init_email_log_table
+
+    init_email_log_table()
     # Wire DLQ alert callback for failed processing notifications
     from api.dlq import get_dlq_service
     from services.alerting import Severity, send_alert

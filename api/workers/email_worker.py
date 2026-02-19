@@ -322,6 +322,142 @@ class EmailWorker:
                     return True
         return False
 
+    @staticmethod
+    def _build_search_criteria(allowed_senders: list[str]) -> str:
+        """Build IMAP SEARCH criteria with server-side sender filtering.
+
+        No senders     → 'UNSEEN'
+        One sender     → '(UNSEEN FROM "a@x.com")'
+        Two senders    → '(UNSEEN (OR FROM "a@x.com" FROM "b@x.com"))'
+        Three+ senders → nested OR: '(UNSEEN (OR FROM "a" (OR FROM "b" FROM "c")))'
+        """
+        if not allowed_senders:
+            return "UNSEEN"
+
+        # Filter out domain-only entries (@domain.com) — IMAP FROM doesn't support domain-only
+        email_senders = [s for s in allowed_senders if not s.startswith("@")]
+        domain_senders = [s for s in allowed_senders if s.startswith("@")]
+
+        # If only domain filters, can't do server-side — fall back to UNSEEN
+        if not email_senders:
+            return "UNSEEN"
+
+        if len(email_senders) == 1:
+            return f'(UNSEEN FROM "{email_senders[0]}")'
+
+        # Build nested OR for 2+ senders
+        # IMAP OR takes exactly 2 arguments: OR <search1> <search2>
+        def _nest_or(items: list[str]) -> str:
+            if len(items) == 1:
+                return f'FROM "{items[0]}"'
+            if len(items) == 2:
+                return f'(OR FROM "{items[0]}" FROM "{items[1]}")'
+            # Recursive: OR FROM "first" (OR ...)
+            return f'(OR FROM "{items[0]}" {_nest_or(items[1:])})'
+
+        or_clause = _nest_or(email_senders)
+        return f"(UNSEEN {or_clause})"
+
+    # ------------------------------------------------------------------
+    # Email Log table management
+    # ------------------------------------------------------------------
+
+    def _init_email_log_table(self):
+        """Create email_log table if it doesn't exist."""
+        with get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message_id TEXT UNIQUE,
+                    thread_id TEXT,
+                    sender TEXT NOT NULL,
+                    sender_name TEXT,
+                    subject TEXT,
+                    received_date DATETIME,
+                    body_preview TEXT,
+                    has_attachments BOOLEAN DEFAULT FALSE,
+                    attachment_count INTEGER DEFAULT 0,
+                    attachment_names TEXT,
+                    gate_pass TEXT,
+                    status TEXT DEFAULT 'new',
+                    skip_reason TEXT,
+                    processed_at DATETIME,
+                    extraction_run_ids TEXT,
+                    error_message TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_status ON email_log(status)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_sender ON email_log(sender)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_date ON email_log(received_date)")
+            conn.commit()
+
+    def _insert_email_log(self, msg: 'EmailMessage', body_preview: str = "",
+                          gate_pass: str = None) -> int | None:
+        """Insert email into email_log. Returns row id, or None if duplicate."""
+        self._init_email_log_table()
+
+        # Extract sender name and email
+        sender_name = ""
+        sender_email = msg.sender
+        import re as _re
+        name_match = _re.match(r'^"?([^"<]+)"?\s*<(.+?)>', msg.sender)
+        if name_match:
+            sender_name = name_match.group(1).strip()
+            sender_email = name_match.group(2).strip()
+
+        try:
+            with get_connection() as conn:
+                cursor = conn.execute("""
+                    INSERT INTO email_log
+                    (message_id, thread_id, sender, sender_name, subject, received_date,
+                     body_preview, has_attachments, attachment_count, attachment_names,
+                     gate_pass, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    msg.message_id,
+                    msg.raw_message.get("In-Reply-To", ""),
+                    sender_email,
+                    sender_name,
+                    msg.subject,
+                    msg.date,
+                    body_preview[:500] if body_preview else "",
+                    msg.has_pdf,
+                    len(msg.pdf_filenames),
+                    json.dumps(msg.pdf_filenames) if msg.pdf_filenames else "[]",
+                    gate_pass,
+                    "new",
+                ))
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            # UNIQUE constraint on message_id → duplicate
+            if "UNIQUE" in str(e).upper():
+                return None
+            raise
+
+    def _update_email_log(self, message_id: str, **kwargs):
+        """Update email_log entry by message_id."""
+        allowed = {"status", "skip_reason", "processed_at", "extraction_run_ids",
+                    "error_message", "gate_pass"}
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if not updates:
+            return
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [message_id]
+
+        with get_connection() as conn:
+            conn.execute(f"UPDATE email_log SET {set_clause} WHERE message_id = ?", values)
+            conn.commit()
+
+    def _is_thread_reply_without_pdf(self, msg: 'EmailMessage') -> bool:
+        """Check if email is a thread reply with no PDF attachments."""
+        in_reply_to = msg.raw_message.get("In-Reply-To", "")
+        references = msg.raw_message.get("References", "")
+        is_reply = bool(in_reply_to or references)
+        return is_reply and not msg.has_pdf
+
     def _acquire_oauth2_token(self, config: dict) -> str | None:
         """Acquire access token via Microsoft client_credentials grant.
 
@@ -743,8 +879,14 @@ class EmailWorker:
     def poll_once(self) -> list[ProcessingResult]:
         """
         Poll inbox once and process emails.
-        Returns list of processing results.
+
+        Uses server-side IMAP SEARCH filtering for allowed senders,
+        logs every email to email_log table, and handles thread dedup.
         """
+        import logging
+        from datetime import datetime
+
+        logger = logging.getLogger(__name__)
         results = []
 
         if not self._connect():
@@ -757,12 +899,16 @@ class EmailWorker:
             # Select inbox
             self.imap.select("INBOX")
 
-            # Search for unread emails
-            status, messages = self.imap.search(None, "UNSEEN")
+            # Server-side sender filtering via IMAP SEARCH
+            criteria = self._build_search_criteria(allowed_senders)
+            logger.info("[EmailWorker] IMAP SEARCH: %s", criteria)
+            status, messages = self.imap.search(None, criteria)
             if status != "OK":
                 return results
 
-            uids = messages[0].split()[: self.max_emails_per_poll]
+            msg_ids = messages[0].split() if messages[0] else []
+            uids = msg_ids[: self.max_emails_per_poll]
+            logger.info("[EmailWorker] Found %d emails matching criteria", len(uids))
 
             for uid in uids:
                 uid_str = uid.decode() if isinstance(uid, bytes) else uid
@@ -776,79 +922,95 @@ class EmailWorker:
                     raw_email = data[0][1]
                     msg = self._parse_message(uid_str, raw_email)
 
-                    # Check sender filter
-                    if not self._is_sender_allowed(msg.sender, allowed_senders):
+                    # Extract body text + gate pass early (needed for email_log)
+                    body_text = self._get_email_body_text(msg.raw_message)
+                    gate_pass = self._extract_gate_pass(body_text)
+
+                    # Insert into email_log (dedup by message_id)
+                    log_id = self._insert_email_log(msg, body_preview=body_text, gate_pass=gate_pass)
+                    if log_id is None:
+                        # Duplicate message_id — already processed
+                        logger.info("[EmailWorker] Duplicate message_id: %s", msg.message_id)
                         self._log_activity(
-                            msg.message_id,
-                            msg.subject,
-                            "skipped",
-                            sender=msg.sender,
+                            msg.message_id, msg.subject, "skipped",
+                            sender=msg.sender, error="Duplicate (already in email_log)",
+                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="skipped",
+                            rule_matched=None, document_id=None, run_id=None,
+                            error="Duplicate",
+                        ))
+                        continue
+
+                    # Secondary sender filter for domain-only entries (@domain.com)
+                    # that can't be filtered server-side
+                    if not self._is_sender_allowed(msg.sender, allowed_senders):
+                        self._update_email_log(msg.message_id, status="skipped",
+                                               skip_reason="Sender not in allowed list")
+                        self._log_activity(
+                            msg.message_id, msg.subject, "skipped",
+                            sender=msg.sender, error="Sender not in allowed list",
+                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="skipped",
+                            rule_matched=None, document_id=None, run_id=None,
                             error="Sender not in allowed list",
+                        ))
+                        continue
+
+                    # Thread dedup: reply without new PDFs → skip
+                    if self._is_thread_reply_without_pdf(msg):
+                        self._update_email_log(msg.message_id, status="skipped",
+                                               skip_reason="Thread reply without PDF")
+                        self._log_activity(
+                            msg.message_id, msg.subject, "skipped",
+                            sender=msg.sender, error="Thread reply without PDF",
                         )
-                        results.append(
-                            ProcessingResult(
-                                message_id=msg.message_id,
-                                status="skipped",
-                                rule_matched=None,
-                                document_id=None,
-                                run_id=None,
-                                error="Sender not in allowed list",
-                            )
-                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="skipped",
+                            rule_matched=None, document_id=None, run_id=None,
+                            error="Thread reply without PDF",
+                        ))
                         continue
 
                     # Match rules
                     rule = self._match_rule(msg, rules)
 
                     if not rule:
-                        # No rule matched - skip
+                        self._update_email_log(msg.message_id, status="skipped",
+                                               skip_reason="No matching rule")
                         self._log_activity(
-                            msg.message_id,
-                            msg.subject,
-                            "skipped",
-                            sender=msg.sender,
+                            msg.message_id, msg.subject, "skipped",
+                            sender=msg.sender, error="No matching rule",
+                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="skipped",
+                            rule_matched=None, document_id=None, run_id=None,
                             error="No matching rule",
-                        )
-                        results.append(
-                            ProcessingResult(
-                                message_id=msg.message_id,
-                                status="skipped",
-                                rule_matched=None,
-                                document_id=None,
-                                run_id=None,
-                                error="No matching rule",
-                            )
-                        )
+                        ))
                         continue
 
                     action = rule.get("action", "process")
 
                     if action == "ignore":
+                        self._update_email_log(msg.message_id, status="skipped",
+                                               skip_reason=f"Rule '{rule.get('name')}': ignore")
                         self._log_activity(
-                            msg.message_id,
-                            msg.subject,
-                            "skipped",
-                            sender=msg.sender,
-                            rule_matched=rule.get("name"),
+                            msg.message_id, msg.subject, "skipped",
+                            sender=msg.sender, rule_matched=rule.get("name"),
                             error="Rule action: ignore",
                         )
-                        results.append(
-                            ProcessingResult(
-                                message_id=msg.message_id,
-                                status="skipped",
-                                rule_matched=rule.get("name"),
-                                document_id=None,
-                                run_id=None,
-                                error="Rule action: ignore",
-                            )
-                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="skipped",
+                            rule_matched=rule.get("name"), document_id=None,
+                            run_id=None, error="Rule action: ignore",
+                        ))
                         self._move_to_processed(uid)
                         continue
 
                     if action == "process" and msg.has_pdf:
-                        # Extract gate pass from email body
-                        body_text = self._get_email_body_text(msg.raw_message)
-                        gate_pass = self._extract_gate_pass(body_text)
+                        # Mark as processing
+                        self._update_email_log(msg.message_id, status="processing")
 
                         # Build email metadata for document trail
                         email_metadata = {
@@ -862,21 +1024,19 @@ class EmailWorker:
                         auction_type_id = rule.get("auction_type_id")
                         last_doc_id = None
                         last_run_id = None
+                        run_ids = []
 
                         for pdf_filename in msg.pdf_filenames:
                             attachment_type = self._classify_attachment(pdf_filename)
 
                             if attachment_type == "invoice" or attachment_type == "other":
-                                # Standard flow: save + extract
                                 file_path = self._save_attachment(msg, pdf_filename)
 
                                 if file_path:
-                                    # Auto-detect auction type if not specified
                                     if not auction_type_id:
                                         try:
                                             with open(file_path, "rb") as f:
                                                 import pdfplumber
-
                                                 with pdfplumber.open(f) as pdf:
                                                     text = ""
                                                     for page in pdf.pages[:3]:
@@ -885,7 +1045,7 @@ class EmailWorker:
                                                             text += t
                                             auction_type_id = self._detect_auction_type(text)
                                         except Exception:
-                                            auction_type_id = 1  # Default
+                                            auction_type_id = 1
 
                                     doc_id, run_id = self._process_pdf(
                                         file_path, auction_type_id,
@@ -893,86 +1053,76 @@ class EmailWorker:
                                     )
                                     last_doc_id = doc_id
                                     last_run_id = run_id
+                                    if run_id:
+                                        run_ids.append(run_id)
 
-                                    # Save gate pass to this run if found
                                     if gate_pass and run_id:
                                         self._save_gate_pass_to_run(run_id, gate_pass)
 
                             elif attachment_type == "vehicle_release":
-                                # Save release PDF for carrier download
                                 if last_run_id:
                                     self._save_vehicle_release(msg, pdf_filename, last_run_id)
                                 else:
-                                    # Process invoice first, then attach release
-                                    # Save to temp and link after invoice processing
                                     file_path = self._save_attachment(msg, pdf_filename)
 
                             elif attachment_type == "condition_report":
-                                # Extract inoperable hint from filename
                                 is_inoperable = self._detect_inoperable_from_filename(pdf_filename)
                                 if is_inoperable is not None and last_run_id:
                                     self._save_inoperable_to_run(last_run_id, is_inoperable)
-                                # Also save as regular attachment
                                 file_path = self._save_attachment(msg, pdf_filename)
 
-                        # Log and record result for the email
-                        self._log_activity(
+                        # Update email_log with results
+                        self._update_email_log(
                             msg.message_id,
-                            msg.subject,
-                            "processed",
-                            sender=msg.sender,
-                            rule_matched=rule.get("name"),
+                            status="processed",
+                            processed_at=datetime.utcnow().isoformat() + "Z",
+                            extraction_run_ids=json.dumps(run_ids) if run_ids else None,
+                            gate_pass=gate_pass,
+                        )
+
+                        self._log_activity(
+                            msg.message_id, msg.subject, "processed",
+                            sender=msg.sender, rule_matched=rule.get("name"),
                             run_id=last_run_id,
                         )
-                        results.append(
-                            ProcessingResult(
-                                message_id=msg.message_id,
-                                status="processed",
-                                rule_matched=rule.get("name"),
-                                document_id=last_doc_id,
-                                run_id=last_run_id,
-                                error=None,
-                            )
-                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="processed",
+                            rule_matched=rule.get("name"), document_id=last_doc_id,
+                            run_id=last_run_id, error=None,
+                        ))
 
                         self._move_to_processed(uid)
                     else:
-                        # No PDF or unsupported action
+                        skip_reason = "No PDF attachment" if not msg.has_pdf else f"Unsupported action: {action}"
+                        self._update_email_log(msg.message_id, status="skipped",
+                                               skip_reason=skip_reason)
                         self._log_activity(
-                            msg.message_id,
-                            msg.subject,
-                            "skipped",
-                            sender=msg.sender,
-                            rule_matched=rule.get("name"),
-                            error=(
-                                "No PDF attachment"
-                                if not msg.has_pdf
-                                else f"Unsupported action: {action}"
-                            ),
+                            msg.message_id, msg.subject, "skipped",
+                            sender=msg.sender, rule_matched=rule.get("name"),
+                            error=skip_reason,
                         )
-                        results.append(
-                            ProcessingResult(
-                                message_id=msg.message_id,
-                                status="skipped",
-                                rule_matched=rule.get("name"),
-                                document_id=None,
-                                run_id=None,
-                                error="No PDF attachment",
-                            )
-                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="skipped",
+                            rule_matched=rule.get("name"), document_id=None,
+                            run_id=None, error=skip_reason,
+                        ))
 
                 except Exception as e:
-                    self._log_activity(uid_str, "", "failed", error=str(e))
-                    results.append(
-                        ProcessingResult(
-                            message_id=uid_str,
-                            status="failed",
-                            rule_matched=None,
-                            document_id=None,
-                            run_id=None,
-                            error=str(e),
+                    logger.error("[EmailWorker] Error processing uid=%s: %s", uid_str, e)
+                    # Try to update email_log with error
+                    try:
+                        self._update_email_log(
+                            uid_str, status="failed",
+                            error_message=str(e)[:500],
                         )
-                    )
+                    except Exception:
+                        pass
+                    self._log_activity(uid_str, "", "failed", error=str(e))
+                    results.append(ProcessingResult(
+                        message_id=uid_str, status="failed",
+                        rule_matched=None, document_id=None,
+                        run_id=None, error=str(e),
+                    ))
 
         finally:
             self._disconnect()
