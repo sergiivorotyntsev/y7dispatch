@@ -991,8 +991,11 @@ class EmailWorker:
                 return results
 
             msg_ids = messages[0].split() if messages[0] else []
+            # Most recent first — IMAP returns oldest first (ascending),
+            # reverse so we process newest emails within the per-poll limit
+            msg_ids.reverse()
             uids = msg_ids[: self.max_emails_per_poll]
-            logger.info("[EmailWorker] Found %d emails matching criteria", len(uids))
+            logger.info("[EmailWorker] Found %d emails matching criteria (processing %d newest)", len(msg_ids), len(uids))
 
             for uid in uids:
                 uid_str = uid.decode() if isinstance(uid, bytes) else uid
@@ -1402,7 +1405,7 @@ def reset_email_data() -> dict:
                 rph = ",".join("?" * len(run_ids))
                 # Delete review_items first (FK dependency)
                 c = conn.execute(
-                    f"DELETE FROM review_items WHERE extraction_run_id IN ({rph})",
+                    f"DELETE FROM review_items WHERE run_id IN ({rph})",
                     run_ids,
                 )
                 deleted["review_items"] = c.rowcount

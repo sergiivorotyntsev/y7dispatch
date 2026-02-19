@@ -197,7 +197,7 @@ async def reprocess_email_from_source(email_id: int) -> dict[str, Any]:
                     doc_ids = [d["document_id"] for d in docs if d["document_id"]]
 
                     conn.execute(
-                        f"DELETE FROM review_items WHERE extraction_run_id IN ({ph})",
+                        f"DELETE FROM review_items WHERE run_id IN ({ph})",
                         run_ids,
                     )
                     conn.execute(
