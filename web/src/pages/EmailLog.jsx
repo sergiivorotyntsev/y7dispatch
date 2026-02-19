@@ -300,7 +300,13 @@ function EmailLog() {
                           </span>
                         </div>
                         <div className="px-3 py-3 w-[60px] text-center shrink-0">
-                          <span className="text-sm text-gray-600">{email.attachment_count || 0}</span>
+                          {(email.attachment_count || 0) > 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                              {email.attachment_count}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-400">0</span>
+                          )}
                         </div>
                         <div className="px-3 py-3 w-[80px] shrink-0">
                           <span className="font-mono text-xs text-gray-700">{email.gate_pass || '-'}</span>
@@ -365,16 +371,23 @@ function EmailLog() {
                                 Attachments ({attachments.length})
                               </h4>
                               {attachments.length > 0 ? (
-                                <ul className="text-sm space-y-1">
-                                  {attachments.map((name, i) => (
-                                    <li key={i} className="flex items-center text-gray-700">
-                                      <span className="text-gray-400 mr-2">
-                                        {name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'File'}
+                                <div className="flex flex-wrap gap-2">
+                                  {attachments.map((name, i) => {
+                                    const isPdf = name.toLowerCase().endsWith('.pdf')
+                                    return (
+                                      <span
+                                        key={i}
+                                        className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium ${
+                                          isPdf ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-50 text-gray-700 border border-gray-200'
+                                        }`}
+                                        title={name}
+                                      >
+                                        <span className="mr-1.5">{isPdf ? 'PDF' : 'File'}</span>
+                                        {name.length > 30 ? name.substring(0, 27) + '...' : name}
                                       </span>
-                                      {name}
-                                    </li>
-                                  ))}
-                                </ul>
+                                    )
+                                  })}
+                                </div>
                               ) : (
                                 <p className="text-sm text-gray-400">No attachments</p>
                               )}

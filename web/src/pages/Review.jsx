@@ -234,6 +234,11 @@ function Review() {
 
       setFields(initialFields)
 
+      // Initialize load_id from backend if already generated
+      if (runData.run?.outputs?.load_id) {
+        setLoadId(runData.run.outputs.load_id)
+      }
+
       // Initialize dates based on extraction data
       initializeDates(initialFields, runData.run?.auction_type_code)
 

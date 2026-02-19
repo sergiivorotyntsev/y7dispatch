@@ -1215,6 +1215,22 @@ def run_extraction(
                     "method": "auto_set_for_auction_source",
                 }
 
+        # =================================================================
+        # AUTO-GENERATE LOAD ID
+        # Generate unique load_id from make+model if extraction succeeded
+        # =================================================================
+        if not outputs.get("load_id"):
+            make = outputs.get("vehicle_make")
+            model = outputs.get("vehicle_model")
+            if make and model:
+                try:
+                    from api.routes.listings import create_load_id
+                    result = create_load_id(make, model)
+                    if result:
+                        outputs["load_id"] = result[0]
+                except Exception:
+                    pass  # Don't fail extraction if load_id generation fails
+
         # Update run with results including metrics and field sources
         update_kwargs = {
             "status": run_status,

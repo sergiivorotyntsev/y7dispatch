@@ -46,6 +46,64 @@ init_load_ids_schema()
 
 
 # =============================================================================
+# REUSABLE LOAD ID GENERATOR
+# =============================================================================
+
+def create_load_id(make: str, model: str) -> tuple[str, int] | None:
+    """
+    Generate a unique Load ID for today and persist it.
+
+    Format: M(no leading zero) + DD + first3Make(upper) + first2Model(upper) + sequence
+    Example: 216TOYPR (Feb 16, Toyota Prius, first of day)
+    Duplicates: 216TOYPR2, 216TOYPR3, etc.
+
+    Returns (load_id, sequence) tuple, or None if make/model are empty.
+    """
+    if not make or not model:
+        return None
+
+    now = datetime.now()
+    month = str(now.month)
+    day = now.strftime("%d")
+
+    make_part = make.strip().upper()[:3]
+    model_part = model.strip().upper()[:2]
+    base_id = f"{month}{day}{make_part}{model_part}"
+    today_str = now.strftime("%Y-%m-%d")
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT load_id, sequence FROM load_ids WHERE base_id = ? AND created_date = ?",
+            (base_id, today_str)
+        ).fetchall()
+
+        if not rows:
+            load_id = base_id
+            sequence = 1
+        else:
+            max_seq = max(r["sequence"] if isinstance(r, dict) else r[1] for r in rows)
+            sequence = max_seq + 1
+            load_id = f"{base_id}{sequence}"
+
+        try:
+            conn.execute(
+                "INSERT INTO load_ids (load_id, base_id, make, model, sequence, created_date) VALUES (?, ?, ?, ?, ?, ?)",
+                (load_id, base_id, make.strip(), model.strip(), sequence, today_str)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            sequence += 1
+            load_id = f"{base_id}{sequence}"
+            conn.execute(
+                "INSERT INTO load_ids (load_id, base_id, make, model, sequence, created_date) VALUES (?, ?, ?, ?, ?, ?)",
+                (load_id, base_id, make.strip(), model.strip(), sequence, today_str)
+            )
+            conn.commit()
+
+    return (load_id, sequence)
+
+
+# =============================================================================
 # MODELS
 # =============================================================================
 
@@ -72,52 +130,62 @@ async def generate_load_id(
     Example: 216TOYPR (Feb 16, Toyota Prius, first of day)
     Duplicates: 216TOYPR2, 216TOYPR3, etc.
     """
-    now = datetime.now()
-    month = str(now.month)  # No leading zero
-    day = now.strftime("%d")  # With leading zero
+    result = create_load_id(make, model)
+    if not result:
+        raise HTTPException(status_code=400, detail="Make and model are required")
 
-    make_part = make.strip().upper()[:3]
-    model_part = model.strip().upper()[:2]
-    base_id = f"{month}{day}{make_part}{model_part}"
-
-    today_str = now.strftime("%Y-%m-%d")
-
-    with get_connection() as conn:
-        # Find existing IDs for this base today
-        rows = conn.execute(
-            "SELECT load_id, sequence FROM load_ids WHERE base_id = ? AND created_date = ?",
-            (base_id, today_str)
-        ).fetchall()
-
-        if not rows:
-            load_id = base_id
-            sequence = 1
-        else:
-            max_seq = max(r["sequence"] if isinstance(r, dict) else r[1] for r in rows)
-            sequence = max_seq + 1
-            load_id = f"{base_id}{sequence}"
-
-        # Insert with retry on collision
-        try:
-            conn.execute(
-                "INSERT INTO load_ids (load_id, base_id, make, model, sequence, created_date) VALUES (?, ?, ?, ?, ?, ?)",
-                (load_id, base_id, make.strip(), model.strip(), sequence, today_str)
-            )
-            conn.commit()
-        except sqlite3.IntegrityError:
-            # Race condition: another request inserted the same ID
-            # Retry with incremented sequence
-            sequence += 1
-            load_id = f"{base_id}{sequence}"
-            conn.execute(
-                "INSERT INTO load_ids (load_id, base_id, make, model, sequence, created_date) VALUES (?, ?, ?, ?, ?, ?)",
-                (load_id, base_id, make.strip(), model.strip(), sequence, today_str)
-            )
-            conn.commit()
-
+    load_id, sequence = result
     return LoadIdResponse(
         load_id=load_id,
         make=make.strip(),
         model=model.strip(),
         sequence=sequence,
     )
+
+
+@router.post("/backfill-load-ids")
+async def backfill_load_ids():
+    """
+    Backfill load_id for existing extraction runs that have make+model but no load_id.
+    Safe to run multiple times — skips runs that already have load_id.
+    """
+    import json
+
+    updated = 0
+    skipped = 0
+
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT id, outputs_json FROM extraction_runs
+            WHERE outputs_json IS NOT NULL
+              AND status NOT IN ('failed', 'cancelled')
+        """).fetchall()
+
+    for row in rows:
+        try:
+            outputs = json.loads(row["outputs_json"]) if row["outputs_json"] else {}
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        if outputs.get("load_id"):
+            skipped += 1
+            continue
+
+        make = outputs.get("vehicle_make")
+        model = outputs.get("vehicle_model")
+        if not make or not model:
+            skipped += 1
+            continue
+
+        result = create_load_id(make, model)
+        if result:
+            outputs["load_id"] = result[0]
+            with get_connection() as conn:
+                conn.execute(
+                    "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+                    (json.dumps(outputs), row["id"]),
+                )
+                conn.commit()
+            updated += 1
+
+    return {"updated": updated, "skipped": skipped, "total_checked": len(rows)}
