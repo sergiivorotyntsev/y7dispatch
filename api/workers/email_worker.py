@@ -141,13 +141,18 @@ class EmailWorker:
         fn_lower = filename.lower().strip()
 
         # 1. Exact or near-exact invoice names (highest priority)
+        #    - "invoice.pdf" = Copart Sales Receipt/Bill of Sale
+        #    - "ShowReport.pdf" = IAA main document (VIN, address, fees)
         if fn_lower in ('invoice.pdf', 'bill_of_sale.pdf', 'receipt.pdf',
                         'sales_receipt.pdf'):
+            return 'invoice'
+        if fn_lower.startswith('showreport'):
             return 'invoice'
 
         # 2. Filename contains invoice keywords
         if any(w in fn_lower for w in ['invoice', 'bill_of_sale', 'receipt',
-                                       'sales_receipt']):
+                                       'sales_receipt', 'showreport',
+                                       'show_report']):
             return 'invoice'
 
         # 3. Listing page indicators — auction document with vehicle info + photos
@@ -162,9 +167,9 @@ class EmailWorker:
         if any(ind in fn_lower for ind in listing_indicators) or auction_suffix:
             return 'listing_page'
 
-        # 4. Condition / inspection report
-        if any(w in fn_lower for w in ['condition', 'inspection', 'showreport',
-                                       'show_report', 'show report']):
+        # 4. Condition / inspection report (NOT showreport — that's IAA main doc)
+        if any(w in fn_lower for w in ['condition', 'inspection',
+                                       'show report']):
             return 'condition_report'
 
         # 5. Vehicle release (Manheim)
@@ -341,7 +346,7 @@ class EmailWorker:
             conn.commit()
 
     def _save_gate_pass_to_run(self, run_id: int, gate_pass: str):
-        """Save gate pass PIN to extraction_run outputs_json."""
+        """Save gate pass PIN to extraction_run outputs_json (idempotent)."""
         with get_connection() as conn:
             row = conn.execute(
                 "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
@@ -353,6 +358,9 @@ class EmailWorker:
                     outputs = json.loads(row["outputs_json"])
                 except Exception:
                     outputs = {}
+
+            if outputs.get("gate_pass") == gate_pass:
+                return  # Already set
 
             outputs["gate_pass"] = gate_pass
 
@@ -1253,6 +1261,11 @@ class EmailWorker:
                                 self._save_vehicle_release(msg, pdf_filename, last_run_id)
                             else:
                                 self._save_attachment(msg, pdf_filename)
+
+                        # Guarantee gate_pass in ALL linked runs
+                        if gate_pass and run_ids:
+                            for rid in run_ids:
+                                self._save_gate_pass_to_run(rid, gate_pass)
 
                         # Update email_log with results
                         self._update_email_log(

@@ -424,17 +424,18 @@ class TestPDFClassification:
         """Any PDF ending in 'IAA.pdf' is a listing page."""
         assert self._classify("2020 CHRYSLER PACIFICA TOURING for Auction - IAA.pdf") == "listing_page"
 
+    # ShowReport = IAA main document (invoice)
+    def test_showreport_is_invoice(self):
+        """IAA's ShowReport IS the main document — contains VIN, address, fees."""
+        assert self._classify("ShowReport.pdf") == "invoice"
+
+    def test_showreport_numbered_is_invoice(self):
+        assert self._classify("ShowReport (1).pdf") == "invoice"
+
+    def test_showreport3_is_invoice(self):
+        assert self._classify("ShowReport3.pdf") == "invoice"
+
     # Condition report patterns
-    def test_showreport_is_condition(self):
-        """IAA's ShowReport is a condition report, NOT an invoice."""
-        assert self._classify("ShowReport.pdf") == "condition_report"
-
-    def test_showreport_numbered_is_condition(self):
-        assert self._classify("ShowReport (1).pdf") == "condition_report"
-
-    def test_showreport3_is_condition(self):
-        assert self._classify("ShowReport3.pdf") == "condition_report"
-
     def test_condition_explicit(self):
         assert self._classify("Vehicle_Condition_Report.pdf") == "condition_report"
 
@@ -477,8 +478,8 @@ class TestPDFClassification:
         assert classified["condition_report"] == []
 
     # Two PDFs: listing page + condition (real-world IAA pattern — no invoice.pdf)
-    def test_iaa_listing_promoted_to_invoice(self):
-        """Real IAA email: no invoice.pdf → listing page promoted to invoice."""
+    def test_iaa_showreport_is_invoice(self):
+        """Real IAA email: ShowReport = invoice, listing page = attachment."""
         from api.workers.email_worker import EmailMessage, EmailWorker
 
         worker = EmailWorker()
@@ -492,10 +493,10 @@ class TestPDFClassification:
             raw_message=MagicMock(),
         )
         classified = worker._classify_and_rank_attachments(msg)
-        # Listing page promoted to invoice (no invoice.pdf in email)
-        assert classified["invoice"] == ["2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf"]
-        assert classified["listing_page"] == []
-        assert classified["condition_report"] == ["ShowReport (1).pdf"]
+        # ShowReport is the main document (invoice), listing page stays as attachment
+        assert classified["invoice"] == ["ShowReport (1).pdf"]
+        assert classified["listing_page"] == ["2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf"]
+        assert classified["condition_report"] == []
 
     def test_copart_invoice_not_promoted(self):
         """Real Copart email: invoice.pdf exists → listing stays as attachment."""
@@ -519,8 +520,8 @@ class TestPDFClassification:
         ]
         assert classified["condition_report"] == []
 
-    def test_condition_report_promoted_as_last_resort(self):
-        """Only ShowReport — promoted to invoice as last resort."""
+    def test_showreport_only_is_invoice(self):
+        """Only ShowReport — classified directly as invoice (IAA main doc)."""
         from api.workers.email_worker import EmailMessage, EmailWorker
 
         worker = EmailWorker()
@@ -531,7 +532,6 @@ class TestPDFClassification:
             raw_message=MagicMock(),
         )
         classified = worker._classify_and_rank_attachments(msg)
-        # Condition report promoted (no listing page, no invoice, no unknown)
         assert classified["invoice"] == ["ShowReport3.pdf"]
         assert classified["condition_report"] == []
 
