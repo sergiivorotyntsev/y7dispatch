@@ -234,6 +234,20 @@ class EmailWorker:
         # Remaining unknowns → save as listing pages (don't extract)
         classified["listing_page"].extend(unknowns)
 
+        # KEY RULE: If still no invoice, promote best candidate.
+        # IAA emails have no separate "invoice.pdf" — the listing page
+        # IS the document to extract (contains VIN, address, etc.).
+        # Never leave an email with PDFs and 0 extraction runs.
+        if not classified["invoice"]:
+            if classified["listing_page"]:
+                promoted = classified["listing_page"].pop(0)
+                classified["invoice"].append(promoted)
+                logger.info("[EmailWorker] No invoice.pdf — promoted listing page '%s' to invoice", promoted)
+            elif classified["condition_report"]:
+                promoted = classified["condition_report"].pop(0)
+                classified["invoice"].append(promoted)
+                logger.info("[EmailWorker] No invoice.pdf — promoted condition report '%s' to invoice (last resort)", promoted)
+
         # Log classification
         total = sum(len(v) for v in classified.values())
         logger.info(

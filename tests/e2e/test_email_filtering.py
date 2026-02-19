@@ -477,9 +477,8 @@ class TestPDFClassification:
         assert classified["condition_report"] == []
 
     # Two PDFs: listing page + condition (real-world IAA pattern — no invoice.pdf)
-    def test_iaa_listing_and_showreport(self):
-        """Real IAA email: 'for Auction - IAA.pdf' = listing_page, 'ShowReport.pdf' = condition.
-        No invoice PDF in this email — IAA doesn't always include one."""
+    def test_iaa_listing_promoted_to_invoice(self):
+        """Real IAA email: no invoice.pdf → listing page promoted to invoice."""
         from api.workers.email_worker import EmailMessage, EmailWorker
 
         worker = EmailWorker()
@@ -493,12 +492,13 @@ class TestPDFClassification:
             raw_message=MagicMock(),
         )
         classified = worker._classify_and_rank_attachments(msg)
-        assert classified["invoice"] == []
-        assert classified["listing_page"] == ["2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf"]
+        # Listing page promoted to invoice (no invoice.pdf in email)
+        assert classified["invoice"] == ["2024 HYUNDAI KONA LIMITED for Auction - IAA.pdf"]
+        assert classified["listing_page"] == []
         assert classified["condition_report"] == ["ShowReport (1).pdf"]
 
-    def test_copart_invoice_and_listing(self):
-        """Real Copart email: 'invoice.pdf' = invoice, listing PDF = listing_page."""
+    def test_copart_invoice_not_promoted(self):
+        """Real Copart email: invoice.pdf exists → listing stays as attachment."""
         from api.workers.email_worker import EmailMessage, EmailWorker
 
         worker = EmailWorker()
@@ -512,11 +512,47 @@ class TestPDFClassification:
             raw_message=MagicMock(),
         )
         classified = worker._classify_and_rank_attachments(msg)
+        # invoice.pdf used as invoice, listing stays as attachment
         assert classified["invoice"] == ["invoice.pdf"]
         assert classified["listing_page"] == [
             "2023 FORD ESCAPE ST LINE SELECT _ Run and Drive _ Feb 17, 2026 _ OK - OKLAHOMA CITY _ Copart.pdf"
         ]
         assert classified["condition_report"] == []
+
+    def test_condition_report_promoted_as_last_resort(self):
+        """Only ShowReport — promoted to invoice as last resort."""
+        from api.workers.email_worker import EmailMessage, EmailWorker
+
+        worker = EmailWorker()
+        msg = EmailMessage(
+            message_id="<test@local>", uid="1", subject="Test",
+            sender="a@x.com", date="2026-01-01", has_pdf=True,
+            pdf_filenames=["ShowReport3.pdf"],
+            raw_message=MagicMock(),
+        )
+        classified = worker._classify_and_rank_attachments(msg)
+        # Condition report promoted (no listing page, no invoice, no unknown)
+        assert classified["invoice"] == ["ShowReport3.pdf"]
+        assert classified["condition_report"] == []
+
+    def test_two_listing_pages_first_promoted(self):
+        """Two listing pages, no invoice → first promoted, second stays."""
+        from api.workers.email_worker import EmailMessage, EmailWorker
+
+        worker = EmailWorker()
+        msg = EmailMessage(
+            message_id="<test@local>", uid="1", subject="Test",
+            sender="a@x.com", date="2026-01-01", has_pdf=True,
+            pdf_filenames=[
+                "2024 FORD ESCAPE ST-LINE for Auction - IAA.pdf",
+                "2023 FORD ESCAPE ST-LINE for Auction - IAA.pdf",
+            ],
+            raw_message=MagicMock(),
+        )
+        classified = worker._classify_and_rank_attachments(msg)
+        assert len(classified["invoice"]) == 1
+        assert classified["invoice"][0] == "2024 FORD ESCAPE ST-LINE for Auction - IAA.pdf"
+        assert classified["listing_page"] == ["2023 FORD ESCAPE ST-LINE for Auction - IAA.pdf"]
 
 
 # =============================================================================
