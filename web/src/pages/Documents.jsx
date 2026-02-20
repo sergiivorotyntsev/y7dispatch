@@ -20,7 +20,7 @@ function groupByDate(docs) {
   const groups = {}
   docs.forEach(doc => {
     const date = doc.created_at
-      ? new Date(doc.created_at).toLocaleDateString('en-US', {
+      ? new Date(doc.created_at + 'Z').toLocaleDateString('en-US', {
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
         })
       : 'Unknown Date'
@@ -851,6 +851,9 @@ function Documents() {
                   Auction Cost
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Transport
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Status
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -1025,6 +1028,9 @@ function Documents() {
                         </button>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-400">
+                      {'\u2014'}
+                    </td>
                     <td className="px-4 py-3">
                       {isOnHold && (
                         <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800 mr-1" title={`${doc.hold_reason}${doc.hold_note ? ': ' + doc.hold_note : ''}`}>
@@ -1059,8 +1065,8 @@ function Documents() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {doc.created_at ? (
-                        <span title={new Date(doc.created_at).toLocaleString()}>
-                          {new Date(doc.created_at).toLocaleString('en-US', {
+                        <span title={new Date(doc.created_at + 'Z').toLocaleString()}>
+                          {new Date(doc.created_at + 'Z').toLocaleString('en-US', {
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',
