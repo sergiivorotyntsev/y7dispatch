@@ -1,6 +1,11 @@
 /**
  * Section 9: Export Actions
  * Preflight summary, export/save buttons, progress summary.
+ *
+ * States:
+ * - Default: shows preflight + field counter + approve button
+ * - isApproved: shows "Export to CD" button, hides approve
+ * - isExported: shows exported summary, hides counters/buttons/helper text
  */
 import PreflightBanner from '../PreflightBanner'
 
@@ -9,20 +14,38 @@ function ExportActions({
   handleSubmitTraining, handleSubmitProduction,
   showExportModal, setShowExportModal,
   exportResult, exportError, exporting,
-  selectedWarehouse, isApproved,
+  selectedWarehouse, isApproved, isExported,
   correctCount, totalCount, correctedCount, needsReviewCount,
 }) {
   return (
     <div className="space-y-4">
-      {/* Preflight Banner */}
-      <PreflightBanner
-        runId={parseInt(runId)}
-        mode={isTrainingMode ? 'training' : 'production'}
-        warehouseId={selectedWarehouse ? parseInt(selectedWarehouse) : null}
-      />
+      {/* Preflight Banner — hide after export, show "Exported" instead */}
+      {isExported ? (
+        <div className="mb-4 border rounded-lg bg-green-50 border-green-200">
+          <div className="px-4 py-3 flex items-center space-x-3">
+            <span className="text-green-600">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </span>
+            <span className="font-medium text-sm text-green-800">Exported to Central Dispatch</span>
+            {exportResult?.cd_listing_id && exportResult.cd_listing_id !== 'unknown' && (
+              <span className="text-sm text-green-700">
+                CD Listing ID: <span className="font-mono font-medium">{exportResult.cd_listing_id}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <PreflightBanner
+          runId={parseInt(runId)}
+          mode={isTrainingMode ? 'training' : 'production'}
+          warehouseId={selectedWarehouse ? parseInt(selectedWarehouse) : null}
+        />
+      )}
 
-      {/* Export to CD section (production only) */}
-      {!isTrainingMode && (
+      {/* Export to CD section (production only, not yet exported) */}
+      {!isTrainingMode && !isExported && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           {exportResult ? (
             <div className="flex items-center justify-between">
@@ -56,38 +79,45 @@ function ExportActions({
         </div>
       )}
 
-      {/* Bottom Actions Bar */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <div className="flex justify-between items-center">
-          <div className="text-sm text-gray-600">
-            <span className="text-green-600 font-medium">{correctCount}</span> correct
-            {correctedCount > 0 && (
-              <> {' \u2022 '} <span className="text-blue-600 font-medium">{correctedCount}</span> corrected</>
-            )}
-            {needsReviewCount > 0 && (
-              <> {' \u2022 '} <span className="text-orange-600 font-medium">{needsReviewCount}</span> need review</>
+      {/* Bottom Actions Bar — hidden when exported */}
+      {!isExported && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="flex justify-between items-center">
+            {/* Field counters */}
+            <div className="text-sm text-gray-600">
+              <span className="text-green-600 font-medium">{correctCount}</span> correct
+              {correctedCount > 0 && (
+                <> {' \u2022 '} <span className="text-blue-600 font-medium">{correctedCount}</span> corrected</>
+              )}
+              {needsReviewCount > 0 && (
+                <> {' \u2022 '} <span className="text-orange-600 font-medium">{needsReviewCount}</span> need review</>
+              )}
+            </div>
+            {/* Action button */}
+            {isTrainingMode ? (
+              <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving...' : 'Save & Train'}
+              </button>
+            ) : isApproved ? (
+              <span className="px-4 py-2 rounded-md text-sm font-medium bg-green-100 text-green-800 border border-green-300">
+                Approved
+              </span>
+            ) : (
+              <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
+                {saving ? 'Approving...' : 'Approve for Export'}
+              </button>
             )}
           </div>
-          {isTrainingMode ? (
-            <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : 'Save & Train'}
-            </button>
-          ) : isApproved ? (
-            <span className="px-4 py-2 rounded-md text-sm font-medium bg-green-100 text-green-800 border border-green-300">
-              Approved
-            </span>
-          ) : (
-            <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
-              {saving ? 'Approving...' : 'Approve for Export'}
-            </button>
+          {/* Helper text — hidden when approved */}
+          {!isApproved && (
+            <p className="text-xs text-gray-500 mt-3">
+              {isTrainingMode
+                ? 'Your corrections help train the system to extract similar documents more accurately.'
+                : 'After approval, this listing will be ready for export to Central Dispatch.'}
+            </p>
           )}
         </div>
-        <p className="text-xs text-gray-500 mt-3">
-          {isTrainingMode
-            ? 'Your corrections help train the system to extract similar documents more accurately.'
-            : 'After approval, this listing will be ready for export to Central Dispatch.'}
-        </p>
-      </div>
+      )}
     </div>
   )
 }

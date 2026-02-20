@@ -539,7 +539,8 @@ function Review() {
     if (result?.exported_count > 0 || result?.posted > 0) {
       const listingId = result?.previews?.[0]?.cd_listing_id || result?.cd_listing_id || 'unknown'
       setExportResult({ cd_listing_id: listingId, status: 'exported' })
-      setSuccess(`Exported! Listing ID: ${listingId}`)
+      setIsApproved(true)
+      setSuccess(`Exported to Central Dispatch! Listing ID: ${listingId}`)
       setShowExportModal(false)
     } else if (result?.status === 'preview') {
       setShowExportModal(false)
@@ -572,6 +573,9 @@ function Review() {
     )
   }
 
+  // Derived export state — true after CD export or when loaded as exported
+  const isExported = !!exportResult || run?.status === 'exported'
+
   const fieldList = Object.values(fields)
   const correctCount = fieldList.filter(f => f.status === 'correct' || f.status === 'corrected').length
   const correctedCount = fieldList.filter(f => f.status === 'corrected').length
@@ -584,22 +588,34 @@ function Review() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-gray-900">
-              {isTrainingMode ? 'Review & Train' : 'Review for Export'}
+              {isTrainingMode ? 'Review & Train'
+                : isExported ? 'Exported to Central Dispatch'
+                : 'Review for Export'}
             </h1>
             <p className="text-sm text-gray-500">
               {run.document_filename} {'\u2022'} {run.auction_type_code}
-              {!isTrainingMode && <span className="ml-2 text-primary-600 font-medium">{'\u2192'} Central Dispatch</span>}
+              {!isTrainingMode && !isExported && <span className="ml-2 text-primary-600 font-medium">{'\u2192'} Central Dispatch</span>}
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-              run.status === 'needs_review' ? 'bg-yellow-100 text-yellow-800' :
-              run.status === 'approved' ? 'bg-green-100 text-green-800' :
-              run.status === 'failed' ? 'bg-red-100 text-red-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
-              {run.status === 'needs_review' ? 'Needs Review' : run.status}
-            </span>
+            {/* Status badge — derived from local state, not stale run.status */}
+            {isExported ? (
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-600 text-white">
+                Exported
+              </span>
+            ) : isApproved ? (
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                Approved
+              </span>
+            ) : (
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                run.status === 'needs_review' ? 'bg-yellow-100 text-yellow-800' :
+                run.status === 'failed' ? 'bg-red-100 text-red-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {run.status === 'needs_review' ? 'Needs Review' : run.status}
+              </span>
+            )}
 
             {pdfUrl && (
               <button onClick={() => setShowPdf(!showPdf)} className="btn btn-secondary text-sm">
@@ -608,22 +624,18 @@ function Review() {
             )}
 
             <button onClick={() => navigate(isTrainingMode ? '/test-lab' : '/')} className="btn btn-secondary text-sm">
-              Cancel
+              {isApproved || isExported ? 'Back to Documents' : 'Cancel'}
             </button>
 
             {isTrainingMode ? (
               <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving...' : 'Save & Train'}
               </button>
-            ) : isApproved ? (
-              <span className="px-4 py-2 rounded-md text-sm font-medium bg-green-100 text-green-800 border border-green-300">
-                Approved
-              </span>
-            ) : (
+            ) : !isApproved && !isExported ? (
               <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
                 {saving ? 'Approving...' : 'Approve for Export'}
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -641,7 +653,7 @@ function Review() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span className="font-medium text-green-800">
-              {isTrainingMode ? 'Training Updated!' : 'Approved for Export!'}
+              {isTrainingMode ? 'Training Updated!' : isExported ? 'Exported!' : 'Approved for Export!'}
             </span>
           </div>
           <p className="text-green-700 mt-1 ml-7">{success}</p>
@@ -813,6 +825,7 @@ function Review() {
               exporting={exporting}
               selectedWarehouse={selectedWarehouse}
               isApproved={isApproved}
+              isExported={isExported}
               correctCount={correctCount}
               totalCount={fieldList.length}
               correctedCount={correctedCount}

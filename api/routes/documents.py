@@ -210,6 +210,8 @@ class DocumentResponse(BaseModel):
     pickup_state: Optional[str] = None
     pickup_name: Optional[str] = None
     gate_pass: Optional[str] = None
+    warehouse_id: Optional[int] = None
+    warehouse_name: Optional[str] = None
     extraction_status: Optional[str] = None
     extraction_run_id: Optional[int] = None
 
