@@ -198,6 +198,7 @@ class DocumentResponse(BaseModel):
     hold_reason: Optional[str] = None
     hold_note: Optional[str] = None
     hold_since: Optional[str] = None
+    archived_at: Optional[str] = None
 
     # Enriched fields from latest extraction run
     load_id: Optional[str] = None
@@ -212,6 +213,7 @@ class DocumentResponse(BaseModel):
     gate_pass: Optional[str] = None
     warehouse_id: Optional[int] = None
     warehouse_name: Optional[str] = None
+    price_total: Optional[float] = None
     extraction_status: Optional[str] = None
     extraction_run_id: Optional[int] = None
 
@@ -643,6 +645,10 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
     doc_dict["pickup_name"] = _str(outputs.get("pickup_name"))
     doc_dict["gate_pass"] = _str(outputs.get("gate_pass"))
 
+    # Price — prefer user-set price_total over extracted total_amount
+    price = outputs.get("price_total") or outputs.get("total_amount")
+    doc_dict["price_total"] = float(price) if price is not None else None
+
     # Warehouse selection (set during review)
     wh_id = outputs.get("warehouse_id")
     if wh_id is not None:
@@ -665,6 +671,7 @@ async def list_documents(
     dataset_split: Optional[str] = Query(None, description="Filter by split: train or test"),
     search: Optional[str] = Query(None, description="Search by VIN, make, model, or lot"),
     exclude_test_lab: bool = Query(True, description="Exclude Test Lab documents from list"),
+    include_archived: bool = Query(False, description="Include archived documents"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -685,6 +692,7 @@ async def list_documents(
                     AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
                 WHERE (d.is_test IS NULL OR d.is_test = 0)
                   AND (d.source IS NULL OR d.source != 'test_lab')
+                  AND (d.archived_at IS NULL OR d.archived_at = '')
                   AND (
                     json_extract(er.outputs_json, '$.vehicle_vin') LIKE ?
                     OR json_extract(er.outputs_json, '$.vehicle_make') LIKE ?
@@ -696,6 +704,8 @@ async def list_documents(
                 ORDER BY d.created_at DESC
                 LIMIT ? OFFSET ?
             """
+            if include_archived:
+                sql = sql.replace("AND (d.archived_at IS NULL OR d.archived_at = '')", "")
             rows = conn.execute(sql, [q_upper, q, q, q, q, q, limit, offset]).fetchall()
 
             items = []
@@ -719,6 +729,7 @@ async def list_documents(
                     AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
                 WHERE (d.is_test IS NULL OR d.is_test = 0)
                   AND (d.source IS NULL OR d.source != 'test_lab')
+                  AND (d.archived_at IS NULL OR d.archived_at = '')
                   AND (
                     json_extract(er.outputs_json, '$.vehicle_vin') LIKE ?
                     OR json_extract(er.outputs_json, '$.vehicle_make') LIKE ?
@@ -728,6 +739,8 @@ async def list_documents(
                     OR d.filename LIKE ?
                   )
             """
+            if include_archived:
+                count_sql = count_sql.replace("AND (d.archived_at IS NULL OR d.archived_at = '')", "")
             total = conn.execute(count_sql, [q_upper, q, q, q, q, q]).fetchone()[0]
 
         return DocumentListResponse(items=items, total=total)
@@ -752,6 +765,10 @@ async def list_documents(
         if exclude_test_lab:
             sql += " AND (is_test IS NULL OR is_test = 0)"
             sql += " AND (source IS NULL OR source != 'test_lab')"
+
+        # Exclude archived documents by default
+        if not include_archived:
+            sql += " AND (archived_at IS NULL OR archived_at = '')"
 
         sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -1186,6 +1203,53 @@ async def release_hold(id: int):
         conn.commit()
 
     return {"success": True, "id": id, "hold_reason": None}
+
+
+# =============================================================================
+# ARCHIVE
+# =============================================================================
+
+
+@router.post("/{id}/archive")
+async def archive_document(id: int):
+    """Archive a document (soft-delete for exported docs)."""
+    from datetime import datetime
+
+    from api.database import get_connection
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    now = datetime.utcnow().isoformat() + "Z"
+
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE documents SET archived_at = ? WHERE id = ?",
+            (now, id),
+        )
+        conn.commit()
+
+    return {"success": True, "id": id, "archived_at": now}
+
+
+@router.post("/{id}/unarchive")
+async def unarchive_document(id: int):
+    """Restore an archived document."""
+    from api.database import get_connection
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE documents SET archived_at = NULL WHERE id = ?",
+            (id,),
+        )
+        conn.commit()
+
+    return {"success": True, "id": id, "archived_at": None}
 
 
 @router.post("/reclassify-other")

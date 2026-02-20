@@ -433,6 +433,10 @@ export const api = {
     method: 'POST',
   }),
 
+  // Archive
+  archiveDocument: (docId) => request(`/documents/${docId}/archive`, { method: 'POST' }),
+  unarchiveDocument: (docId) => request(`/documents/${docId}/unarchive`, { method: 'POST' }),
+
   // Auction Directory Lookup
   lookupAuctionLocation: (name) => request(`/auction-directory/lookup?name=${encodeURIComponent(name)}`),
 

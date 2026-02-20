@@ -105,6 +105,11 @@ function Review() {
   // Day 13: Attachments (vehicle release, condition reports)
   const [attachments, setAttachments] = useState([])
 
+  // Hold state
+  const [showHoldModal, setShowHoldModal] = useState(false)
+  const [holdReason, setHoldReason] = useState('awaiting_gate_pass')
+  const [holdNote, setHoldNote] = useState('')
+
   // Load pricing recommendation
   const loadPricing = useCallback(async (urg) => {
     if (!runId) return
@@ -547,6 +552,31 @@ function Review() {
     }
   }
 
+  // Hold document
+  async function handleSetHold() {
+    if (!document?.id) return
+    try {
+      await api.setHold(document.id, holdReason, holdNote || null)
+      setDocument(prev => ({ ...prev, hold_reason: holdReason, hold_note: holdNote, hold_since: new Date().toISOString() }))
+      setShowHoldModal(false)
+      setHoldReason('awaiting_gate_pass')
+      setHoldNote('')
+    } catch (err) {
+      setError(`Hold failed: ${err.message}`)
+    }
+  }
+
+  // Release hold
+  async function handleReleaseHold() {
+    if (!document?.id) return
+    try {
+      await api.releaseHold(document.id)
+      setDocument(prev => ({ ...prev, hold_reason: null, hold_note: null, hold_since: null }))
+    } catch (err) {
+      setError(`Release hold failed: ${err.message}`)
+    }
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -627,6 +657,16 @@ function Review() {
               {isApproved || isExported ? 'Back to Documents' : 'Cancel'}
             </button>
 
+            {/* Hold button — production only, not exported */}
+            {!isTrainingMode && !isExported && !document?.hold_reason && (
+              <button
+                onClick={() => setShowHoldModal(true)}
+                className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-md hover:bg-amber-100"
+              >
+                Hold
+              </button>
+            )}
+
             {isTrainingMode ? (
               <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving...' : 'Save & Train'}
@@ -674,6 +714,27 @@ function Review() {
               <span className="font-medium text-yellow-800">Learning Limited</span>
               <p className="text-yellow-700 text-sm mt-1">{warning}</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hold Banner */}
+      {document?.hold_reason && (
+        <div className="mx-6 mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-medium text-amber-800">Document On Hold</h3>
+              <p className="text-sm text-amber-700 mt-1">
+                Reason: <span className="font-medium">{document.hold_reason.replace(/_/g, ' ')}</span>
+                {document.hold_note && <span className="ml-2">— {document.hold_note}</span>}
+              </p>
+            </div>
+            <button
+              onClick={handleReleaseHold}
+              className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-md hover:bg-amber-100"
+            >
+              Release Hold
+            </button>
           </div>
         </div>
       )}
@@ -834,6 +895,53 @@ function Review() {
           </div>
         </div>
       </div>
+
+      {/* Hold Modal */}
+      {showHoldModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-lg font-bold mb-4">Put Document on Hold</h2>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+              <select
+                value={holdReason}
+                onChange={(e) => setHoldReason(e.target.value)}
+                className="form-select w-full"
+              >
+                <option value="awaiting_gate_pass">Awaiting Gate Pass</option>
+                <option value="awaiting_payment">Awaiting Payment</option>
+                <option value="awaiting_title">Awaiting Title</option>
+                <option value="awaiting_release">Awaiting Vehicle Release</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+              <input
+                type="text"
+                value={holdNote}
+                onChange={(e) => setHoldNote(e.target.value)}
+                placeholder="Additional details..."
+                className="form-input w-full text-sm"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => { setShowHoldModal(false); setHoldReason('awaiting_gate_pass'); setHoldNote('') }}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSetHold}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Set Hold
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Export Preview Modal */}
       {showExportModal && (

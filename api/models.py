@@ -663,6 +663,7 @@ class Document:
     hold_reason: Optional[str] = None
     hold_note: Optional[str] = None
     hold_since: Optional[str] = None
+    archived_at: Optional[str] = None
 
 
 @dataclass
@@ -2373,6 +2374,12 @@ def _run_migrations():
             pass
         try:
             conn.execute("ALTER TABLE documents ADD COLUMN hold_since TIMESTAMP")
+        except Exception:
+            pass
+
+        # Migration: Add archived_at column to documents
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN archived_at TIMESTAMP")
         except Exception:
             pass
 

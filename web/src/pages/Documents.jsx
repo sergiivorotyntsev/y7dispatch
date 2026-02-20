@@ -86,6 +86,7 @@ function Documents() {
       }
       if (filter.auction_type_id) params.auction_type_id = filter.auction_type_id
       if (searchDebounced.trim()) params.search = searchDebounced.trim()
+      if (filter.status === 'archived') params.include_archived = true
 
       const result = await api.listDocuments(params)
       // Filter out test documents
@@ -96,6 +97,7 @@ function Documents() {
         prodDocs = prodDocs.filter(doc => {
           if (filter.status === 'hold') return !!doc.hold_reason
           if (filter.status === 'pending') return !!doc.pending_reason && !doc.hold_reason
+          if (filter.status === 'archived') return !!doc.archived_at
           // For extraction statuses, check the extraction status
           const ext = docExtractions[doc.id]
           const extStatus = doc.extraction_status || ext?.status
@@ -234,6 +236,11 @@ function Documents() {
   const [editingPrice, setEditingPrice] = useState({ docId: null, value: '' })
   const [exportingDocId, setExportingDocId] = useState(null)
 
+  // Hold modal state
+  const [holdModal, setHoldModal] = useState(null) // { docId }
+  const [holdReason, setHoldReason] = useState('awaiting_gate_pass')
+  const [holdNote, setHoldNote] = useState('')
+
   // Export preview modal
   const [showExportPreview, setShowExportPreview] = useState(null) // { extractionId, documentId }
 
@@ -310,6 +317,42 @@ function Documents() {
       fetchDocuments()
     } catch (err) {
       setError(`Delete failed: ${err.message}`)
+    }
+  }
+
+  // Hold document
+  async function handleSetHold(docId) {
+    try {
+      await api.setHold(docId, holdReason, holdNote || null)
+      setHoldModal(null)
+      setHoldReason('awaiting_gate_pass')
+      setHoldNote('')
+      fetchDocuments()
+    } catch (err) {
+      setError(`Hold failed: ${err.message}`)
+    }
+  }
+
+  // Release hold
+  async function handleReleaseHold(docId, e) {
+    e.stopPropagation()
+    try {
+      await api.releaseHold(docId)
+      fetchDocuments()
+    } catch (err) {
+      setError(`Release hold failed: ${err.message}`)
+    }
+  }
+
+  // Archive document (soft delete for exported)
+  async function handleArchive(docId, e) {
+    e.stopPropagation()
+    if (!confirm('Archive this document? It will be hidden from the main list.')) return
+    try {
+      await api.archiveDocument(docId)
+      fetchDocuments()
+    } catch (err) {
+      setError(`Archive failed: ${err.message}`)
     }
   }
 
@@ -566,6 +609,7 @@ function Documents() {
               <option value="pending">Pending</option>
               <option value="hold">On Hold</option>
               <option value="failed">Failed</option>
+              <option value="archived">Archived</option>
             </select>
           </div>
           <div>
@@ -809,7 +853,7 @@ function Documents() {
                 const pickupLocation = pickupCity && pickupState
                   ? `${pickupCity}, ${pickupState}`
                   : pickupName || pickupState || '-'
-                const priceTotal = outputs.price_total || null
+                const priceTotal = doc.price_total || outputs.price_total || outputs.total_amount || null
 
                 // Warehouse/Delivery info — prefer enriched doc.warehouse_name, fall back to lookup
                 const warehouseId = doc.warehouse_id || outputs.warehouse_id
@@ -1005,12 +1049,38 @@ function Documents() {
                             {extractingDocId === doc.id ? 'Processing...' : 'Extract'}
                           </button>
                         )}
-                        <button
-                          onClick={(e) => handleDelete(doc.id, e)}
-                          className="text-sm text-red-600 hover:text-red-800"
-                        >
-                          Del
-                        </button>
+                        {/* Hold / Release Hold */}
+                        {isOnHold ? (
+                          <button
+                            onClick={(e) => handleReleaseHold(doc.id, e)}
+                            className="text-sm text-amber-600 hover:text-amber-800"
+                          >
+                            Unhold
+                          </button>
+                        ) : !isExported ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setHoldModal({ docId: doc.id }) }}
+                            className="text-sm text-gray-500 hover:text-gray-700"
+                          >
+                            Hold
+                          </button>
+                        ) : null}
+                        {/* Archive (exported) or Delete (not exported) */}
+                        {isExported ? (
+                          <button
+                            onClick={(e) => handleArchive(doc.id, e)}
+                            className="text-sm text-gray-500 hover:text-gray-700"
+                          >
+                            Archive
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => handleDelete(doc.id, e)}
+                            className="text-sm text-red-600 hover:text-red-800"
+                          >
+                            Del
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1063,6 +1133,53 @@ function Documents() {
             }
           }}
         />
+      )}
+
+      {/* Hold Modal */}
+      {holdModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-lg font-bold mb-4">Put Document on Hold</h2>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+              <select
+                value={holdReason}
+                onChange={(e) => setHoldReason(e.target.value)}
+                className="form-select w-full"
+              >
+                <option value="awaiting_gate_pass">Awaiting Gate Pass</option>
+                <option value="awaiting_payment">Awaiting Payment</option>
+                <option value="awaiting_title">Awaiting Title</option>
+                <option value="awaiting_release">Awaiting Vehicle Release</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+              <input
+                type="text"
+                value={holdNote}
+                onChange={(e) => setHoldNote(e.target.value)}
+                placeholder="Additional details..."
+                className="form-input w-full text-sm"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => { setHoldModal(null); setHoldReason('awaiting_gate_pass'); setHoldNote('') }}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSetHold(holdModal.docId)}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Set Hold
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Batch Post Modal */}
