@@ -1077,3 +1077,158 @@ class TestVINFromSubject:
         assert self._extract(
             "Re: WDDWJ4JB1HF411033 Request a car pickup from the auction for DAYT"
         ) == "WDDWJ4JB1HF411033"
+
+
+# =============================================================================
+# _save_attachment Regression Tests (CRITICAL fix — wrong PDF bytes)
+# =============================================================================
+
+
+class TestSaveAttachmentCorrectFile:
+    """Regression tests for _save_attachment saving the correct PDF.
+
+    Bug: The OR fallback `(content_type == "application/pdf" and part_filename)`
+    matched ANY PDF part, not just the target filename. When a different PDF
+    appeared first in MIME walk order, wrong bytes were saved.
+
+    Fix: Strict filename match only — `part_filename == filename`.
+    """
+
+    def _make_email_msg(self, attachments: list[tuple[str, bytes]]):
+        """Build EmailMessage with real MIME parts."""
+        import email.mime.base
+        import email.mime.multipart
+        import email.mime.text
+
+        from api.workers.email_worker import EmailMessage
+
+        mime = email.mime.multipart.MIMEMultipart()
+        mime["From"] = "test@example.com"
+        mime["Subject"] = "Test save attachment"
+        mime["Message-ID"] = "<save-att-test@example.com>"
+        mime["Date"] = "Wed, 19 Feb 2026 12:00:00 -0500"
+        mime.attach(email.mime.text.MIMEText("Body"))
+
+        filenames = []
+        for fn, payload in attachments:
+            part = email.mime.base.MIMEBase("application", "pdf")
+            part.set_payload(payload)
+            part.add_header("Content-Disposition", "attachment", filename=fn)
+            mime.attach(part)
+            filenames.append(fn)
+
+        raw_bytes = mime.as_bytes()
+        parsed = email.message_from_bytes(raw_bytes)
+
+        return EmailMessage(
+            message_id="<save-att-test@example.com>",
+            uid="1",
+            subject="Test save attachment",
+            sender="test@example.com",
+            date="2026-02-19",
+            has_pdf=True,
+            pdf_filenames=filenames,
+            raw_message=parsed,
+        )
+
+    def test_saves_exact_filename_match_not_first_pdf(self, tmp_path):
+        """When target is second PDF in MIME, it must save the CORRECT bytes."""
+        from api.workers.email_worker import EmailWorker
+
+        worker = EmailWorker()
+        worker.upload_path = tmp_path
+
+        # a.pdf is FIRST in MIME, ShowReport.pdf is SECOND
+        a_pdf_bytes = b"%PDF-1.4 THIS IS A.PDF CONTENT"
+        showreport_bytes = b"%PDF-1.4 THIS IS SHOWREPORT CONTENT"
+
+        msg = self._make_email_msg([
+            ("a.pdf", a_pdf_bytes),
+            ("ShowReport.pdf", showreport_bytes),
+        ])
+
+        saved_path = worker._save_attachment(msg, "ShowReport.pdf")
+        assert saved_path is not None
+        saved_content = saved_path.read_bytes()
+
+        # Must be ShowReport bytes, NOT a.pdf bytes
+        assert saved_content == showreport_bytes
+        assert saved_content != a_pdf_bytes
+
+    def test_two_pdfs_different_order_saves_correct_one(self, tmp_path):
+        """Target is first PDF in MIME — should still work correctly."""
+        from api.workers.email_worker import EmailWorker
+
+        worker = EmailWorker()
+        worker.upload_path = tmp_path
+
+        invoice_bytes = b"%PDF-1.4 INVOICE BYTES"
+        listing_bytes = b"%PDF-1.4 LISTING BYTES"
+
+        msg = self._make_email_msg([
+            ("invoice.pdf", invoice_bytes),
+            ("listing.pdf", listing_bytes),
+        ])
+
+        saved_path = worker._save_attachment(msg, "invoice.pdf")
+        assert saved_path is not None
+        assert saved_path.read_bytes() == invoice_bytes
+
+    def test_save_second_attachment_gets_correct_bytes(self, tmp_path):
+        """Saving the second attachment by name gets the right content."""
+        from api.workers.email_worker import EmailWorker
+
+        worker = EmailWorker()
+        worker.upload_path = tmp_path
+
+        first_bytes = b"%PDF-1.4 FIRST PDF"
+        second_bytes = b"%PDF-1.4 SECOND PDF"
+
+        msg = self._make_email_msg([
+            ("first.pdf", first_bytes),
+            ("second.pdf", second_bytes),
+        ])
+
+        saved = worker._save_attachment(msg, "second.pdf")
+        assert saved is not None
+        assert saved.read_bytes() == second_bytes
+
+    def test_no_or_fallback_in_save_attachment(self):
+        """Source code must NOT contain the OR fallback that caused the bug."""
+        import inspect
+        from api.workers.email_worker import EmailWorker
+
+        source = inspect.getsource(EmailWorker._save_attachment)
+        # The buggy pattern: matches any PDF, not just the target
+        assert 'content_type == "application/pdf" and part_filename' not in source
+
+    def test_nonexistent_filename_returns_none(self, tmp_path):
+        """Requesting a filename not in the email returns None."""
+        from api.workers.email_worker import EmailWorker
+
+        worker = EmailWorker()
+        worker.upload_path = tmp_path
+
+        msg = self._make_email_msg([
+            ("invoice.pdf", b"%PDF-1.4 INVOICE"),
+        ])
+
+        result = worker._save_attachment(msg, "nonexistent.pdf")
+        assert result is None
+
+    def test_three_pdfs_saves_middle_one(self, tmp_path):
+        """With 3 PDFs, saving the middle one by name gets correct bytes."""
+        from api.workers.email_worker import EmailWorker
+
+        worker = EmailWorker()
+        worker.upload_path = tmp_path
+
+        msg = self._make_email_msg([
+            ("first.pdf", b"%PDF FIRST"),
+            ("target.pdf", b"%PDF TARGET"),
+            ("third.pdf", b"%PDF THIRD"),
+        ])
+
+        saved = worker._save_attachment(msg, "target.pdf")
+        assert saved is not None
+        assert saved.read_bytes() == b"%PDF TARGET"

@@ -991,7 +991,7 @@ class EmailWorker:
             if part_filename:
                 part_filename = self._decode_header_value(part_filename)
 
-            if part_filename == filename or (content_type == "application/pdf" and part_filename):
+            if part_filename == filename:
                 # Generate unique filename
                 timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
                 safe_filename = re.sub(r"[^\w.-]", "_", filename)
