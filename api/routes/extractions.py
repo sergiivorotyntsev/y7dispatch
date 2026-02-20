@@ -1216,6 +1216,60 @@ def run_extraction(
                 }
 
         # =================================================================
+        # MANHEIM: Release date → available_date propagation
+        # If Manheim doc has a release date, use it as available_date.
+        # If no release document, flag for manual review.
+        # =================================================================
+        if auction_source == "MANHEIM" or outputs.get("auction_type", "").upper() == "MANHEIM":
+            release_date = outputs.get("manheim_release_date")
+            if release_date and release_date not in ("AVAILABLE_NOW", "NO_RELEASE_DOCUMENT"):
+                # ISO date like "2026-02-03" → set as available_date
+                if not outputs.get("available_date"):
+                    outputs["available_date"] = release_date
+                    field_sources["available_date"] = {
+                        "value": release_date,
+                        "source": "EXTRACTED",
+                        "confidence": 0.95,
+                        "method": "manheim_release_date_propagation",
+                    }
+            elif release_date == "AVAILABLE_NOW":
+                # Vehicle available immediately — use today
+                if not outputs.get("available_date"):
+                    import time as _time
+                    outputs["available_date"] = _time.strftime("%Y-%m-%d")
+                    field_sources["available_date"] = {
+                        "value": outputs["available_date"],
+                        "source": "EXTRACTED",
+                        "confidence": 0.9,
+                        "method": "manheim_available_now",
+                    }
+            elif release_date == "NO_RELEASE_DOCUMENT":
+                # No release document — add warning for manual review
+                if not outputs.get("available_date"):
+                    outputs["manheim_release_warning"] = "No release document found — set available date manually"
+
+            # Manheim offsite: override pickup with offsite address if present
+            if outputs.get("manheim_offsite") is True:
+                offsite_addr = outputs.get("offsite_pickup_address")
+                offsite_city = outputs.get("offsite_pickup_city")
+                offsite_state = outputs.get("offsite_pickup_state")
+                offsite_zip = outputs.get("offsite_pickup_zip")
+                if offsite_addr and offsite_city:
+                    outputs["pickup_address"] = offsite_addr
+                    outputs["pickup_city"] = offsite_city
+                    if offsite_state:
+                        outputs["pickup_state"] = offsite_state
+                    if offsite_zip:
+                        outputs["pickup_zip"] = offsite_zip
+                    outputs["pickup_location_type"] = "BUSINESS"
+                    field_sources["pickup_address"] = {
+                        "value": offsite_addr,
+                        "source": "EXTRACTED",
+                        "confidence": 0.9,
+                        "method": "manheim_offsite_override",
+                    }
+
+        # =================================================================
         # AUTO-GENERATE LOAD ID
         # Generate unique load_id from make+model if extraction succeeded
         # =================================================================

@@ -49,8 +49,8 @@ def _classify_from_filename(filename: str) -> Optional[str]:
     if "iaa" in fn or "showreport" in fn or "buyer_receipt" in fn:
         return "IAA"
 
-    # Manheim patterns
-    if "manheim" in fn:
+    # Manheim patterns — includes PSI reports and "bill_of_sale" from Manheim
+    if "manheim" in fn or "psi_report" in fn or "pre_sale_inspection" in fn:
         return "MANHEIM"
 
     # Auctions in Motion → classified under IAA (similar format)
