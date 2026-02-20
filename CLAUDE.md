@@ -13,6 +13,8 @@ You operate as a 4-agent team. Each agent has STRICT boundaries.
 - Reviews ALL code for architecture compliance
 - Maintains Architecture Decision Records (ADR) in docs/
 - Writes implementation plan: "Change X in file Y because Z"
+- When diagnosis says "no code bug, data quality issue" → REQUIRE file-level proof before accepting
+- Ask: "Does the file we saved match what the sender attached?" EVERY TIME
 
 **NEVER:** writes implementation code
 
@@ -22,6 +24,8 @@ You operate as a 4-agent team. Each agent has STRICT boundaries.
 - Follows Architect's contracts and plans STRICTLY
 - Creates/modifies endpoints, DB tables, services, UI components
 - Runs: `npm run dev` to verify frontend compiles
+- First debug step ALWAYS: verify raw input matches expected (file hash, size, content preview)
+- NEVER skip to logic debugging without confirming I/O layer is correct
 
 **NEVER:** writes tests (conflict of interest), deviates from Architect's contracts
 
@@ -32,6 +36,8 @@ You operate as a 4-agent team. Each agent has STRICT boundaries.
 - Audits for PII leaks, validates webhook signatures
 - Tests idempotency, edge cases, error paths
 - Verifies git diff — no unintended changes
+- After fixes: verify saved files are correct (not just that tests pass)
+- Cross-check user screenshots against system data — if they don't match, there's an I/O bug
 
 **NEVER:** writes feature/implementation code
 
@@ -47,6 +53,73 @@ You operate as a 4-agent team. Each agent has STRICT boundaries.
 - AI proposes — PO approves
 - Final gate on all decisions
 - No AI PM — all prioritization from PO
+
+## DEBUGGING PROTOCOL — Lessons Learned
+
+### Rule: Debug from the BOTTOM UP, not from the MIDDLE
+
+When output is wrong, trace the FULL pipeline from raw input to final output:
+```
+RAW INPUT (file on disk / email attachment / API response)
+    ↓ verify bytes match source
+I/O LAYER (download, save, read file)
+    ↓ verify saved file matches original
+PARSING LAYER (pdfplumber, text extraction)
+    ↓ verify extracted text is correct
+CLASSIFICATION LAYER (auction type, document type)
+    ↓ verify classification matches content
+EXTRACTION LAYER (Haiku, zone, block)
+    ↓ verify fields match document
+STORAGE LAYER (DB save, outputs_json)
+    ↓ verify DB matches extraction
+DISPLAY LAYER (API response, frontend render)
+    ↓ verify UI matches DB
+```
+**NEVER skip layers. If output is wrong, start from RAW INPUT, not from extraction logic.**
+
+### Agent Escalation Rules
+
+**ARCHITECT must:**
+- Before designing a fix, require BUILDER to produce a data trace from raw input to wrong output
+- If trace shows correct logic but wrong data → escalate to I/O layer check
+- If trace shows correct I/O but wrong logic → then design logic fix
+- NEVER accept "code looks correct" without data proof at EACH layer
+
+**BUILDER must:**
+- When debugging, ALWAYS start with: "Is the file on disk what we expect?"
+- Compare file hashes (SHA256) between source and saved copy
+- Compare file sizes between what sender shows and what disk has
+- If files don't match → STOP logic debugging, focus on I/O
+- Report to ARCHITECT with evidence at each layer
+
+**REVIEWER must:**
+- After any fix, verify the FULL pipeline end-to-end, not just the changed code
+- Test with REAL data, not just unit tests
+- Check: are saved files correct? (hash comparison)
+- Check: does extraction match the CORRECT file content?
+- If BUILDER says "no code bug found" but user reports wrong output → ESCALATE:
+  - Demand file-level verification (hash, size, page count)
+  - Demand comparison between source (email/upload) and saved file
+  - Do NOT accept "data quality issue" without proof that saved file matches source
+
+**OPS must:**
+- Ensure file integrity checks exist in the pipeline
+- Log file sizes and hashes at save time for audit
+- If storage issues suspected → provide disk-level diagnostics
+
+### Red Flags That Indicate I/O Bug (not logic bug)
+- File size on disk doesn't match what sender shows
+- Two files have identical hashes when they should differ
+- Extraction produces 0 fields from a document that visually has data
+- "Scanned PDF" diagnosis for a file that user shows has text
+- Classification says "correct" but wrong data extracted
+
+### Mandatory Diagnostic Checklist (before ANY "no bug found" conclusion)
+- [ ] File on disk matches source (hash/size comparison)
+- [ ] Saved filename matches actual content (open and verify)
+- [ ] Each pipeline layer produces expected output
+- [ ] Real data tested, not just synthetic
+- [ ] User-reported evidence reconciled with system data
 
 ## Workflow Per Task
 ```
