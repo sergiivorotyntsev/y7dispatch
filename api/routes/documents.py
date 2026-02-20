@@ -27,6 +27,65 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# =============================================================================
+# FILENAME + EMAIL AUCTION CLASSIFICATION
+# =============================================================================
+
+def _classify_from_filename(filename: str) -> Optional[str]:
+    """
+    Detect auction type from filename patterns.
+    Runs BEFORE text classification — works even for scanned PDFs.
+    Returns auction code (COPART, IAA, MANHEIM) or None.
+    """
+    if not filename:
+        return None
+    fn = filename.lower()
+
+    # Copart patterns
+    if "copart" in fn:
+        return "COPART"
+
+    # IAA patterns — "ShowReport" is IAA's standard export filename
+    if "iaa" in fn or "showreport" in fn or "buyer_receipt" in fn:
+        return "IAA"
+
+    # Manheim patterns
+    if "manheim" in fn:
+        return "MANHEIM"
+
+    # Auctions in Motion → classified under IAA (similar format)
+    if "sparkbuyer" in fn or "auctions_in_motion" in fn:
+        return "IAA"
+
+    return None
+
+
+def _classify_from_email_context(email_metadata_json: Optional[str]) -> Optional[str]:
+    """
+    Detect auction type from email metadata (subject, sender).
+    Returns auction code or None.
+    """
+    if not email_metadata_json:
+        return None
+    try:
+        meta = json.loads(email_metadata_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    subject = (meta.get("subject") or "").lower()
+    sender = (meta.get("sender") or "").lower()
+    context = f"{subject} {sender}"
+
+    if "copart" in context:
+        return "COPART"
+    if "iaa" in context or "insurance auto auction" in context:
+        return "IAA"
+    if "manheim" in context:
+        return "MANHEIM"
+
+    return None
+
+
 def find_vin_duplicate(vin: str, exclude_run_id: int = None) -> Optional[dict]:
     """
     Check if VIN already exists in another extraction run.
@@ -344,23 +403,41 @@ async def upload_document(
     # Auto-classify document if auction_type not provided
     detected_source = None
     classification_score = None
-    if auto_classify and not auction_type_id and raw_text and text_length >= 100:
-        try:
-            from extractors import ExtractorManager
 
-            manager = ExtractorManager()
-            classification = manager.classify(str(file_path))
-            if classification:
-                detected_source = classification.source.value
-                classification_score = round(classification.score * 100, 1)
-                # Map detected source to auction type
-                detected_type = AuctionTypeRepository.get_by_code(detected_source.upper())
-                if detected_type:
-                    auction_type_id = detected_type.id
-                    auction_type = detected_type
-        except Exception:
-            # Classification failed, continue without it
-            pass
+    if auto_classify and not auction_type_id:
+        # Step 1: Try filename-based classification (works for scanned PDFs too)
+        fn_code = _classify_from_filename(file.filename)
+        if fn_code:
+            detected_type = AuctionTypeRepository.get_by_code(fn_code)
+            if detected_type:
+                auction_type_id = detected_type.id
+                auction_type = detected_type
+                detected_source = fn_code
+
+        # Step 2: Try email context if still unclassified
+        if not auction_type_id and source == "email":
+            # Read email_metadata_json from document if available
+            email_meta_json = None
+            # email metadata is passed during email_worker upload, check if exists
+            # For now, we can check existing doc's metadata after creation
+            # (email context classification is used more during re-classification)
+
+        # Step 3: Try text-based classification (existing logic, only if text >= 100)
+        if not auction_type_id and raw_text and text_length >= 100:
+            try:
+                from extractors import ExtractorManager
+
+                manager = ExtractorManager()
+                classification = manager.classify(str(file_path))
+                if classification:
+                    detected_source = classification.source.value
+                    classification_score = round(classification.score * 100, 1)
+                    detected_type = AuctionTypeRepository.get_by_code(detected_source.upper())
+                    if detected_type:
+                        auction_type_id = detected_type.id
+                        auction_type = detected_type
+            except Exception:
+                pass
 
     # If still no auction type, use "OTHER" as fallback
     if not auction_type_id:
@@ -1002,6 +1079,54 @@ async def clear_pending(id: int):
         conn.commit()
 
     return {"success": True, "id": id, "pending_reason": None}
+
+
+@router.post("/reclassify-other")
+async def reclassify_other_documents():
+    """
+    Re-classify documents currently typed as OTHER using filename and email context.
+    Safe to run multiple times — only updates documents that match a known pattern.
+    """
+    from api.database import get_connection
+
+    updated = 0
+    skipped = 0
+
+    other_type = AuctionTypeRepository.get_by_code("OTHER")
+    if not other_type:
+        return {"updated": 0, "skipped": 0, "message": "No OTHER type found"}
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, filename, email_metadata_json FROM documents WHERE auction_type_id = ?",
+            (other_type.id,),
+        ).fetchall()
+
+    for row in rows:
+        doc_id = row["id"] if isinstance(row, dict) else row[0]
+        filename = row["filename"] if isinstance(row, dict) else row[1]
+        email_meta = row["email_metadata_json"] if isinstance(row, dict) else row[2]
+
+        # Try filename first, then email context
+        new_code = _classify_from_filename(filename)
+        if not new_code:
+            new_code = _classify_from_email_context(email_meta)
+
+        if new_code:
+            new_type = AuctionTypeRepository.get_by_code(new_code)
+            if new_type:
+                with get_connection() as conn:
+                    conn.execute(
+                        "UPDATE documents SET auction_type_id = ? WHERE id = ?",
+                        (new_type.id, doc_id),
+                    )
+                    conn.commit()
+                updated += 1
+                continue
+
+        skipped += 1
+
+    return {"updated": updated, "skipped": skipped, "total_checked": len(rows)}
 
 
 @router.delete("/{id}", status_code=204)
