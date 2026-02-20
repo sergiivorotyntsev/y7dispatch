@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import ExportPreviewModal from '../components/ExportPreviewModal'
@@ -15,6 +15,21 @@ import ExportPreviewModal from '../components/ExportPreviewModal'
  * - Warehouse dropdown per document
  * - Status progression tracking
  */
+// Group documents by date (most recent first)
+function groupByDate(docs) {
+  const groups = {}
+  docs.forEach(doc => {
+    const date = doc.created_at
+      ? new Date(doc.created_at).toLocaleDateString('en-US', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        })
+      : 'Unknown Date'
+    if (!groups[date]) groups[date] = []
+    groups[date].push(doc)
+  })
+  return Object.entries(groups)
+}
+
 function Documents() {
   const navigate = useNavigate()
   const [documents, setDocuments] = useState([])
@@ -240,6 +255,26 @@ function Documents() {
   const [holdModal, setHoldModal] = useState(null) // { docId }
   const [holdReason, setHoldReason] = useState('awaiting_gate_pass')
   const [holdNote, setHoldNote] = useState('')
+
+  // Date grouping
+  const [collapsedDates, setCollapsedDates] = useState(new Set())
+
+  function toggleDate(date) {
+    setCollapsedDates(prev => {
+      const next = new Set(prev)
+      next.has(date) ? next.delete(date) : next.add(date)
+      return next
+    })
+  }
+
+  function collapseAll() {
+    const allDates = groupByDate(documents).map(([date]) => date)
+    setCollapsedDates(new Set(allDates))
+  }
+
+  function expandAll() {
+    setCollapsedDates(new Set())
+  }
 
   // Export preview modal
   const [showExportPreview, setShowExportPreview] = useState(null) // { extractionId, documentId }
@@ -644,6 +679,12 @@ function Documents() {
           <button onClick={fetchDocuments} className="btn btn-secondary">
             Refresh
           </button>
+          <button onClick={expandAll} className="btn btn-secondary text-xs" title="Expand all date groups">
+            Expand All
+          </button>
+          <button onClick={collapseAll} className="btn btn-secondary text-xs" title="Collapse all date groups">
+            Collapse All
+          </button>
         </div>
       </div>
 
@@ -824,7 +865,26 @@ function Documents() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {documents.map((doc) => {
+              {groupByDate(documents).map(([date, dateDocs]) => {
+                const isCollapsed = collapsedDates.has(date)
+                return (
+                  <Fragment key={date}>
+                    {/* Date group header */}
+                    <tr
+                      className="bg-gray-100 cursor-pointer hover:bg-gray-200"
+                      onClick={() => toggleDate(date)}
+                    >
+                      <td colSpan={12} className="px-4 py-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-700">
+                            {date} <span className="font-normal text-gray-500">({dateDocs.length} {dateDocs.length === 1 ? 'load' : 'loads'})</span>
+                          </span>
+                          <span className="text-gray-400 text-xs">{isCollapsed ? '\u25B6' : '\u25BC'}</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Document rows */}
+                    {!isCollapsed && dateDocs.map((doc) => {
                 const extraction = docExtractions[doc.id]
                 const isPending = !!doc.pending_reason
                 const isOnHold = !!doc.hold_reason
@@ -1084,6 +1144,9 @@ function Documents() {
                       </div>
                     </td>
                   </tr>
+                )
+              })}
+                  </Fragment>
                 )
               })}
             </tbody>

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api'
-import PdfZoneViewer from '../components/PdfZoneViewer'
 import ExportPreviewModal from '../components/ExportPreviewModal'
 
 // Section components (CD-aligned layout)
@@ -60,8 +59,6 @@ function Review() {
   // PDF viewer state
   const [showPdf, setShowPdf] = useState(true)
   const [pdfUrl, setPdfUrl] = useState(null)
-  const [zones, setZones] = useState([])
-  const [highlightedField, setHighlightedField] = useState(null)
 
   // Field values and status
   const [fields, setFields] = useState({})
@@ -279,35 +276,6 @@ function Review() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
-
-  // Load zones for the auction type
-  useEffect(() => {
-    if (!run?.auction_type_id) return
-
-    async function loadZones() {
-      try {
-        const auctionTypes = await api.listAuctionTypes()
-        const auctionType = auctionTypes.items?.find(at => at.id === run.auction_type_id)
-        if (!auctionType) { setZones([]); return }
-
-        const templates = await api.listZoneTemplates({ auction_type: auctionType.code })
-        if (templates.items?.length > 0) {
-          const template = templates.items[0]
-          const displayZones = (template.zones || []).map(zone => ({
-            ...zone,
-            fields: (zone.fields || []).map(f => typeof f === 'string' ? f : f.key),
-          }))
-          setZones(displayZones)
-        } else {
-          setZones([])
-        }
-      } catch (err) {
-        console.error('Failed to load zones:', err)
-        setZones([])
-      }
-    }
-    loadZones()
-  }, [run?.auction_type_id])
 
   // Auto-generate Load ID when make/model are available
   useEffect(() => {
@@ -752,28 +720,21 @@ function Review() {
       {/* Main Content */}
       <div className="p-6">
         <div className="flex gap-6">
-          {/* PDF Viewer with Zone Overlay (Left Panel) */}
+          {/* PDF Viewer (Left Panel) */}
           {showPdf && pdfUrl && (
             <div className="w-1/2 flex-shrink-0 sticky top-6">
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                  <span className="font-medium text-sm text-gray-700">
-                    Original Document
-                    {zones.length > 0 && (
-                      <span className="ml-2 text-xs text-gray-500">({zones.length} zones)</span>
-                    )}
-                  </span>
+                  <span className="font-medium text-sm text-gray-700">Original Document</span>
                   <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-600 hover:text-primary-800">
                     Open in new tab
                   </a>
                 </div>
-                <PdfZoneViewer
-                  pdfUrl={pdfUrl}
-                  zones={zones}
-                  selectedZoneIdx={null}
-                  editMode={false}
-                  height={600}
-                  initialScale={1.0}
+                <iframe
+                  src={pdfUrl}
+                  title="Document PDF"
+                  className="w-full border-0"
+                  style={{ height: 600 }}
                 />
               </div>
             </div>
@@ -791,16 +752,12 @@ function Review() {
               updateField={updateField}
               trailerType={trailerType}
               setTrailerType={setTrailerType}
-              highlightedField={highlightedField}
-              setHighlightedField={setHighlightedField}
             />
 
             {/* Section 3: Pick-Up Location */}
             <PickupSection
               fields={fields}
               updateField={updateField}
-              highlightedField={highlightedField}
-              setHighlightedField={setHighlightedField}
             />
 
             {/* Section 4: Delivery Location */}
