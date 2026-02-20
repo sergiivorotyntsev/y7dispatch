@@ -82,6 +82,7 @@ function Review() {
   const [exporting, setExporting] = useState(false)
   const [exportResult, setExportResult] = useState(null)
   const [exportError, setExportError] = useState(null)
+  const [isApproved, setIsApproved] = useState(false)
 
   // Production mode fields
   const [loadSpecificTerms, setLoadSpecificTerms] = useState('')
@@ -237,6 +238,11 @@ function Review() {
       // Initialize load_id from backend if already generated
       if (runData.run?.outputs?.load_id) {
         setLoadId(runData.run.outputs.load_id)
+      }
+
+      // Detect if already approved/exported
+      if (['approved', 'exported'].includes(runData.run?.status)) {
+        setIsApproved(true)
       }
 
       // Initialize dates based on extraction data
@@ -518,8 +524,8 @@ function Review() {
         vehicle_is_inoperable: fields.vehicle_is_inoperable?.corrected === 'true' || fields.vehicle_is_inoperable?.corrected === true || false,
       })
 
-      setSuccess('Document approved for export to Central Dispatch!')
-      setTimeout(() => { navigate('/') }, 2000)
+      setIsApproved(true)
+      setSuccess('Document approved for export to Central Dispatch! Use "Export to CD" below to post the listing.')
 
     } catch (err) {
       setError(`Failed to approve: ${err.message}`)
@@ -609,6 +615,10 @@ function Review() {
               <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving...' : 'Save & Train'}
               </button>
+            ) : isApproved ? (
+              <span className="px-4 py-2 rounded-md text-sm font-medium bg-green-100 text-green-800 border border-green-300">
+                Approved
+              </span>
             ) : (
               <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
                 {saving ? 'Approving...' : 'Approve for Export'}
@@ -635,9 +645,11 @@ function Review() {
             </span>
           </div>
           <p className="text-green-700 mt-1 ml-7">{success}</p>
-          <p className="text-green-600 text-sm mt-2 ml-7">
-            Redirecting to {isTrainingMode ? 'Test Lab' : 'Documents'}...
-          </p>
+          {isTrainingMode && (
+            <p className="text-green-600 text-sm mt-2 ml-7">
+              Redirecting to Test Lab...
+            </p>
+          )}
         </div>
       )}
       {warning && (
@@ -769,6 +781,9 @@ function Review() {
             {!isTrainingMode && (
               <AdditionalInfoSection
                 loadId={loadId}
+                setLoadId={setLoadId}
+                isApproved={isApproved}
+                exportResult={exportResult}
                 fields={fields}
                 updateField={updateField}
                 loadSpecificTerms={loadSpecificTerms}
@@ -797,6 +812,7 @@ function Review() {
               exportError={exportError}
               exporting={exporting}
               selectedWarehouse={selectedWarehouse}
+              isApproved={isApproved}
               correctCount={correctCount}
               totalCount={fieldList.length}
               correctedCount={correctedCount}

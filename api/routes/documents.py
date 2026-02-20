@@ -641,6 +641,19 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
     doc_dict["pickup_name"] = _str(outputs.get("pickup_name"))
     doc_dict["gate_pass"] = _str(outputs.get("gate_pass"))
 
+    # Warehouse selection (set during review)
+    wh_id = outputs.get("warehouse_id")
+    if wh_id is not None:
+        doc_dict["warehouse_id"] = int(wh_id)
+        # Resolve warehouse name for display
+        wh_row = conn.execute(
+            "SELECT name FROM warehouses WHERE id = ?", (int(wh_id),)
+        ).fetchone()
+        doc_dict["warehouse_name"] = wh_row["name"] if wh_row else None
+    else:
+        doc_dict["warehouse_id"] = None
+        doc_dict["warehouse_name"] = None
+
     return doc_dict
 
 

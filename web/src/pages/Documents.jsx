@@ -811,8 +811,9 @@ function Documents() {
                   : pickupName || pickupState || '-'
                 const priceTotal = outputs.price_total || null
 
-                // Warehouse/Delivery info
-                const warehouseName = warehouses.find(w => w.id === (extraction?.warehouse_id || outputs.warehouse_id))?.name || ''
+                // Warehouse/Delivery info — prefer enriched doc.warehouse_name, fall back to lookup
+                const warehouseId = doc.warehouse_id || outputs.warehouse_id
+                const warehouseName = doc.warehouse_name || (warehouseId ? (warehouses.find(w => w.id === parseInt(warehouseId))?.name || '') : '')
 
                 const sourceDisplay = getSourceDisplay(doc)
                 // Use enriched extraction_status or fall back to extraction object
@@ -871,12 +872,12 @@ function Documents() {
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <select
-                        value={extraction?.warehouse_id || outputs.warehouse_id || ''}
+                        value={warehouseId || ''}
                         onChange={(e) => handleWarehouseChange(doc.id, e.target.value, e)}
                         disabled={isExported || !extraction}
                         className={`form-select form-select-sm text-xs ${
                           isExported ? 'bg-gray-100 cursor-not-allowed' : ''
-                        } ${!extraction?.warehouse_id && !outputs.warehouse_id ? 'border-orange-300' : ''}`}
+                        } ${!warehouseId ? 'border-orange-300' : ''}`}
                       >
                         <option value="">{warehouseName || 'Select...'}</option>
                         {warehouses.map((wh) => (

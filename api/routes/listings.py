@@ -4,6 +4,7 @@ Listings API Routes
 Load ID generation and listing management for Central Dispatch.
 """
 
+import re
 import sqlite3
 from datetime import datetime
 
@@ -41,8 +42,73 @@ def init_load_ids_schema():
         conn.commit()
 
 
+def _fix_load_ids_with_spaces():
+    """One-time migration: fix Load IDs with non-alphanumeric chars (spaces, dashes from model names like 'C 300' or 'E-Class')."""
+    import json
+
+    with get_connection() as conn:
+        # Find load_ids with any non-alphanumeric characters
+        all_rows = conn.execute(
+            "SELECT id, load_id, make, model FROM load_ids"
+        ).fetchall()
+        bad_rows = [r for r in all_rows if re.search(r'[^A-Z0-9]', r["load_id"])]
+
+        if not bad_rows:
+            return
+
+        for row in bad_rows:
+            old_id = row["load_id"]
+            new_id = re.sub(r'[^A-Z0-9]', '', old_id)
+            # Also clean the base_id stored for this row
+            old_base = conn.execute(
+                "SELECT base_id FROM load_ids WHERE id = ?", (row["id"],)
+            ).fetchone()
+            new_base = re.sub(r'[^A-Z0-9]', '', old_base["base_id"]) if old_base else new_id
+
+            try:
+                conn.execute(
+                    "UPDATE load_ids SET load_id = ?, base_id = ? WHERE id = ?",
+                    (new_id, new_base, row["id"]),
+                )
+            except sqlite3.IntegrityError:
+                # Cleaned ID already exists — append next available sequence
+                for seq in range(2, 20):
+                    try:
+                        new_id_seq = f"{new_id}{seq}"
+                        conn.execute(
+                            "UPDATE load_ids SET load_id = ?, base_id = ?, sequence = ? WHERE id = ?",
+                            (new_id_seq, new_base, seq, row["id"]),
+                        )
+                        new_id = new_id_seq
+                        break
+                    except sqlite3.IntegrityError:
+                        continue
+                else:
+                    continue
+
+            # Also fix in extraction_runs outputs_json
+            runs = conn.execute(
+                "SELECT id, outputs_json FROM extraction_runs WHERE outputs_json LIKE ?",
+                (f'%{old_id}%',),
+            ).fetchall()
+            for run in runs:
+                try:
+                    outputs = json.loads(run["outputs_json"])
+                    if outputs.get("load_id") == old_id:
+                        outputs["load_id"] = new_id
+                        conn.execute(
+                            "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+                            (json.dumps(outputs), run["id"]),
+                        )
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+        conn.commit()
+
+
 # Initialize on import
 init_load_ids_schema()
+_fix_load_ids_with_spaces()
 
 
 # =============================================================================
@@ -66,8 +132,8 @@ def create_load_id(make: str, model: str) -> tuple[str, int] | None:
     month = str(now.month)
     day = now.strftime("%d")
 
-    make_part = make.strip().upper()[:3]
-    model_part = model.strip().upper()[:2]
+    make_part = re.sub(r'[^A-Z0-9]', '', make.strip().upper())[:3]
+    model_part = re.sub(r'[^A-Z0-9]', '', model.strip().upper())[:2]
     base_id = f"{month}{day}{make_part}{model_part}"
     today_str = now.strftime("%Y-%m-%d")
 

@@ -5,7 +5,8 @@ import { useState } from 'react'
  * Load ID (auto, readonly), gate pass, attachments, additional vehicle info, load-specific terms, transport instructions, CD App checkbox.
  */
 function AdditionalInfoSection({
-  loadId,
+  loadId, setLoadId,
+  isApproved, exportResult,
   fields,
   updateField,
   loadSpecificTerms, setLoadSpecificTerms,
@@ -38,14 +39,17 @@ function AdditionalInfoSection({
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-600 mb-1">
           Your Load ID
-          <span className="ml-1 text-gray-400 font-normal">(auto-generated)</span>
+          <span className="ml-1 text-gray-400 font-normal">
+            {exportResult ? '(locked after export)' : '(auto-generated, editable)'}
+          </span>
         </label>
         <div className="flex items-center gap-2">
           <input
             type="text"
-            value={loadId || 'Generating...'}
-            readOnly
-            className="form-input flex-1 text-sm font-mono bg-gray-50"
+            value={loadId || (exportResult ? '' : 'Generating...')}
+            onChange={(e) => setLoadId && setLoadId(e.target.value)}
+            readOnly={!!exportResult}
+            className={`form-input flex-1 text-sm font-mono ${exportResult ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}
           />
           <button
             type="button"

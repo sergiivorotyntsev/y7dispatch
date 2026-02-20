@@ -9,7 +9,7 @@ function ExportActions({
   handleSubmitTraining, handleSubmitProduction,
   showExportModal, setShowExportModal,
   exportResult, exportError, exporting,
-  selectedWarehouse,
+  selectedWarehouse, isApproved,
   correctCount, totalCount, correctedCount, needsReviewCount,
 }) {
   return (
@@ -72,6 +72,10 @@ function ExportActions({
             <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving...' : 'Save & Train'}
             </button>
+          ) : isApproved ? (
+            <span className="px-4 py-2 rounded-md text-sm font-medium bg-green-100 text-green-800 border border-green-300">
+              Approved
+            </span>
           ) : (
             <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
               {saving ? 'Approving...' : 'Approve for Export'}
