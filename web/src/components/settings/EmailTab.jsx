@@ -13,6 +13,14 @@ export default function EmailTab() {
   const [testResult, setTestResult] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // Auto-polling settings
+  const [pollSettings, setPollSettings] = useState({
+    auto_poll_enabled: true,
+    poll_interval_minutes: 5,
+    poll_since_days: 7,
+  })
+  const [pollStatus, setPollStatus] = useState(null)
+
   useEffect(() => {
     loadAll()
   }, [])
@@ -21,12 +29,21 @@ export default function EmailTab() {
     setLoading(true)
     try {
       // Load credential store for both email services
-      const [rulesData, activityData] = await Promise.all([
+      const [rulesData, activityData, pollData] = await Promise.all([
         api.getEmailRules().catch(() => []),
         api.getEmailActivity().catch(() => []),
+        api.getPollStatus().catch(() => null),
       ])
       setRules(rulesData)
       setActivity(activityData)
+      if (pollData) {
+        setPollSettings({
+          auto_poll_enabled: pollData.enabled,
+          poll_interval_minutes: pollData.interval_minutes,
+          poll_since_days: pollData.since_days,
+        })
+        setPollStatus(pollData)
+      }
 
       // Check which credential is configured
       try {
@@ -273,6 +290,95 @@ export default function EmailTab() {
         </div>
 
         {testResult && <TestResultCard result={testResult} />}
+      </div>
+
+      {/* Auto-Polling Settings */}
+      <div className="border rounded-lg p-4">
+        <h4 className="font-medium mb-3">Auto-Polling</h4>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="form-label">Auto-poll</label>
+            <div className="flex items-center mt-1">
+              <button
+                onClick={async () => {
+                  const newVal = !pollSettings.auto_poll_enabled
+                  setPollSettings(prev => ({ ...prev, auto_poll_enabled: newVal }))
+                  try {
+                    await api.updatePollSettings({ enabled: newVal })
+                    showMessage('success', newVal ? 'Auto-poll enabled' : 'Auto-poll disabled')
+                  } catch (err) { showMessage('error', err.message) }
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  pollSettings.auto_poll_enabled ? 'bg-green-600' : 'bg-gray-300'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                  pollSettings.auto_poll_enabled ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
+              <span className="ml-2 text-sm text-gray-700">
+                {pollSettings.auto_poll_enabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          </div>
+          <div>
+            <label className="form-label">Interval</label>
+            <select
+              value={pollSettings.poll_interval_minutes}
+              onChange={async (e) => {
+                const val = parseInt(e.target.value)
+                setPollSettings(prev => ({ ...prev, poll_interval_minutes: val }))
+                try {
+                  await api.updatePollSettings({ interval_minutes: val })
+                  showMessage('success', `Poll interval set to ${val} min`)
+                } catch (err) { showMessage('error', err.message) }
+              }}
+              className="form-select w-full"
+            >
+              <option value={1}>Every 1 min</option>
+              <option value={2}>Every 2 min</option>
+              <option value={5}>Every 5 min</option>
+              <option value={10}>Every 10 min</option>
+              <option value={15}>Every 15 min</option>
+              <option value={30}>Every 30 min</option>
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Lookback</label>
+            <select
+              value={pollSettings.poll_since_days}
+              onChange={async (e) => {
+                const val = parseInt(e.target.value)
+                setPollSettings(prev => ({ ...prev, poll_since_days: val }))
+                try {
+                  await api.updatePollSettings({ since_days: val })
+                  showMessage('success', `Lookback set to ${val} days`)
+                } catch (err) { showMessage('error', err.message) }
+              }}
+              className="form-select w-full"
+            >
+              <option value={1}>1 day</option>
+              <option value={3}>3 days</option>
+              <option value={7}>7 days</option>
+              <option value={14}>14 days</option>
+              <option value={30}>30 days</option>
+            </select>
+          </div>
+        </div>
+        {pollStatus && (
+          <div className="text-sm text-gray-600">
+            {pollStatus.is_polling ? (
+              <span className="text-blue-600 font-medium">Polling now...</span>
+            ) : pollStatus.last_poll_at ? (
+              <span>Last poll: {new Date(pollStatus.last_poll_at).toLocaleString()} ({pollStatus.polls_completed} total)</span>
+            ) : (
+              <span className="text-gray-400">No polls completed yet</span>
+            )}
+            {pollStatus.last_poll_error && (
+              <span className="ml-3 text-red-600">Last error: {pollStatus.last_poll_error}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Sender Filter */}

@@ -424,6 +424,16 @@ export const api = {
   // Load ID Generation
   generateLoadId: (make, model) => request(`/listings/generate-load-id?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`),
 
+  // Email Auto-Polling
+  getPollStatus: () => request('/email/poll-status'),
+  updatePollSettings: ({ enabled, interval_minutes, since_days } = {}) => {
+    const params = new URLSearchParams()
+    if (enabled !== undefined) params.set('enabled', enabled)
+    if (interval_minutes !== undefined) params.set('interval_minutes', interval_minutes)
+    if (since_days !== undefined) params.set('since_days', since_days)
+    return request(`/email/poll-settings?${params}`, { method: 'POST' })
+  },
+
   // Hold Status
   setHold: (docId, reason, note = null) => request(`/documents/${docId}/set-hold`, {
     method: 'POST',

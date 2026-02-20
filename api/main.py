@@ -16,10 +16,15 @@ Endpoints:
 - /api/dlq - Dead Letter Queue for failed processing
 """
 
+import asyncio
+import logging
 import sys
 import uuid
 from contextvars import ContextVar
+from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -97,6 +102,98 @@ def get_request_id() -> str:
     return request_id_var.get()
 
 
+# =============================================================================
+# EMAIL AUTO-POLLING
+# =============================================================================
+
+# Poll state (in-memory, resets on restart)
+_poll_lock = asyncio.Lock()
+_poll_state = {
+    "last_poll_at": None,
+    "last_poll_error": None,
+    "is_polling": False,
+    "polls_completed": 0,
+}
+_auto_poll_task: asyncio.Task | None = None
+
+# Settings file for poll config
+_POLL_SETTINGS_FILE = Path(__file__).parent.parent / "config" / "poll_settings.json"
+
+
+def _load_poll_settings() -> dict:
+    """Load auto-poll settings from file."""
+    import json
+    defaults = {
+        "auto_poll_enabled": True,
+        "poll_interval_minutes": 5,
+        "poll_since_days": 7,
+    }
+    try:
+        if _POLL_SETTINGS_FILE.exists():
+            with open(_POLL_SETTINGS_FILE) as f:
+                saved = json.load(f)
+            defaults.update(saved)
+    except Exception:
+        pass
+    return defaults
+
+
+def _save_poll_settings(settings: dict):
+    """Save auto-poll settings to file."""
+    import json
+    _POLL_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(_POLL_SETTINGS_FILE, "w") as f:
+        json.dump(settings, f, indent=2)
+
+
+async def _run_email_poll(since_days: int = 7):
+    """Run a single email poll with mutex protection."""
+    if _poll_lock.locked():
+        logger.info("Email poll already in progress, skipping")
+        return
+
+    async with _poll_lock:
+        _poll_state["is_polling"] = True
+        try:
+            from api.workers.email_worker import get_worker
+            worker = get_worker()
+            await asyncio.to_thread(worker.poll_once, since_days=since_days)
+            _poll_state["last_poll_at"] = datetime.utcnow().isoformat() + "Z"
+            _poll_state["last_poll_error"] = None
+            _poll_state["polls_completed"] += 1
+        except Exception as e:
+            _poll_state["last_poll_error"] = str(e)
+            logger.error(f"Email poll error: {e}")
+        finally:
+            _poll_state["is_polling"] = False
+
+
+async def _email_polling_loop():
+    """Background loop that polls emails at configurable interval."""
+    # Initial delay — let app finish startup
+    await asyncio.sleep(10)
+
+    while True:
+        try:
+            settings = _load_poll_settings()
+            if settings.get("auto_poll_enabled", True):
+                interval = settings.get("poll_interval_minutes", 5)
+                since_days = settings.get("poll_since_days", 7)
+
+                await _run_email_poll(since_days)
+
+                logger.info(f"Email auto-poll complete. Next in {interval} min")
+                await asyncio.sleep(interval * 60)
+            else:
+                # Check again in 60 seconds if disabled
+                await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Email polling loop error: {e}")
+            await asyncio.sleep(300)  # 5 min backoff on error
+
+
 app = FastAPI(
     title="Vehicle Transport Automation",
     description="Control Panel for Email-to-ClickUp Pipeline with ML Training Support",
@@ -159,30 +256,45 @@ async def poll_email_now(since_days: int = Query(0, ge=0, le=30)):
     Poll email inbox now (manual trigger).
 
     Triggers an immediate poll of the configured email inbox.
+    Uses mutex to prevent concurrent polls with auto-poller.
     Use since_days to look back further (0 = today, 7 = past week).
     """
-    from api.workers.email_worker import get_worker
+    if _poll_lock.locked():
+        return {"status": "busy", "message": "Poll already in progress", "results": []}
 
-    worker = get_worker()
-    results = worker.poll_once(since_days=since_days)
+    async with _poll_lock:
+        _poll_state["is_polling"] = True
+        try:
+            from api.workers.email_worker import get_worker
 
-    return {
-        "status": "ok",
-        "processed": len([r for r in results if r.status == "processed"]),
-        "skipped": len([r for r in results if r.status == "skipped"]),
-        "failed": len([r for r in results if r.status == "failed"]),
-        "results": [
-            {
-                "message_id": r.message_id,
-                "status": r.status,
-                "rule_matched": r.rule_matched,
-                "document_id": r.document_id,
-                "run_id": r.run_id,
-                "error": r.error,
+            worker = get_worker()
+            results = await asyncio.to_thread(worker.poll_once, since_days=since_days)
+            _poll_state["last_poll_at"] = datetime.utcnow().isoformat() + "Z"
+            _poll_state["last_poll_error"] = None
+            _poll_state["polls_completed"] += 1
+
+            return {
+                "status": "ok",
+                "processed": len([r for r in results if r.status == "processed"]),
+                "skipped": len([r for r in results if r.status == "skipped"]),
+                "failed": len([r for r in results if r.status == "failed"]),
+                "results": [
+                    {
+                        "message_id": r.message_id,
+                        "status": r.status,
+                        "rule_matched": r.rule_matched,
+                        "document_id": r.document_id,
+                        "run_id": r.run_id,
+                        "error": r.error,
+                    }
+                    for r in results
+                ],
             }
-            for r in results
-        ],
-    }
+        except Exception as e:
+            _poll_state["last_poll_error"] = str(e)
+            raise
+        finally:
+            _poll_state["is_polling"] = False
 
 
 @app.post("/api/email/worker/start", tags=["Email"])
@@ -248,6 +360,47 @@ async def recover_email_processing(since_days: int = Query(7, ge=1, le=30)):
             for r in results
         ],
     }
+
+
+@app.get("/api/email/poll-status", tags=["Email"])
+async def get_poll_status():
+    """Get current auto-polling status and settings."""
+    settings = _load_poll_settings()
+    return {
+        "enabled": settings.get("auto_poll_enabled", True),
+        "interval_minutes": settings.get("poll_interval_minutes", 5),
+        "since_days": settings.get("poll_since_days", 7),
+        "last_poll_at": _poll_state["last_poll_at"],
+        "last_poll_error": _poll_state["last_poll_error"],
+        "is_polling": _poll_state["is_polling"],
+        "polls_completed": _poll_state["polls_completed"],
+    }
+
+
+@app.post("/api/email/poll-settings", tags=["Email"])
+async def update_poll_settings(
+    enabled: bool | None = None,
+    interval_minutes: int | None = None,
+    since_days: int | None = None,
+):
+    """Update auto-polling settings."""
+    settings = _load_poll_settings()
+
+    if enabled is not None:
+        settings["auto_poll_enabled"] = enabled
+    if interval_minutes is not None:
+        if interval_minutes not in (1, 2, 5, 10, 15, 30):
+            from fastapi import HTTPException
+            raise HTTPException(400, "interval_minutes must be 1, 2, 5, 10, 15, or 30")
+        settings["poll_interval_minutes"] = interval_minutes
+    if since_days is not None:
+        if since_days < 0 or since_days > 30:
+            from fastapi import HTTPException
+            raise HTTPException(400, "since_days must be 0-30")
+        settings["poll_since_days"] = since_days
+
+    _save_poll_settings(settings)
+    return {"status": "ok", **settings}
 
 
 @app.post("/api/email/reset", tags=["Email"])
@@ -318,6 +471,11 @@ async def startup():
         )
 
     get_dlq_service().register_alert_callback(_dlq_alert)
+
+    # Start auto-polling background task
+    global _auto_poll_task
+    _auto_poll_task = asyncio.create_task(_email_polling_loop())
+    logger.info("Email auto-polling background task started")
 
 
 # Serve frontend (simple HTML for now)

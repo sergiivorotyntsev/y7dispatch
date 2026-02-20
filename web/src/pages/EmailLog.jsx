@@ -22,6 +22,9 @@ function EmailLog() {
   const [processingId, setProcessingId] = useState(null)
   const [polling, setPolling] = useState(false)
 
+  // Auto-poll status
+  const [pollStatus, setPollStatus] = useState(null)
+
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => setSearchDebounced(search), 300)
@@ -60,8 +63,25 @@ function EmailLog() {
     }
   }, [statusFilter, searchDebounced, pagination.page, pagination.limit])
 
+  // Fetch poll status
+  const fetchPollStatus = useCallback(async () => {
+    try {
+      const data = await api.getPollStatus()
+      setPollStatus(data)
+    } catch (err) {
+      console.debug('Poll status unavailable:', err.message)
+    }
+  }, [])
+
   useEffect(() => { fetchStats() }, [fetchStats])
   useEffect(() => { fetchEmails() }, [fetchEmails])
+  useEffect(() => { fetchPollStatus() }, [fetchPollStatus])
+
+  // Refresh poll status every 30s
+  useEffect(() => {
+    const timer = setInterval(fetchPollStatus, 30000)
+    return () => clearInterval(timer)
+  }, [fetchPollStatus])
 
   // Actions
   async function handleProcess(emailId, e) {
@@ -110,6 +130,7 @@ function EmailLog() {
       setError(null)
       fetchEmails()
       fetchStats()
+      fetchPollStatus()
       if (result.results_count !== undefined) {
         alert(`Poll complete: ${result.results_count} emails processed`)
       }
@@ -118,6 +139,17 @@ function EmailLog() {
     } finally {
       setPolling(false)
     }
+  }
+
+  function formatTimeAgo(dateStr) {
+    if (!dateStr) return null
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins} min ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    return `${Math.floor(hrs / 24)}d ago`
   }
 
   function getStatusBadge(status) {
@@ -172,6 +204,37 @@ function EmailLog() {
           {polling ? 'Polling...' : 'Poll Now'}
         </button>
       </div>
+
+      {/* Auto-poll status bar */}
+      {pollStatus && (
+        <div className="mb-4 px-4 py-2 bg-gray-50 border rounded-lg flex items-center justify-between text-sm">
+          <div className="flex items-center space-x-4">
+            <span className="flex items-center">
+              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
+                pollStatus.is_polling ? 'bg-blue-500 animate-pulse' :
+                pollStatus.enabled ? 'bg-green-500' : 'bg-gray-400'
+              }`} />
+              Auto-poll: {pollStatus.enabled ? 'ON' : 'OFF'}
+              {pollStatus.enabled && pollStatus.interval_minutes && (
+                <span className="text-gray-500 ml-1">(every {pollStatus.interval_minutes} min)</span>
+              )}
+            </span>
+            {pollStatus.is_polling && (
+              <span className="text-blue-600 font-medium">Polling...</span>
+            )}
+            {pollStatus.last_poll_at && !pollStatus.is_polling && (
+              <span className="text-gray-500">
+                Last: {formatTimeAgo(pollStatus.last_poll_at)}
+              </span>
+            )}
+          </div>
+          {pollStatus.last_poll_error && (
+            <span className="text-red-600 text-xs truncate max-w-[300px]" title={pollStatus.last_poll_error}>
+              Error: {pollStatus.last_poll_error}
+            </span>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
