@@ -34,7 +34,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 def _classify_from_filename(filename: str) -> Optional[str]:
     """
     Detect auction type from filename patterns.
-    Runs BEFORE text classification — works even for scanned PDFs.
+    FALLBACK ONLY — used for scanned PDFs when text classification fails.
     Returns auction code (COPART, IAA, MANHEIM) or None.
     """
     if not filename:
@@ -49,13 +49,36 @@ def _classify_from_filename(filename: str) -> Optional[str]:
     if "iaa" in fn or "showreport" in fn or "buyer_receipt" in fn:
         return "IAA"
 
-    # Manheim patterns — includes PSI reports and "bill_of_sale" from Manheim
+    # Manheim patterns — includes PSI reports
     if "manheim" in fn or "psi_report" in fn or "pre_sale_inspection" in fn:
         return "MANHEIM"
 
-    # Auctions in Motion → classified under IAA (similar format)
-    if "sparkbuyer" in fn or "auctions_in_motion" in fn:
+    return None
+
+
+def _classify_from_text(raw_text: str) -> Optional[str]:
+    """
+    Detect auction type from PDF text content.
+    PRIMARY classification method — reads actual document content.
+    Returns auction code (COPART, IAA, MANHEIM) or None.
+    """
+    if not raw_text or len(raw_text) < 100:
+        return None
+
+    text_lower = raw_text.lower()
+
+    # Copart patterns
+    if "copart" in text_lower or "sold through copart" in text_lower or "copart.com" in text_lower:
+        return "COPART"
+
+    # IAA patterns
+    if ("insurance auto auctions" in text_lower or "iaai.com" in text_lower
+            or "\niaa " in text_lower or text_lower.startswith("iaa ")):
         return "IAA"
+
+    # Manheim patterns
+    if "manheim" in text_lower or "manheim.com" in text_lower:
+        return "MANHEIM"
 
     return None
 
@@ -170,8 +193,11 @@ class DocumentResponse(BaseModel):
     created_at: Optional[str] = None
     uploaded_by: Optional[str] = None
 
-    # Pending status
+    # Pending/hold status
     pending_reason: Optional[str] = None
+    hold_reason: Optional[str] = None
+    hold_note: Optional[str] = None
+    hold_since: Optional[str] = None
 
     # Enriched fields from latest extraction run
     load_id: Optional[str] = None
@@ -405,24 +431,17 @@ async def upload_document(
     classification_score = None
 
     if auto_classify and not auction_type_id:
-        # Step 1: Try filename-based classification (works for scanned PDFs too)
-        fn_code = _classify_from_filename(file.filename)
-        if fn_code:
-            detected_type = AuctionTypeRepository.get_by_code(fn_code)
-            if detected_type:
-                auction_type_id = detected_type.id
-                auction_type = detected_type
-                detected_source = fn_code
+        # Step 1: Try text-based classification (PRIMARY — reads PDF content)
+        if raw_text and text_length >= 100:
+            text_code = _classify_from_text(raw_text)
+            if text_code:
+                detected_type = AuctionTypeRepository.get_by_code(text_code)
+                if detected_type:
+                    auction_type_id = detected_type.id
+                    auction_type = detected_type
+                    detected_source = text_code
 
-        # Step 2: Try email context if still unclassified
-        if not auction_type_id and source == "email":
-            # Read email_metadata_json from document if available
-            email_meta_json = None
-            # email metadata is passed during email_worker upload, check if exists
-            # For now, we can check existing doc's metadata after creation
-            # (email context classification is used more during re-classification)
-
-        # Step 3: Try text-based classification (existing logic, only if text >= 100)
+        # Step 2: Try ExtractorManager scoring (if text classification didn't match)
         if not auction_type_id and raw_text and text_length >= 100:
             try:
                 from extractors import ExtractorManager
@@ -438,6 +457,26 @@ async def upload_document(
                         auction_type = detected_type
             except Exception:
                 pass
+
+        # Step 3: Try filename-based classification (FALLBACK for scanned PDFs)
+        if not auction_type_id:
+            fn_code = _classify_from_filename(file.filename)
+            if fn_code:
+                detected_type = AuctionTypeRepository.get_by_code(fn_code)
+                if detected_type:
+                    auction_type_id = detected_type.id
+                    auction_type = detected_type
+                    detected_source = fn_code
+
+        # Step 4: Try email context if still unclassified
+        if not auction_type_id and source == "email":
+            email_code = _classify_from_email_context(email_metadata_json)
+            if email_code:
+                detected_type = AuctionTypeRepository.get_by_code(email_code)
+                if detected_type:
+                    auction_type_id = detected_type.id
+                    auction_type = detected_type
+                    detected_source = email_code
 
     # If still no auction type, use "OTHER" as fallback
     if not auction_type_id:
@@ -1081,10 +1120,69 @@ async def clear_pending(id: int):
     return {"success": True, "id": id, "pending_reason": None}
 
 
+# =============================================================================
+# HOLD STATUS
+# =============================================================================
+
+class SetHoldRequest(BaseModel):
+    """Request model for setting hold status."""
+    reason: str  # awaiting_gate_pass, awaiting_payment, awaiting_title, other
+    note: Optional[str] = None
+
+
+@router.post("/{id}/set-hold")
+async def set_hold(id: int, request: SetHoldRequest):
+    """Put a document on hold with a reason and optional note."""
+    from datetime import datetime
+
+    from api.database import get_connection
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    now = datetime.utcnow().isoformat() + "Z"
+
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE documents SET hold_reason = ?, hold_note = ?, hold_since = ? WHERE id = ?",
+            (request.reason, request.note, now, id),
+        )
+        conn.commit()
+
+    return {"success": True, "id": id, "hold_reason": request.reason,
+            "hold_note": request.note, "hold_since": now}
+
+
+@router.post("/{id}/release-hold")
+async def release_hold(id: int):
+    """Release a document from hold."""
+    from api.database import get_connection
+
+    doc = DocumentRepository.get_by_id(id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE documents SET hold_reason = NULL, hold_note = NULL, hold_since = NULL WHERE id = ?",
+            (id,),
+        )
+        conn.commit()
+
+    return {"success": True, "id": id, "hold_reason": None}
+
+
 @router.post("/reclassify-other")
 async def reclassify_other_documents():
     """
-    Re-classify documents currently typed as OTHER using filename and email context.
+    Re-classify documents currently typed as OTHER using content-based classification.
+
+    Priority order:
+    1. Haiku's auction_source from extraction outputs (most accurate)
+    2. PDF text content patterns (_classify_from_text)
+    3. Filename patterns (fallback for scanned PDFs)
+
     Safe to run multiple times — only updates documents that match a known pattern.
     """
     from api.database import get_connection
@@ -1098,19 +1196,39 @@ async def reclassify_other_documents():
 
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id, filename, email_metadata_json FROM documents WHERE auction_type_id = ?",
+            """SELECT d.id, d.filename, d.email_metadata_json, d.raw_text,
+                      er.outputs_json
+               FROM documents d
+               LEFT JOIN extraction_runs er ON er.document_id = d.id
+                 AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
+               WHERE d.auction_type_id = ?""",
             (other_type.id,),
         ).fetchall()
 
     for row in rows:
-        doc_id = row["id"] if isinstance(row, dict) else row[0]
-        filename = row["filename"] if isinstance(row, dict) else row[1]
-        email_meta = row["email_metadata_json"] if isinstance(row, dict) else row[2]
+        doc_id = row["id"]
+        filename = row["filename"]
+        raw_text = row["raw_text"] or ""
 
-        # Try filename first, then email context
-        new_code = _classify_from_filename(filename)
+        new_code = None
+
+        # 1. Check Haiku's auction_source (highest authority)
+        if row["outputs_json"]:
+            try:
+                outputs = json.loads(row["outputs_json"])
+                haiku_source = (outputs.get("auction_source") or "").upper()
+                if haiku_source in ("COPART", "IAA", "MANHEIM"):
+                    new_code = haiku_source
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # 2. Check PDF text content
         if not new_code:
-            new_code = _classify_from_email_context(email_meta)
+            new_code = _classify_from_text(raw_text)
+
+        # 3. Filename fallback (only for scanned PDFs)
+        if not new_code and len(raw_text.strip()) < 100:
+            new_code = _classify_from_filename(filename)
 
         if new_code:
             new_type = AuctionTypeRepository.get_by_code(new_code)
@@ -1119,6 +1237,11 @@ async def reclassify_other_documents():
                     conn.execute(
                         "UPDATE documents SET auction_type_id = ? WHERE id = ?",
                         (new_type.id, doc_id),
+                    )
+                    # Also update extraction run's auction_type_id
+                    conn.execute(
+                        "UPDATE extraction_runs SET auction_type_id = ? WHERE document_id = ? AND id = (SELECT MAX(id) FROM extraction_runs WHERE document_id = ?)",
+                        (new_type.id, doc_id, doc_id),
                     )
                     conn.commit()
                 updated += 1

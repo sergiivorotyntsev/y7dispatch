@@ -89,7 +89,19 @@ function Documents() {
 
       const result = await api.listDocuments(params)
       // Filter out test documents
-      const prodDocs = (result.items || []).filter(d => !d.is_test)
+      let prodDocs = (result.items || []).filter(d => !d.is_test)
+
+      // Client-side status filtering
+      if (filter.status) {
+        prodDocs = prodDocs.filter(doc => {
+          if (filter.status === 'hold') return !!doc.hold_reason
+          if (filter.status === 'pending') return !!doc.pending_reason && !doc.hold_reason
+          // For extraction statuses, check the extraction status
+          const ext = docExtractions[doc.id]
+          const extStatus = doc.extraction_status || ext?.status
+          return extStatus === filter.status
+        })
+      }
 
       // Sort documents client-side
       const sorted = [...prodDocs].sort((a, b) => {
@@ -552,6 +564,7 @@ function Documents() {
               <option value="exported">Exported</option>
               <option value="manual_required">OCR Required</option>
               <option value="pending">Pending</option>
+              <option value="hold">On Hold</option>
               <option value="failed">Failed</option>
             </select>
           </div>
@@ -770,6 +783,7 @@ function Documents() {
               {documents.map((doc) => {
                 const extraction = docExtractions[doc.id]
                 const isPending = !!doc.pending_reason
+                const isOnHold = !!doc.hold_reason
                 // Use enriched data from API, fall back to extraction outputs
                 const rawOutputs = extraction?.outputs || extraction?.outputs_json
                 const outputs = rawOutputs ? (
@@ -907,7 +921,12 @@ function Documents() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {isPending && (
+                      {isOnHold && (
+                        <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800 mr-1" title={`${doc.hold_reason}${doc.hold_note ? ': ' + doc.hold_note : ''}`}>
+                          HOLD
+                        </span>
+                      )}
+                      {isPending && !isOnHold && (
                         <span className="px-2 py-1 text-xs font-medium rounded bg-amber-100 text-amber-800 mr-1" title={doc.pending_reason}>
                           Pending
                         </span>

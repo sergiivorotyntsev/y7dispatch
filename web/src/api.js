@@ -424,6 +424,15 @@ export const api = {
   // Load ID Generation
   generateLoadId: (make, model) => request(`/listings/generate-load-id?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`),
 
+  // Hold Status
+  setHold: (docId, reason, note = null) => request(`/documents/${docId}/set-hold`, {
+    method: 'POST',
+    body: JSON.stringify({ reason, note }),
+  }),
+  releaseHold: (docId) => request(`/documents/${docId}/release-hold`, {
+    method: 'POST',
+  }),
+
   // Auction Directory Lookup
   lookupAuctionLocation: (name) => request(`/auction-directory/lookup?name=${encodeURIComponent(name)}`),
 

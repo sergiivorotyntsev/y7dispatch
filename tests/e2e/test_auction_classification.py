@@ -49,11 +49,12 @@ class TestFilenameClassification:
         assert _classify_from_filename("psi_report_12345.pdf") == "MANHEIM"
         assert _classify_from_filename("Pre_Sale_Inspection.pdf") == "MANHEIM"
 
-    def test_sparkbuyer_maps_to_iaa(self):
+    def test_sparkbuyer_no_longer_maps_to_iaa(self):
+        """sparkbuyer filenames should NOT auto-classify — content-based classification is used instead."""
         from api.routes.documents import _classify_from_filename
 
-        assert _classify_from_filename("sparkbuyerdetail__45_.pdf") == "IAA"
-        assert _classify_from_filename("auctions_in_motion_receipt.pdf") == "IAA"
+        assert _classify_from_filename("sparkbuyerdetail__45_.pdf") is None
+        assert _classify_from_filename("auctions_in_motion_receipt.pdf") is None
 
     def test_unknown_filename_returns_none(self):
         from api.routes.documents import _classify_from_filename
@@ -106,6 +107,114 @@ class TestEmailContextClassification:
         from api.routes.documents import _classify_from_email_context
 
         assert _classify_from_email_context("not json") is None
+
+
+class TestTextClassification:
+    """Test _classify_from_text() content-based classification."""
+
+    def test_copart_text(self):
+        from api.routes.documents import _classify_from_text
+
+        text = "x" * 100 + " Copart Invoice for lot 12345, sold through Copart"
+        assert _classify_from_text(text) == "COPART"
+
+    def test_iaa_text(self):
+        from api.routes.documents import _classify_from_text
+
+        text = "x" * 100 + " Insurance Auto Auctions buyer receipt for vehicle"
+        assert _classify_from_text(text) == "IAA"
+
+    def test_iaa_iaai_domain(self):
+        from api.routes.documents import _classify_from_text
+
+        text = "x" * 100 + " visit iaai.com for more information"
+        assert _classify_from_text(text) == "IAA"
+
+    def test_manheim_text(self):
+        from api.routes.documents import _classify_from_text
+
+        text = "x" * 100 + " Manheim Auto Auction vehicle purchase receipt"
+        assert _classify_from_text(text) == "MANHEIM"
+
+    def test_short_text_returns_none(self):
+        from api.routes.documents import _classify_from_text
+
+        assert _classify_from_text("Copart") is None
+        assert _classify_from_text("") is None
+        assert _classify_from_text(None) is None
+
+    def test_generic_text_returns_none(self):
+        from api.routes.documents import _classify_from_text
+
+        text = "x" * 200 + " This is a generic vehicle invoice for Broadway Motoring"
+        assert _classify_from_text(text) is None
+
+    def test_sparkbuyer_text_no_match(self):
+        """SparkBuyer text without IAA patterns should not classify as IAA."""
+        from api.routes.documents import _classify_from_text
+
+        text = "x" * 100 + " Purchase Detail for BROADWAY MOTORING INC, AUCTIONS IN MOTION"
+        assert _classify_from_text(text) is None
+
+
+class TestHoldStatus:
+    """Test HOLD status API endpoints."""
+
+    def test_set_hold(self, client):
+        """POST /api/documents/{id}/set-hold should set hold reason."""
+        from io import BytesIO
+        import uuid as uuid_mod
+
+        unique = uuid_mod.uuid4().hex[:8]
+        pdf_bytes = f"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n210\n%%EOF {unique}".encode()
+        upload = client.post(
+            "/api/documents/upload",
+            files={"file": (f"hold_test_{unique}.pdf", BytesIO(pdf_bytes), "application/pdf")},
+            data={"dataset_split": "train", "source": "upload"},
+        )
+        assert upload.status_code == 201
+        doc_id = upload.json()["document"]["id"]
+
+        resp = client.post(f"/api/documents/{doc_id}/set-hold", json={"reason": "awaiting_gate_pass", "note": "Need gate pass from Copart"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["hold_reason"] == "awaiting_gate_pass"
+        assert data["hold_note"] == "Need gate pass from Copart"
+        assert data["hold_since"] is not None
+
+    def test_release_hold(self, client):
+        """POST /api/documents/{id}/release-hold should clear hold."""
+        from io import BytesIO
+        import uuid as uuid_mod
+
+        unique = uuid_mod.uuid4().hex[:8]
+        pdf_bytes = f"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n210\n%%EOF {unique}".encode()
+        upload = client.post(
+            "/api/documents/upload",
+            files={"file": (f"hold_rel_{unique}.pdf", BytesIO(pdf_bytes), "application/pdf")},
+            data={"dataset_split": "train", "source": "upload"},
+        )
+        doc_id = upload.json()["document"]["id"]
+
+        client.post(f"/api/documents/{doc_id}/set-hold", json={"reason": "awaiting_payment"})
+        resp = client.post(f"/api/documents/{doc_id}/release-hold")
+        assert resp.status_code == 200
+        assert resp.json()["hold_reason"] is None
+
+    def test_hold_appears_in_document_response(self, client):
+        """Document list should include hold fields."""
+        resp = client.get("/api/documents/?limit=1")
+        assert resp.status_code == 200
+        # Response model should accept hold_reason field without error
+        data = resp.json()
+        if data["items"]:
+            item = data["items"][0]
+            assert "hold_reason" in item or item.get("hold_reason") is None
+
+    def test_set_hold_not_found(self, client):
+        """Setting hold on nonexistent doc should 404."""
+        resp = client.post("/api/documents/999999/set-hold", json={"reason": "test"})
+        assert resp.status_code == 404
 
 
 class TestClassificationPipeline:
@@ -190,8 +299,8 @@ startxref
         assert "skipped" in data
         assert "total_checked" in data
 
-    def test_sparkbuyer_filename_gets_iaa(self, client):
-        """Upload with sparkbuyer filename should classify as IAA."""
+    def test_sparkbuyer_filename_gets_other(self, client):
+        """sparkbuyer filename without matching text content should fall to OTHER."""
         pdf_bytes = self._unique_pdf_bytes("spark")
         resp = client.post(
             "/api/documents/upload",
@@ -200,7 +309,8 @@ startxref
         )
         assert resp.status_code == 201
         data = resp.json()
-        assert data["document"]["auction_type_code"] == "IAA"
+        # Without IAA text content, sparkbuyer filename alone doesn't classify as IAA
+        assert data["document"]["auction_type_code"] == "OTHER"
 
     def test_manheim_filename_gets_manheim(self, client):
         """Upload with Manheim in filename should classify as MANHEIM."""

@@ -660,6 +660,9 @@ class Document:
     uploaded_by: Optional[str] = None
     email_metadata_json: Optional[str] = None
     pending_reason: Optional[str] = None
+    hold_reason: Optional[str] = None
+    hold_note: Optional[str] = None
+    hold_since: Optional[str] = None
 
 
 @dataclass
@@ -2358,5 +2361,19 @@ def _run_migrations():
             conn.execute("ALTER TABLE documents ADD COLUMN pending_reason TEXT")
         except Exception:
             pass  # Column already exists
+
+        # Migration: Add hold columns to documents (replaces pending_reason)
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN hold_reason TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN hold_note TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN hold_since TIMESTAMP")
+        except Exception:
+            pass
 
         conn.commit()

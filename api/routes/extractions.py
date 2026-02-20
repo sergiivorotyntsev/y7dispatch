@@ -1060,6 +1060,20 @@ def run_extraction(
         # Store extraction method in outputs for UI display
         outputs["extraction_method"] = extraction_method
 
+        # =================================================================
+        # POST-EXTRACTION: Update auction type from Haiku's auction_source
+        # Haiku reads actual document content and is the AUTHORITY on type.
+        # =================================================================
+        haiku_auction = outputs.get("auction_source", "").upper()
+        if haiku_auction in ("COPART", "IAA", "MANHEIM"):
+            if haiku_auction != auction_type.code:
+                detected_at = AuctionTypeRepository.get_by_code(haiku_auction)
+                if detected_at:
+                    DocumentRepository.update(document_id, auction_type_id=detected_at.id)
+                    ExtractionRunRepository.update(run_id, auction_type_id=detected_at.id)
+                    auction_type_id = detected_at.id
+                    auction_type = detected_at
+
         # Calculate field metrics
         metrics["fields_extracted_count"] = len(outputs)
         metrics["fields_filled_count"] = sum(
