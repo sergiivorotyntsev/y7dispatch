@@ -12,7 +12,7 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
   const [collapsed, setCollapsed] = useState(null) // null = auto-decide
 
   const fetchAlerts = useCallback(async () => {
-    if (!runId || !warehouseId) return
+    if (!runId) return
     setLoading(true)
     setError(null)
     try {
@@ -24,6 +24,10 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
       }
     } catch (err) {
       if (err.message?.includes('400') || err.message?.includes('pickup ZIP')) {
+        // No pickup ZIP in extraction — nothing to show
+        setData(null)
+      } else if (err.message?.includes('404')) {
+        // No warehouses configured
         setData(null)
       } else {
         setError(err.message)
@@ -37,8 +41,8 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
     fetchAlerts()
   }, [fetchAlerts])
 
-  // Don't render until we have a warehouse selected
-  if (!warehouseId) return null
+  // Don't render if no runId
+  if (!runId) return null
 
   // Severity styles
   const severityStyles = {

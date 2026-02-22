@@ -197,7 +197,7 @@ class TestDistanceSource:
         assert len(options) >= 1
         # Without Google Maps key, all distances should be haversine
         for opt in options:
-            assert opt.distance_source in ("haversine", "cache", "google")
+            assert opt.distance_source in ("haversine", "google")
 
     def test_distance_source_in_option_response(self):
         """WarehouseOptionResponse model has distance_source field."""

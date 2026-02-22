@@ -111,8 +111,6 @@ function DeliverySection({ warehouses, selectedWarehouse, handleWarehouseChange,
                             <span className="text-green-600 text-[10px]">via Google Maps</span>
                           ) : opt.distance_source === 'haversine' ? (
                             <span className="text-gray-400 text-[10px]">~ straight-line est.</span>
-                          ) : opt.distance_source === 'cache' ? (
-                            <span className="text-blue-400 text-[10px]">cached</span>
                           ) : null}
                         </>
                       ) : (

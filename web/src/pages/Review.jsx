@@ -143,9 +143,12 @@ function Review() {
   const loadWarehouses = useCallback(async () => {
     try {
       const data = await api.listWarehouses()
-      setWarehouses(data.items || [])
+      const items = data.items || []
+      setWarehouses(items)
+      return items
     } catch (err) {
       console.error('Failed to load warehouses:', err)
+      return []
     }
   }, [])
 
@@ -269,7 +272,7 @@ function Review() {
         initializeDates(initialFields, runData.run?.auction_type_code)
       }
 
-      await loadWarehouses()
+      const whList = await loadWarehouses()
       await loadPricing()
 
       // Load attachments (vehicle release, condition reports)
@@ -284,6 +287,14 @@ function Review() {
       // Set initial Load-Specific Terms for production mode
       if (!isTrainingMode && runData.run?.auction_type_code) {
         setLoadSpecificTerms(generateLoadSpecificTerms(runData.run.auction_type_code, null))
+      }
+
+      // Populate transport instructions from warehouse if not saved in outputs
+      if (out.warehouse_id && !out.transport_special_instructions) {
+        const wh = whList.find(w => w.id === out.warehouse_id || w.id.toString() === String(out.warehouse_id))
+        if (wh?.transport_special_instructions) {
+          setTransportSpecialInstructions(wh.transport_special_instructions)
+        }
       }
     } catch (err) {
       setError(err.message)

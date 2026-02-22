@@ -209,6 +209,12 @@ def init_warehouses_schema():
             "ON distance_cache(origin_zip, destination_warehouse_id)"
         )
 
+        # Add distance_source column to cache (migration for existing DBs)
+        try:
+            conn.execute("ALTER TABLE distance_cache ADD COLUMN distance_source TEXT")
+        except Exception:
+            pass
+
         conn.commit()
 
         # Auto-sync from YAML if table is empty

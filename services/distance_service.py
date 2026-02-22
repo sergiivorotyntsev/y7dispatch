@@ -235,7 +235,7 @@ class DistanceService:
                     distance_text=cached["distance_text"] or "",
                     duration_minutes=cached["duration_minutes"],
                     duration_text=cached["duration_text"] or "",
-                    source="cache",
+                    source=cached.get("distance_source") or "haversine",
                 )
                 price = cached.get("transport_price")
                 price_source = cached.get("transport_price_source", "")
@@ -339,8 +339,8 @@ class DistanceService:
                 INSERT INTO distance_cache
                     (origin_zip, destination_warehouse_id, distance_miles, distance_text,
                      duration_minutes, duration_text, transport_price, transport_price_source,
-                     calculated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     distance_source, calculated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(origin_zip, destination_warehouse_id) DO UPDATE SET
                     distance_miles = excluded.distance_miles,
                     distance_text = excluded.distance_text,
@@ -348,6 +348,7 @@ class DistanceService:
                     duration_text = excluded.duration_text,
                     transport_price = excluded.transport_price,
                     transport_price_source = excluded.transport_price_source,
+                    distance_source = excluded.distance_source,
                     calculated_at = excluded.calculated_at
                 """,
                 (
@@ -359,6 +360,7 @@ class DistanceService:
                     dist.duration_text,
                     price,
                     price_source,
+                    dist.source,
                     now,
                 ),
             )

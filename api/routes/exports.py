@@ -485,6 +485,10 @@ def build_cd_payload(
         dropoff_stop["phone"] = delivery_phone
     if delivery_contact:
         dropoff_stop["contactName"] = delivery_contact
+    # Buyer reference from warehouse (dropoff location)
+    dropoff_buyer_ref = warehouse_data.get("buyer_reference") if warehouse_data else None
+    if dropoff_buyer_ref:
+        dropoff_stop["buyerReferenceNumber"] = str(dropoff_buyer_ref)
 
     # Build vehicle
     vehicle = {
