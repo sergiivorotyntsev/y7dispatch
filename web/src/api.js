@@ -550,6 +550,10 @@ export const api = {
   skipEmail: (emailId) => request(`/email-log/${emailId}/skip`, { method: 'POST' }),
   reprocessEmail: (emailId) => request(`/email-log/${emailId}/reprocess`, { method: 'POST' }),
   pollEmails: (sinceDays = 0) => request(`/email/poll?since_days=${sinceDays}`, { method: 'POST' }),
+
+  // Email Context + Vision Extract (Review page)
+  getEmailContext: (runId) => request(`/extractions/${runId}/email-context`),
+  visionExtract: (runId) => request(`/extractions/${runId}/vision-extract`, { method: 'POST' }),
 }
 
 export default api

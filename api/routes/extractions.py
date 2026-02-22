@@ -2352,3 +2352,244 @@ async def diagnose_extraction_pipeline(id: int) -> PipelineDiagnosticResponse:
     response.fix_actions = fixes
 
     return response
+
+
+# =============================================================================
+# Email Context + Vision Extract Endpoints
+# =============================================================================
+
+
+class EmailContextResponse(BaseModel):
+    """Email context for a document linked to an extraction run."""
+    sender: Optional[str] = None
+    subject: Optional[str] = None
+    date: Optional[str] = None
+    body: Optional[str] = None
+    attachments: list[dict] = Field(default_factory=list)
+    source: str = "email"
+
+
+@router.get("/{run_id}/email-context", response_model=EmailContextResponse)
+async def get_email_context(run_id: int):
+    """
+    Get email context for an extraction run.
+
+    Returns sender, subject, date, body text, and attachment list
+    from the originating email (if the document was sourced from email).
+    """
+    import json
+    from api.database import get_connection
+
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Extraction run not found")
+
+    doc = DocumentRepository.get_by_id(run.document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if doc.source != "email":
+        return EmailContextResponse(source="upload")
+
+    # Get email metadata from document
+    email_meta = {}
+    if doc.email_metadata_json:
+        try:
+            email_meta = json.loads(doc.email_metadata_json) if isinstance(doc.email_metadata_json, str) else doc.email_metadata_json
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Look up full email from email_log by matching extraction_run_ids
+    body = None
+    email_attachments = []
+    with get_connection() as conn:
+        # Try to find email_log entry that references this run
+        try:
+            row = conn.execute(
+                "SELECT sender, subject, body_preview, attachment_names, received_date "
+                "FROM email_log WHERE extraction_run_ids LIKE ?",
+                (f"%{run_id}%",),
+            ).fetchone()
+        except Exception:
+            row = None
+
+        if row:
+            body = row["body_preview"]
+            sender = row["sender"] or email_meta.get("sender")
+            subject = row["subject"] or email_meta.get("subject")
+            date = row["received_date"] or email_meta.get("date")
+
+            # Parse attachment names
+            att_names_raw = row["attachment_names"]
+            if att_names_raw:
+                try:
+                    att_names = json.loads(att_names_raw) if isinstance(att_names_raw, str) else att_names_raw
+                except (json.JSONDecodeError, TypeError):
+                    att_names = []
+
+                for att_name in att_names:
+                    is_main = att_name in (doc.filename or "")
+                    email_attachments.append({
+                        "filename": att_name,
+                        "is_main_document": is_main,
+                        "view_url": f"/api/documents/{doc.id}/file" if is_main else None,
+                    })
+        else:
+            sender = email_meta.get("sender")
+            subject = email_meta.get("subject")
+            date = email_meta.get("date")
+
+    return EmailContextResponse(
+        sender=sender,
+        subject=subject,
+        date=date,
+        body=body,
+        attachments=email_attachments,
+        source="email",
+    )
+
+
+class VisionExtractResponse(BaseModel):
+    """Result of vision-based extraction."""
+    fields: dict = Field(default_factory=dict)
+    extraction_mode: str = "vision"
+    page_count: int = 0
+    cost_usd: float = 0.0
+    error: Optional[str] = None
+
+
+@router.post("/{run_id}/vision-extract", response_model=VisionExtractResponse)
+async def vision_extract(run_id: int):
+    """
+    Run vision-based extraction on a scanned PDF.
+
+    Converts PDF pages to images and sends to Claude Haiku Vision API.
+    Returns extracted fields for operator review (does NOT auto-save).
+    """
+    import base64
+    import json
+    import logging
+    from pathlib import Path
+
+    from api.database import get_connection
+
+    logger = logging.getLogger(__name__)
+
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Extraction run not found")
+
+    doc = DocumentRepository.get_by_id(run.document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    pdf_path = doc.file_path
+    if not pdf_path or not Path(pdf_path).exists():
+        raise HTTPException(status_code=404, detail=f"PDF file not found: {pdf_path}")
+
+    # Convert PDF to images using PyMuPDF (fitz)
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="PyMuPDF (fitz) not installed. Run: pip install PyMuPDF",
+        )
+
+    try:
+        pdf_doc = fitz.open(str(pdf_path))
+        page_count = len(pdf_doc)
+
+        # Convert pages to base64 PNG images (max 5 pages)
+        image_contents = []
+        for page_num in range(min(page_count, 5)):
+            page = pdf_doc[page_num]
+            # Render at 200 DPI for good quality
+            mat = fitz.Matrix(200 / 72, 200 / 72)
+            pix = page.get_pixmap(matrix=mat)
+            img_bytes = pix.tobytes("png")
+            b64_image = base64.b64encode(img_bytes).decode("utf-8")
+            image_contents.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": b64_image,
+                },
+            })
+        pdf_doc.close()
+    except Exception as e:
+        logger.error(f"Failed to convert PDF to images: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF to image conversion failed: {e}")
+
+    # Build vision extraction prompt
+    from services.haiku_extractor import EXTRACTION_PROMPT, HaikuExtractor
+
+    extractor = HaikuExtractor()
+    if not extractor.api_key:
+        raise HTTPException(status_code=500, detail="Anthropic API key not configured")
+
+    # Build messages with images + extraction prompt
+    user_content = list(image_contents)
+    user_content.append({
+        "type": "text",
+        "text": (
+            "This is a scanned auction document. Extract the fields from the images above.\n\n"
+            + EXTRACTION_PROMPT.replace("{document_text}", "[See images above]")
+        ),
+    })
+
+    try:
+        response = extractor.client.messages.create(
+            model=extractor.MODEL,
+            max_tokens=2000,
+            system=extractor.SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_content}],
+        )
+
+        # Parse response
+        response_text = response.content[0].text
+        parsed = extractor._parse_response(response_text)
+
+        # Calculate cost
+        from services.haiku_extractor import TokenUsage
+        tokens = TokenUsage(
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+        cost = tokens.calculate_cost(extractor.MODEL)
+
+        if not parsed:
+            return VisionExtractResponse(
+                error="Failed to parse extraction response",
+                page_count=page_count,
+                cost_usd=cost,
+            )
+
+        # Flatten fields for frontend consumption
+        fields = {}
+        fields_data = parsed.get("fields", {})
+        if fields_data:
+            for key, val in fields_data.items():
+                if isinstance(val, dict):
+                    fields[key] = val.get("value")
+                else:
+                    fields[key] = val
+        else:
+            # Flat format
+            for key, val in parsed.items():
+                if key not in ("auction_type", "error"):
+                    fields[key] = val
+            if parsed.get("auction_type"):
+                fields["auction_type"] = parsed["auction_type"]
+
+        return VisionExtractResponse(
+            fields=fields,
+            extraction_mode="vision",
+            page_count=page_count,
+            cost_usd=cost,
+        )
+
+    except Exception as e:
+        logger.error(f"Vision extraction failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Vision extraction failed: {e}")

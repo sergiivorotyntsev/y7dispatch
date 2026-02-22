@@ -3,6 +3,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api'
 import ExportPreviewModal from '../components/ExportPreviewModal'
 
+// Email context + manual entry components
+import EmailContextPanel from '../components/review/EmailContextPanel'
+import ManualEntryBanner from '../components/review/ManualEntryBanner'
+
 // Section components (CD-aligned layout)
 import ExtractionInfoBar from '../components/review/ExtractionInfoBar'
 import VehicleSection from '../components/review/VehicleSection'
@@ -317,6 +321,41 @@ function Review() {
           required: false,
         },
       }
+    })
+  }
+
+  // Handle vision extraction results — populate fields from AI vision
+  function handleVisionResult(visionFields) {
+    setFields(prev => {
+      const updated = { ...prev }
+      for (const [key, value] of Object.entries(visionFields)) {
+        if (value == null) continue
+        const strValue = String(value)
+        if (updated[key]) {
+          // Update existing field
+          updated[key] = {
+            ...updated[key],
+            predicted: strValue,
+            corrected: strValue,
+            status: 'review', // operator must review
+          }
+        } else {
+          // Create new field entry
+          updated[key] = {
+            key,
+            label: _formatFieldLabel(key),
+            predicted: strValue,
+            corrected: strValue,
+            confidence: 0.7,
+            status: 'review',
+            export: true,
+            section: 'additional',
+            fieldType: 'text',
+            required: false,
+          }
+        }
+      }
+      return updated
     })
   }
 
@@ -745,6 +784,14 @@ function Review() {
 
             {/* Section 1: Extraction Info Bar */}
             <ExtractionInfoBar run={run} />
+
+            {/* Email Context (for email-sourced documents) */}
+            <EmailContextPanel runId={runId} document={document} />
+
+            {/* Manual Entry Banner (for scanned/unextractable PDFs) */}
+            {run.status === 'manual_required' && (
+              <ManualEntryBanner runId={runId} onVisionResult={handleVisionResult} />
+            )}
 
             {/* Section 2: Vehicle Information */}
             <VehicleSection
