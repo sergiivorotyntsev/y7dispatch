@@ -146,17 +146,25 @@ class DistanceService:
         """
         if self.google_api_key:
             try:
-                return self._google_distance(origin_zip, dest_zip)
+                result = self._google_distance(origin_zip, dest_zip)
+                logger.info("[DistanceService] %s → %s: %.1f mi via google", origin_zip, dest_zip, result.distance_miles or 0)
+                return result
             except Exception as e:
-                logger.warning("Google Distance Matrix failed: %s", e)
+                logger.warning("Google Distance Matrix failed for %s → %s: %s", origin_zip, dest_zip, e)
+        else:
+            logger.info("[DistanceService] No Google API key — skipping Google for %s → %s", origin_zip, dest_zip)
 
         # OSRM fallback (free, no key required)
         try:
-            return self._osrm_distance(origin_zip, dest_zip)
+            result = self._osrm_distance(origin_zip, dest_zip)
+            logger.info("[DistanceService] %s → %s: %.1f mi via osrm (fallback)", origin_zip, dest_zip, result.distance_miles or 0)
+            return result
         except Exception as e:
-            logger.warning("OSRM fallback failed: %s", e)
+            logger.warning("OSRM fallback failed for %s → %s: %s", origin_zip, dest_zip, e)
 
-        return self._haversine_distance(origin_zip, dest_zip)
+        result = self._haversine_distance(origin_zip, dest_zip)
+        logger.info("[DistanceService] %s → %s: %.1f mi via haversine (last resort)", origin_zip, dest_zip, result.distance_miles or 0)
+        return result
 
     def _google_distance(self, origin_zip: str, dest_zip: str) -> DistanceResult:
         """Call Google Distance Matrix API."""
@@ -328,13 +336,17 @@ class DistanceService:
             # Check cache first
             cached = self._get_cached_distance(pickup_zip, wh["id"])
             if cached:
+                source = cached.get("distance_source") or "cached"
                 dist = DistanceResult(
                     distance_miles=cached["distance_miles"],
                     distance_text=cached["distance_text"] or "",
                     duration_minutes=cached["duration_minutes"],
                     duration_text=cached["duration_text"] or "",
-                    source=cached.get("distance_source") or "cached",
+                    source=source,
                 )
+                logger.info("[DistanceService] %s → %s (wh %s): %.1f mi via %s (cached)",
+                            pickup_zip, wh_zip, wh.get("code", "?"),
+                            cached["distance_miles"] or 0, source)
                 price = cached.get("transport_price")
                 price_source = cached.get("transport_price_source", "")
             else:
