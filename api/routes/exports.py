@@ -12,7 +12,7 @@ Includes:
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -1424,6 +1424,15 @@ async def export_to_cd(
 
                 # Update run status
                 ExtractionRunRepository.update(run_id, status="exported")
+
+                # Sync review_items status to exported
+                from api.database import get_connection
+                with get_connection() as conn:
+                    conn.execute(
+                        "UPDATE review_items SET status = 'exported' WHERE run_id = ? AND status IN ('pending', 'approved')",
+                        (run_id,),
+                    )
+                    conn.commit()
             else:
                 error_msg = response.get("error", "Unknown error")
                 cd_status = response.get("status_code", "?")
@@ -2637,7 +2646,7 @@ async def cancel_batch_job(job_id: int):
     BatchJobRepository.update(
         job_id,
         status=BatchJobStatus.CANCELLED.value,
-        completed_at=datetime.utcnow().isoformat(),
+        completed_at=datetime.now(timezone.utc).isoformat(),
     )
 
     return {

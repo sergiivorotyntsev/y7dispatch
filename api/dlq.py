@@ -30,7 +30,7 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 from uuid import uuid4
@@ -156,7 +156,7 @@ def calculate_next_retry(retry_count: int) -> datetime:
         * (RETRY_CONFIG["exponential_base"] ** retry_count),
         RETRY_CONFIG["max_delay_seconds"],
     )
-    return datetime.utcnow() + timedelta(seconds=delay)
+    return datetime.now(timezone.utc) + timedelta(seconds=delay)
 
 
 class DLQService:
@@ -223,7 +223,7 @@ class DLQService:
         Returns:
             Created DLQEntry
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         entry = DLQEntry(
             id=str(uuid4()),
             email_id=email_id,
@@ -333,7 +333,7 @@ class DLQService:
     def get_pending_entries(self) -> list[DLQEntry]:
         """Get entries that are pending and ready for retry."""
         with get_connection() as conn:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             rows = conn.execute(
                 """
@@ -379,7 +379,7 @@ class DLQService:
                 SET status = 'retrying', updated_at = ?
                 WHERE id = ?
                 """,
-                (datetime.utcnow().isoformat(), entry_id),
+                (datetime.now(timezone.utc).isoformat(), entry_id),
             )
             conn.commit()
 
@@ -415,7 +415,7 @@ class DLQService:
                         new_status.value,
                         new_retry_count,
                         calculate_next_retry(new_retry_count).isoformat(),
-                        datetime.utcnow().isoformat(),
+                        datetime.now(timezone.utc).isoformat(),
                         entry_id,
                     ),
                 )
@@ -441,7 +441,7 @@ class DLQService:
             True if resolved successfully
         """
         with get_connection() as conn:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             result = conn.execute(
                 """

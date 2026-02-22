@@ -1165,7 +1165,7 @@ class SetHoldRequest(BaseModel):
 @router.post("/{id}/set-hold")
 async def set_hold(id: int, request: SetHoldRequest):
     """Put a document on hold with a reason and optional note."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     from api.database import get_connection
 
@@ -1173,7 +1173,7 @@ async def set_hold(id: int, request: SetHoldRequest):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat() + "Z"
 
     with get_connection() as conn:
         conn.execute(
@@ -1221,7 +1221,7 @@ async def archive_document(id: int):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat() + "Z"
 
     with get_connection() as conn:
         conn.execute(

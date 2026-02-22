@@ -12,7 +12,7 @@ Endpoints:
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Query
@@ -80,7 +80,7 @@ class DriftAlert(BaseModel):
 
 def _get_date_range(days: int = 7) -> tuple[str, str]:
     """Get date range for queries."""
-    end_date = datetime.utcnow()
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
     return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
@@ -291,7 +291,7 @@ async def get_drift_alerts(
     with get_connection() as conn:
         # Check fill rate by auction for last N days
         for check_days in range(1, days_threshold + 1):
-            date = (datetime.utcnow() - timedelta(days=check_days)).strftime("%Y-%m-%d")
+            date = (datetime.now(timezone.utc) - timedelta(days=check_days)).strftime("%Y-%m-%d")
 
             rows = conn.execute(
                 """
@@ -330,7 +330,7 @@ async def get_drift_alerts(
                             current_value=fill_rate,
                             threshold=DRIFT_THRESHOLDS["required_fill_rate"]["critical"],
                             days_below=check_days,
-                            created_at=datetime.utcnow().isoformat(),
+                            created_at=datetime.now(timezone.utc).isoformat(),
                         )
                     )
                 elif (
@@ -346,7 +346,7 @@ async def get_drift_alerts(
                             current_value=fill_rate,
                             threshold=DRIFT_THRESHOLDS["required_fill_rate"]["warning"],
                             days_below=check_days,
-                            created_at=datetime.utcnow().isoformat(),
+                            created_at=datetime.now(timezone.utc).isoformat(),
                         )
                     )
 
@@ -362,7 +362,7 @@ async def get_drift_alerts(
                             current_value=ocr_rate,
                             threshold=DRIFT_THRESHOLDS["ocr_rate"]["critical"],
                             days_below=check_days,
-                            created_at=datetime.utcnow().isoformat(),
+                            created_at=datetime.now(timezone.utc).isoformat(),
                         )
                     )
 
@@ -378,7 +378,7 @@ async def get_drift_alerts(
                             current_value=confidence,
                             threshold=DRIFT_THRESHOLDS["classification_confidence"]["critical"],
                             days_below=check_days,
-                            created_at=datetime.utcnow().isoformat(),
+                            created_at=datetime.now(timezone.utc).isoformat(),
                         )
                     )
 

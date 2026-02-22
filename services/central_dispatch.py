@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import requests
@@ -22,7 +22,7 @@ class TokenInfo:
 
     @property
     def is_expired(self) -> bool:
-        return datetime.utcnow() >= (self.expires_at - timedelta(minutes=5))
+        return datetime.now(timezone.utc) >= (self.expires_at - timedelta(minutes=5))
 
 
 class CentralDispatchClient:
@@ -76,7 +76,7 @@ class CentralDispatchClient:
         token_data = response.json()
         self._token_info = TokenInfo(
             access_token=token_data["access_token"],
-            expires_at=datetime.utcnow() + timedelta(seconds=token_data.get("expires_in", 3600)),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=token_data.get("expires_in", 3600)),
         )
         return self._token_info.access_token
 

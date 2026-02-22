@@ -5,7 +5,7 @@ Run and manage extraction runs on documents.
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -1668,7 +1668,7 @@ async def get_extraction_stats():
         total = conn.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0]
 
         # Last 24h
-        yesterday = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         last_24h = conn.execute(
             "SELECT COUNT(*) FROM extraction_runs WHERE created_at >= ?", (yesterday,)
         ).fetchone()[0]

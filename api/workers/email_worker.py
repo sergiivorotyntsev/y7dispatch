@@ -18,7 +18,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from email.header import decode_header
 from pathlib import Path
 from typing import Any, Optional
@@ -993,7 +993,7 @@ class EmailWorker:
 
             if part_filename == filename:
                 # Generate unique filename
-                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
                 safe_filename = re.sub(r"[^\w.-]", "_", filename)
                 unique_filename = f"{timestamp}_{uuid.uuid4().hex[:8]}_{safe_filename}"
 
@@ -1122,7 +1122,7 @@ class EmailWorker:
     ):
         """Log email activity."""
         entry_id = str(uuid.uuid4())[:8]
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat() + "Z"
 
         with get_connection() as conn:
             # Create table if needed
@@ -1427,7 +1427,7 @@ class EmailWorker:
                         self._update_email_log(
                             msg.message_id,
                             status="processed",
-                            processed_at=datetime.utcnow().isoformat() + "Z",
+                            processed_at=datetime.now(timezone.utc).isoformat() + "Z",
                             extraction_run_ids=json.dumps(run_ids) if run_ids else None,
                             gate_pass=gate_pass,
                         )

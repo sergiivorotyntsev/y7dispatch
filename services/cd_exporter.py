@@ -11,7 +11,7 @@ Features:
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -159,7 +159,7 @@ class CDFieldMapper:
 
         # Available date
         offset_days = self.get_constant("available_date_offset_days", 0)
-        available_date = datetime.utcnow() + timedelta(days=offset_days)
+        available_date = datetime.now(timezone.utc) + timedelta(days=offset_days)
         result["available_date"] = available_date.strftime("%Y-%m-%dT00:00:00Z")
 
         # Expiration date

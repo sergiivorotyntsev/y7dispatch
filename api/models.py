@@ -15,7 +15,7 @@ Schema Version: 4
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -1004,7 +1004,7 @@ class AuctionTypeRepository:
         if "extractor_config" in kwargs and isinstance(kwargs["extractor_config"], dict):
             kwargs["extractor_config"] = json.dumps(kwargs["extractor_config"])
 
-        kwargs["updated_at"] = datetime.utcnow().isoformat()
+        kwargs["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         set_clause = ", ".join(f"{k} = ?" for k in kwargs.keys())
         values = list(kwargs.values()) + [id]
@@ -1025,7 +1025,7 @@ class AuctionTypeRepository:
 
             conn.execute(
                 "UPDATE auction_types SET is_active = FALSE, updated_at = ? WHERE id = ?",
-                (datetime.utcnow().isoformat(), id),
+                (datetime.now(timezone.utc).isoformat(), id),
             )
             conn.commit()
             return True
@@ -1364,7 +1364,7 @@ class ReviewItemRepository:
         if not kwargs:
             return False
 
-        kwargs["reviewed_at"] = datetime.utcnow().isoformat()
+        kwargs["reviewed_at"] = datetime.now(timezone.utc).isoformat()
 
         set_clause = ", ".join(f"{k} = ?" for k in kwargs.keys())
         values = list(kwargs.values()) + [id]
@@ -1378,7 +1378,7 @@ class ReviewItemRepository:
     def update_batch(items: list[dict]) -> int:
         """Update multiple review items."""
         updated = 0
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with get_connection() as conn:
             for item in items:
@@ -1413,7 +1413,7 @@ class ReviewItemRepository:
     @staticmethod
     def submit_review(run_id: int, items: list[dict], reviewer: str = None) -> dict:
         """Submit a complete review for a run."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         updated = 0
         approved = 0
         corrected = 0
@@ -1689,7 +1689,7 @@ class ModelVersionRepository:
     @staticmethod
     def promote(id: int) -> bool:
         """Promote a model version to active (and archive previous active)."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with get_connection() as conn:
             # Get the model to promote
@@ -1740,7 +1740,7 @@ class ModelVersionRepository:
         with get_connection() as conn:
             conn.execute(
                 "UPDATE model_versions SET metrics_json = ?, status = 'ready', trained_at = ? WHERE id = ?",
-                (json.dumps(metrics), datetime.utcnow().isoformat(), id),
+                (json.dumps(metrics), datetime.now(timezone.utc).isoformat(), id),
             )
             conn.commit()
             return True
@@ -1845,7 +1845,7 @@ class ExportJobRepository:
         validation_errors: list = None,
     ) -> bool:
         """Update export job status."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with get_connection() as conn:
             updates = {"status": status}

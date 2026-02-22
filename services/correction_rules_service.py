@@ -14,7 +14,7 @@ At scale (100+ docs/day), accumulated rules provide +3-5% accuracy improvement.
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlmodel import Session, select
@@ -105,7 +105,7 @@ class CorrectionRulesService:
                 corrected_fields=json.dumps(corrected_fields),
                 raw_text=extracted_text[:5000] if extracted_text else None,
                 is_validated=mark_validated,
-                validated_at=datetime.utcnow() if mark_validated else None,
+                validated_at=datetime.now(timezone.utc) if mark_validated else None,
             )
             self.session.add(example)
 
@@ -425,7 +425,7 @@ class CorrectionRulesService:
         rule.confidence = rule.confidence * old_weight + new_confidence * new_weight
 
         rule.validation_count += total_count
-        rule.updated_at = datetime.utcnow()
+        rule.updated_at = datetime.now(timezone.utc)
 
         self.session.commit()
 

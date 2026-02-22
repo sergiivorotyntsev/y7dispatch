@@ -484,6 +484,16 @@ async def submit_review(data: ReviewSubmitRequest):
         outputs_json=json.dumps(outputs) if outputs else None,
     )
 
+    # Sync review_items status for remaining pending items
+    if new_status in ("approved", "reviewed"):
+        from api.database import get_connection
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE review_items SET status = 'approved' WHERE run_id = ? AND status = 'pending'",
+                (data.run_id,),
+            )
+            conn.commit()
+
     # Build message
     if data.mark_for_export:
         message = f"Approved for export. {items_updated} items reviewed."
@@ -512,7 +522,16 @@ async def approve_run(run_id: int):
 
     ExtractionRunRepository.update(run_id, status="reviewed")
 
-    return {"run_id": run_id, "status": "reviewed", "message": "Run marked as reviewed"}
+    # Sync review_items status — mark all pending items as approved
+    from api.database import get_connection
+    with get_connection() as conn:
+        updated = conn.execute(
+            "UPDATE review_items SET status = 'approved' WHERE run_id = ? AND status = 'pending'",
+            (run_id,),
+        ).rowcount
+        conn.commit()
+
+    return {"run_id": run_id, "status": "reviewed", "items_approved": updated, "message": "Run marked as reviewed"}
 
 
 # DISABLED 2026-02-11: ML training disabled per directive v3.1

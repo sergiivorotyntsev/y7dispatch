@@ -4,7 +4,7 @@ import hashlib
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -59,7 +59,7 @@ class IdempotencyStore:
             return in_reply_to.strip("<>")
         if message_id:
             return message_id.strip("<>")
-        return f"unknown-{datetime.utcnow().isoformat()}"
+        return f"unknown-{datetime.now(timezone.utc).isoformat()}"
 
     def generate_idempotency_key(
         self, thread_root_id: str, attachment_hash: str, namespace: str = "email"

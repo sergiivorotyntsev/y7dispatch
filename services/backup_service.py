@@ -33,7 +33,7 @@ import shutil
 import sqlite3
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -155,7 +155,7 @@ class BackupService:
         import time
 
         start_time = time.time()
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
         backup_id = f"backup_{timestamp.strftime('%Y%m%d_%H%M%S')}"
 
         try:
@@ -301,7 +301,7 @@ class BackupService:
             json.dump(
                 {
                     "backup_id": backup_id,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "size_bytes": dest_path.stat().st_size,
                     "checksum": self._calculate_checksum(dest_path),
                 },

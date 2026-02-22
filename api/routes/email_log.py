@@ -7,7 +7,7 @@ manual process/skip actions, and aggregate stats.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -133,7 +133,7 @@ async def process_email(email_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Email already processed")
 
     # Update status to ready for next poll_once to pick up
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat() + "Z"
     with get_connection() as conn:
         conn.execute(
             "UPDATE email_log SET status = 'ready', processed_at = ? WHERE id = ?",

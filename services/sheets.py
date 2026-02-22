@@ -9,7 +9,7 @@ This module provides:
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -341,7 +341,7 @@ class SheetsClient:
         service = self._get_service()
 
         # Set timestamps
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat() + "Z"
         record.created_at = now
         record.updated_at = now
 
@@ -375,7 +375,7 @@ class SheetsClient:
         """Update an existing record at the specified row."""
         service = self._get_service()
 
-        record.updated_at = datetime.utcnow().isoformat() + "Z"
+        record.updated_at = datetime.now(timezone.utc).isoformat() + "Z"
 
         service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
@@ -497,7 +497,7 @@ class SheetsClient:
 
         record = PickupRecord.from_row(rows[0])
         record.status = status.value
-        record.updated_at = datetime.utcnow().isoformat() + "Z"
+        record.updated_at = datetime.now(timezone.utc).isoformat() + "Z"
 
         if error_message:
             record.error_message = error_message

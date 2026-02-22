@@ -21,7 +21,7 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -158,7 +158,7 @@ async def _run_email_poll(since_days: int = 7):
             from api.workers.email_worker import get_worker
             worker = get_worker()
             await asyncio.to_thread(worker.poll_once, since_days=since_days)
-            _poll_state["last_poll_at"] = datetime.utcnow().isoformat() + "Z"
+            _poll_state["last_poll_at"] = datetime.now(timezone.utc).isoformat() + "Z"
             _poll_state["last_poll_error"] = None
             _poll_state["polls_completed"] += 1
         except Exception as e:
@@ -269,7 +269,7 @@ async def poll_email_now(since_days: int = Query(0, ge=0, le=30)):
 
             worker = get_worker()
             results = await asyncio.to_thread(worker.poll_once, since_days=since_days)
-            _poll_state["last_poll_at"] = datetime.utcnow().isoformat() + "Z"
+            _poll_state["last_poll_at"] = datetime.now(timezone.utc).isoformat() + "Z"
             _poll_state["last_poll_error"] = None
             _poll_state["polls_completed"] += 1
 

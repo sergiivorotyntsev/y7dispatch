@@ -6,7 +6,7 @@ Supports:
 - Gmail (Google OAuth2)
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -105,7 +105,7 @@ def store_token(
                 encrypt_secret(refresh_token) if refresh_token else None,
                 expires_at,
                 scope,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
             ),
         )
         conn.commit()
@@ -143,7 +143,7 @@ def is_token_expired(expires_at: Optional[str]) -> bool:
     try:
         expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
         # Consider expired if less than 5 minutes left
-        return expiry < datetime.utcnow() + timedelta(minutes=5)
+        return expiry < datetime.now(timezone.utc) + timedelta(minutes=5)
     except Exception:
         return True
 
@@ -342,7 +342,7 @@ async def oauth_callback(
 
         # Calculate expiry
         expires_in = tokens.get("expires_in", 3600)
-        expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat() + "Z"
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() + "Z"
 
         # Get user email from token
         email = email_config.get("email_address", "user@unknown.com")
@@ -403,7 +403,7 @@ async def get_microsoft_token():
             )
 
             expires_in = new_tokens.get("expires_in", 3600)
-            expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat() + "Z"
+            expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() + "Z"
 
             store_token(
                 provider="microsoft",

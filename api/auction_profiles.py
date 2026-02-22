@@ -13,7 +13,7 @@ Examples:
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -391,7 +391,7 @@ class AuctionProfileRepository:
         if not profile.id:
             return False
 
-        profile.updated_at = datetime.utcnow().isoformat()
+        profile.updated_at = datetime.now(timezone.utc).isoformat()
         profile.version += 1
 
         with get_connection() as conn:
@@ -419,7 +419,7 @@ class AuctionProfileRepository:
         with get_connection() as conn:
             conn.execute(
                 "UPDATE auction_profiles SET is_active = FALSE, updated_at = ? WHERE id = ?",
-                (datetime.utcnow().isoformat(), id),
+                (datetime.now(timezone.utc).isoformat(), id),
             )
             conn.commit()
             return True

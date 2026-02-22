@@ -18,7 +18,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -309,14 +309,14 @@ class BatchJobProcessor:
         # Initialize progress
         progress = BatchJobProgress(
             total=len(run_ids),
-            started_at=datetime.utcnow().isoformat(),
+            started_at=datetime.now(timezone.utc).isoformat(),
         )
 
         # Update job status
         BatchJobRepository.update(
             job_id,
             status=BatchJobStatus.RUNNING.value,
-            started_at=datetime.utcnow().isoformat(),
+            started_at=datetime.now(timezone.utc).isoformat(),
             progress={
                 "total": progress.total,
                 "processed": 0,
@@ -389,7 +389,7 @@ class BatchJobProcessor:
                     "percent_complete": 100.0,
                 },
                 results=[r.to_dict() for r in results],
-                completed_at=datetime.utcnow().isoformat(),
+                completed_at=datetime.now(timezone.utc).isoformat(),
             )
 
             return {
@@ -409,7 +409,7 @@ class BatchJobProcessor:
                 job_id,
                 status=BatchJobStatus.FAILED.value,
                 error_message=str(e),
-                completed_at=datetime.utcnow().isoformat(),
+                completed_at=datetime.now(timezone.utc).isoformat(),
             )
             raise
 
@@ -483,7 +483,7 @@ class BatchJobProcessor:
                 run_id=run_id,
             )
 
-        result.processed_at = datetime.utcnow().isoformat()
+        result.processed_at = datetime.now(timezone.utc).isoformat()
 
         # Create export job record
         job_id = ExportJobRepository.create(

@@ -11,7 +11,7 @@ Services:
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from api.database import get_connection
@@ -67,7 +67,7 @@ def save_credential(service: str, config: dict, enabled: bool = False) -> None:
         raise ValueError(f"Invalid service: {service}. Must be one of {VALID_SERVICES}")
 
     init_credentials_table()
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat() + "Z"
     encrypted = encrypt_secret(json.dumps(config))
 
     with get_connection() as conn:
@@ -207,7 +207,7 @@ def list_credentials() -> list[dict]:
 def update_test_status(service: str, status: str) -> None:
     """Update the last test status for a service."""
     init_credentials_table()
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat() + "Z"
 
     with get_connection() as conn:
         conn.execute(

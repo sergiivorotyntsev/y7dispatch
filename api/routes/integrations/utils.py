@@ -11,7 +11,7 @@ import base64
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -131,7 +131,7 @@ def log_integration_action(
 ) -> str:
     """Log an integration action to the audit log."""
     entry_id = str(uuid.uuid4())[:8]
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    timestamp = datetime.now(timezone.utc).isoformat() + "Z"
 
     with get_connection() as conn:
         init_audit_log_table()

@@ -19,7 +19,7 @@ Examples:
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -236,7 +236,7 @@ class WarehouseConstantsRepository:
         if not wc.id:
             return False
 
-        wc.updated_at = datetime.utcnow().isoformat()
+        wc.updated_at = datetime.now(timezone.utc).isoformat()
 
         with get_connection() as conn:
             conn.execute(

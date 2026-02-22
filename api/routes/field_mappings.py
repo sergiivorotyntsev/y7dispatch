@@ -9,7 +9,7 @@ Manage extraction field mappings for each auction type:
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -349,7 +349,7 @@ async def create_template_version(auction_type_id: int, data: TemplateVersionCre
         description=data.description,
         is_active=data.is_active,
         field_count=field_count,
-        created_at=datetime.utcnow().isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -419,7 +419,7 @@ async def create_field(auction_type_id: int, data: FieldMappingCreate):
         if existing:
             raise HTTPException(status_code=400, detail=f"Field '{data.source_key}' already exists")
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         cursor = conn.execute(
             """
@@ -508,7 +508,7 @@ async def update_field(auction_type_id: int, field_id: int, data: FieldMappingUp
     if not updates:
         return await get_field(auction_type_id, field_id)
 
-    updates["updated_at"] = datetime.utcnow().isoformat()
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
     values = list(updates.values()) + [field_id, auction_type_id]
@@ -542,7 +542,7 @@ async def delete_field(
             result = conn.execute(
                 """UPDATE field_mappings SET is_active = FALSE, updated_at = ?
                    WHERE id = ? AND auction_type_id = ?""",
-                (datetime.utcnow().isoformat(), field_id, auction_type_id),
+                (datetime.now(timezone.utc).isoformat(), field_id, auction_type_id),
             )
         conn.commit()
 

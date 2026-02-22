@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -748,7 +748,7 @@ async def update_field_configs(data: FieldConfigsBatchUpdate):
     """
     _init_field_configs_table()
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     updated = 0
     created = 0
 
@@ -817,7 +817,7 @@ async def update_single_field_config(field_key: str, data: FieldConfigUpdate):
     """
     _init_field_configs_table()
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     with get_connection() as conn:
         existing = conn.execute(

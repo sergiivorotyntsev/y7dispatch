@@ -14,7 +14,7 @@ Key behaviors:
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from schemas.sheets_schema_v3 import (
@@ -348,7 +348,7 @@ class SheetsExporter:
         - updated_at = now
         """
         headers = self._get_headers()
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat() + "Z"
 
         # Build row with defaults
         row_data = {}
@@ -428,7 +428,7 @@ class SheetsExporter:
         6. force_refresh=TRUE -> overwrite even non-empty (dangerous)
         """
         headers = self._get_headers()
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat() + "Z"
 
         # Read protection flags
         row_status = existing_data.get("row_status", RowStatus.NEW.value)
@@ -649,7 +649,7 @@ class SheetsExporter:
 
         row_number, existing_data = result
         headers = self._get_headers()
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat() + "Z"
 
         # Build updates
         updates = {
@@ -714,7 +714,7 @@ class SheetsExporter:
         # Build updates
         updates = {
             "cd_payload_snapshot": json.dumps(payload, default=str),
-            "cd_last_attempt_at": datetime.utcnow().isoformat() + "Z",
+            "cd_last_attempt_at": datetime.now(timezone.utc).isoformat() + "Z",
         }
 
         # Build row values

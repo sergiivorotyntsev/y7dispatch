@@ -2,7 +2,7 @@
 
 import os
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ router = APIRouter()
 
 # Version info - updated on build/deploy
 APP_VERSION = "1.1.0"
-BUILD_TIME = datetime.utcnow().isoformat() + "Z"
+BUILD_TIME = datetime.now(timezone.utc).isoformat() + "Z"
 
 
 def get_git_info() -> dict[str, str]:

@@ -8,7 +8,7 @@ Supports auto-sync from warehouses.yaml on startup.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -190,7 +190,7 @@ def _sync_warehouses_from_yaml(conn):
             data = yaml.safe_load(f)
 
         warehouses = data.get("warehouses", [])
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         for wh in warehouses:
             code = str(wh.get("id", "")).upper()
@@ -246,7 +246,7 @@ async def create_warehouse(data: WarehouseCreate):
                 status_code=400, detail=f"Warehouse with code '{data.code}' already exists"
             )
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         cursor = conn.execute(
             """
@@ -355,7 +355,7 @@ async def sync_warehouses_from_yaml():
         warehouses = data.get("warehouses", [])
         added = 0
         skipped = 0
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with get_connection() as conn:
             for wh in warehouses:
@@ -444,7 +444,7 @@ async def update_warehouse(id: int, data: WarehouseUpdate):
     if not updates:
         return await get_warehouse(id)
 
-    updates["updated_at"] = datetime.utcnow().isoformat()
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
     values = list(updates.values()) + [id]
@@ -472,7 +472,7 @@ async def delete_warehouse(
         else:
             result = conn.execute(
                 "UPDATE warehouses SET is_active = FALSE, updated_at = ? WHERE id = ?",
-                (datetime.utcnow().isoformat(), id),
+                (datetime.now(timezone.utc).isoformat(), id),
             )
         conn.commit()
 

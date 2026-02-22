@@ -19,7 +19,7 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -123,7 +123,7 @@ def _log_webhook_event(
 ):
     """Log webhook event to database."""
     entry_id = str(uuid.uuid4())[:8]
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    timestamp = datetime.now(timezone.utc).isoformat() + "Z"
 
     with get_connection() as conn:
         conn.execute("""
@@ -274,7 +274,7 @@ async def receive_email_webhook(
                 continue
 
             # Save file
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             safe_filename = "".join(
                 c if c.isalnum() or c in ".-_" else "_" for c in attachment.filename
             )
@@ -497,7 +497,7 @@ async def test_webhook_endpoint(
             "Webhook endpoint is ready" if auth_valid else "Invalid or missing X-Webhook-Secret"
         ),
         "authentication": "valid" if auth_valid else "invalid",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
     }
 
 
