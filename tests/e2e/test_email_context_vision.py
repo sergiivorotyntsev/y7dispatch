@@ -310,6 +310,14 @@ class TestVisionExtract:
         mock_anthropic_client = MagicMock()
         mock_anthropic_client.messages.create.return_value = mock_response
 
+        # Patch __init__ to inject mock client — no __new__ patching needed
+        original_init = HaikuExtractor.__init__
+
+        def fake_init(self, **kwargs):
+            self.api_key = "test-key"
+            self._client = mock_anthropic_client
+            self.enable_caching = False
+
         with patch("fitz.open") as mock_fitz:
             # Mock PDF document with one page
             mock_page = MagicMock()
@@ -322,21 +330,9 @@ class TestVisionExtract:
             mock_doc.__getitem__ = lambda self, idx: mock_page
             mock_fitz.return_value = mock_doc
 
-            # Patch the HaikuExtractor to have a test API key and mock client
-            with patch.object(HaikuExtractor, "__init__", lambda self, **kw: None):
-                # Pre-set instance attributes that __init__ would normally set
-                original_new = HaikuExtractor.__new__
-
-                def patched_new(cls, **kwargs):
-                    inst = original_new(cls)
-                    inst.api_key = "test-key"
-                    inst._client = mock_anthropic_client
-                    inst.enable_caching = False
-                    return inst
-
-                with patch.object(HaikuExtractor, "__new__", patched_new):
-                    http_client = TestClient(app)
-                    resp = http_client.post("/api/extractions/1/vision-extract")
+            with patch.object(HaikuExtractor, "__init__", fake_init):
+                http_client = TestClient(app)
+                resp = http_client.post("/api/extractions/1/vision-extract")
 
         assert resp.status_code == 200
         data = resp.json()
