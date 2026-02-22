@@ -433,7 +433,34 @@ function EmailLog() {
                                 <div className="flex flex-wrap gap-2">
                                   {attachments.map((name, i) => {
                                     const isPdf = name.toLowerCase().endsWith('.pdf')
-                                    return (
+                                    // Find matching linked document for this attachment
+                                    const linkedDoc = (email.linked_documents || []).find(ld =>
+                                      ld.filename?.includes(name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10)) ||
+                                      name.includes(ld.filename?.split('_').pop()?.replace(/[^a-zA-Z0-9.]/g, '') || '___NOMATCH')
+                                    )
+                                    // If only one linked doc and one PDF attachment, match them
+                                    const singleMatch = isPdf && (email.linked_documents || []).length === 1 && attachments.filter(a => a.toLowerCase().endsWith('.pdf')).length <= 2
+                                      ? email.linked_documents[0]
+                                      : null
+                                    const docLink = linkedDoc || singleMatch
+
+                                    return docLink ? (
+                                      <a
+                                        key={i}
+                                        href={`/api/documents/${docLink.document_id}/file`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium cursor-pointer hover:shadow-sm transition-shadow ${
+                                          isPdf ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                        title={`${name} — Click to view`}
+                                      >
+                                        <svg className="w-3 h-3 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                        </svg>
+                                        {name.length > 30 ? name.substring(0, 27) + '...' : name}
+                                      </a>
+                                    ) : (
                                       <span
                                         key={i}
                                         className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium ${
@@ -451,18 +478,31 @@ function EmailLog() {
                                 <p className="text-sm text-gray-400">No attachments</p>
                               )}
 
-                              {runIds.length > 0 && (
+                              {(email.linked_documents || []).length > 0 && (
                                 <div className="mt-3">
-                                  <h4 className="text-xs font-medium text-gray-500 uppercase mb-1">Linked Extractions</h4>
+                                  <h4 className="text-xs font-medium text-gray-500 uppercase mb-1">Linked Documents</h4>
                                   <div className="flex flex-wrap gap-2">
-                                    {runIds.map((rid) => (
-                                      <button
-                                        key={rid}
-                                        onClick={() => navigate(`/review/${rid}`)}
-                                        className="text-xs text-blue-600 hover:text-blue-800 underline"
-                                      >
-                                        Run #{rid}
-                                      </button>
+                                    {email.linked_documents.map((ld) => (
+                                      <div key={ld.run_id} className="flex items-center gap-1.5">
+                                        <button
+                                          onClick={() => navigate(`/review/${ld.run_id}`)}
+                                          className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+                                        >
+                                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                          </svg>
+                                          Open in Review
+                                        </button>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                          ld.run_status === 'exported' ? 'bg-green-100 text-green-700' :
+                                          ld.run_status === 'needs_review' ? 'bg-yellow-100 text-yellow-700' :
+                                          ld.run_status === 'manual_required' ? 'bg-red-100 text-red-700' :
+                                          'bg-gray-100 text-gray-600'
+                                        }`}>
+                                          {ld.run_status?.replace('_', ' ') || 'unknown'}
+                                        </span>
+                                      </div>
                                     ))}
                                   </div>
                                 </div>

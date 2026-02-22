@@ -115,6 +115,32 @@ async def get_email_log(
                 item["extraction_run_ids"] = []
         items.append(item)
 
+    # Enrich with linked document IDs for download links
+    all_run_ids = []
+    for item in items:
+        all_run_ids.extend(item.get("extraction_run_ids") or [])
+    run_to_doc = {}
+    if all_run_ids:
+        with get_connection() as conn:
+            ph = ",".join("?" * len(all_run_ids))
+            doc_rows = conn.execute(
+                f"SELECT er.id as run_id, er.document_id, er.status as run_status, d.filename "
+                f"FROM extraction_runs er JOIN documents d ON er.document_id = d.id "
+                f"WHERE er.id IN ({ph})",
+                all_run_ids,
+            ).fetchall()
+            for dr in doc_rows:
+                run_to_doc[dr["run_id"]] = {
+                    "run_id": dr["run_id"],
+                    "document_id": dr["document_id"],
+                    "run_status": dr["run_status"],
+                    "filename": dr["filename"],
+                }
+    for item in items:
+        item["linked_documents"] = [
+            run_to_doc[rid] for rid in (item.get("extraction_run_ids") or []) if rid in run_to_doc
+        ]
+
     return {"items": items, "total": total}
 
 

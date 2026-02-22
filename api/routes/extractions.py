@@ -2459,12 +2459,15 @@ class VisionExtractResponse(BaseModel):
 
 
 @router.post("/{run_id}/vision-extract", response_model=VisionExtractResponse)
-async def vision_extract(run_id: int):
+async def vision_extract(run_id: int, auto_save: bool = Query(False, description="Save results to DB and set status to needs_review")):
     """
     Run vision-based extraction on a scanned PDF.
 
     Converts PDF pages to images and sends to Claude Haiku Vision API.
-    Returns extracted fields for operator review (does NOT auto-save).
+    Returns extracted fields for operator review.
+
+    If auto_save=true, saves extracted fields to the run's outputs_json
+    and changes status from manual_required to needs_review.
     """
     import base64
     import json
@@ -2582,6 +2585,25 @@ async def vision_extract(run_id: int):
                     fields[key] = val
             if parsed.get("auction_type"):
                 fields["auction_type"] = parsed["auction_type"]
+
+        # Auto-save: persist to DB and update status
+        if auto_save and fields:
+            import json as json_mod
+            with get_connection() as conn:
+                # Merge vision fields into existing outputs
+                existing = conn.execute(
+                    "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+                ).fetchone()
+                existing_outputs = json_mod.loads(existing[0]) if existing and existing[0] else {}
+                existing_outputs.update(fields)
+
+                conn.execute(
+                    "UPDATE extraction_runs SET outputs_json = ?, status = 'needs_review', "
+                    "extractor_kind = 'vision' WHERE id = ?",
+                    (json_mod.dumps(existing_outputs), run_id),
+                )
+                conn.commit()
+            logger.info(f"Vision auto-save: run {run_id} updated with {len(fields)} fields, status → needs_review")
 
         return VisionExtractResponse(
             fields=fields,
