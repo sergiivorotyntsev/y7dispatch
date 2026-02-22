@@ -9,25 +9,23 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [collapsed, setCollapsed] = useState(null) // null = auto-decide
+  const [infoMessage, setInfoMessage] = useState(null)
+  const [collapsed, setCollapsed] = useState(false) // start expanded
 
   const fetchAlerts = useCallback(async () => {
     if (!runId) return
     setLoading(true)
     setError(null)
+    setInfoMessage(null)
     try {
       const result = await api.getRouteAlertsForRun(runId, warehouseId)
       setData(result)
-      // Auto-collapse if no alerts, expand if alerts exist
-      if (collapsed === null) {
-        setCollapsed(result.alerts?.length === 0)
-      }
     } catch (err) {
       if (err.message?.includes('400') || err.message?.includes('pickup ZIP')) {
-        // No pickup ZIP in extraction — nothing to show
+        setInfoMessage('Pickup ZIP not available — weather check requires a pickup location.')
         setData(null)
       } else if (err.message?.includes('404')) {
-        // No warehouses configured
+        setInfoMessage('No warehouses configured — add a warehouse in Settings to check route weather.')
         setData(null)
       } else {
         setError(err.message)
@@ -94,7 +92,7 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
     return parts.join(' \u2192 ')
   }
 
-  const isCollapsed = collapsed ?? !hasAlerts
+  const isCollapsed = collapsed
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
@@ -123,6 +121,11 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
               </span>
             )
           )}
+          {!loading && !data && infoMessage && (
+            <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium">
+              N/A
+            </span>
+          )}
         </h3>
         <svg className={`w-4 h-4 text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -144,6 +147,13 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
           {error && (
             <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 mb-2">
               Failed to check weather: {error}
+            </div>
+          )}
+
+          {/* Info message (no pickup ZIP, no warehouses, etc.) */}
+          {!loading && !data && !error && infoMessage && (
+            <div className="p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-500">
+              {infoMessage}
             </div>
           )}
 

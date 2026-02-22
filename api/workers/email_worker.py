@@ -80,40 +80,67 @@ class EmailWorker:
         """Extract Gate Pass PIN from email body text.
 
         Handles variants: "Gate Pass PIN:", "Gate Pass Pin:", "gate pass pin",
-        "PIN:", "pin:", "Gate pass is ABC", etc.
+        "PIN:", "pin:", "Gate pass is ABC", "Gate Pass Code: X",
+        "Gate Pass #X", "Gate Pass Number: X", etc.
         """
         patterns = [
-            r'gate\s*pass\s*pin\s*[:\-]?\s*(\w{3,10})',
-            r'gate\s*pass\s*[:\-]\s*(\w{3,10})',
-            r'gate\s*pass\s*(?:is)\s+(\w{3,10})',
-            r'\bpin\s*[:\-]\s*(\w{3,10})',
+            # "Gate Pass Pin: D164", "Gate Pass Code: ABC", "Gate Pass #D164", "Gate Pass Number: XY1"
+            (r'gate\s*pass\s*(?:pin|code|#|number)\s*[:\-]?\s*([A-Z0-9]{2,10})', 1),
+            # "Gate Pass: D164"
+            (r'gate\s*pass\s*[:\-]\s*([A-Z0-9]{2,10})', 1),
+            # "Gate Pass is D164"
+            (r'gate\s*pass\s*(?:is)\s+([A-Z0-9]{2,10})', 1),
+            # "PIN: D164"
+            (r'\bpin\s*[:\-]\s*([A-Z0-9]{2,10})', 1),
         ]
-        for pattern in patterns:
+        for pattern, group in patterns:
             match = re.search(pattern, body_text, re.IGNORECASE)
             if match:
-                result = match.group(1).strip()
+                result = match.group(group).strip()
                 # Reject common false positives
                 if result.lower() not in ('pin', 'pass', 'gate', 'the', 'is', 'see'):
                     return result
         return None
 
     def _get_email_body_text(self, msg: email.message.Message) -> str:
-        """Extract plain text body from email message."""
-        body = ""
+        """Extract plain text body from email message.
+
+        Prefers text/plain parts. Falls back to text/html with tags stripped
+        so gate pass PINs in HTML-only emails are still extracted.
+        """
+        plain = ""
+        html = ""
         if msg.is_multipart():
             for part in msg.walk():
-                if part.get_content_type() == "text/plain":
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        charset = part.get_content_charset() or "utf-8"
-                        body += payload.decode(charset, errors="replace")
+                ct = part.get_content_type()
+                payload = part.get_payload(decode=True)
+                if not payload:
+                    continue
+                charset = part.get_content_charset() or "utf-8"
+                decoded = payload.decode(charset, errors="replace")
+                if ct == "text/plain":
+                    plain += decoded
+                elif ct == "text/html" and not html:
+                    html = decoded
         else:
-            if msg.get_content_type() == "text/plain":
-                payload = msg.get_payload(decode=True)
-                if payload:
-                    charset = msg.get_content_charset() or "utf-8"
-                    body = payload.decode(charset, errors="replace")
-        return body
+            ct = msg.get_content_type()
+            payload = msg.get_payload(decode=True)
+            if payload:
+                charset = msg.get_content_charset() or "utf-8"
+                decoded = payload.decode(charset, errors="replace")
+                if ct == "text/plain":
+                    plain = decoded
+                elif ct == "text/html":
+                    html = decoded
+
+        if plain:
+            return plain
+
+        # Fallback: strip HTML tags to get searchable text
+        if html:
+            return re.sub(r'<[^>]+>', ' ', html)
+
+        return ""
 
     # ------------------------------------------------------------------
     # Enhancement 2: Attachment classification

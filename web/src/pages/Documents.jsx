@@ -318,6 +318,8 @@ function Documents() {
 
     try {
       const whId = warehouseId ? parseInt(warehouseId, 10) : null
+      const currentOutputs = extraction.outputs || {}
+
       if (whId) {
         // Find selected warehouse to get delivery info
         const selectedWarehouse = warehouses.find(w => w.id === whId)
@@ -326,7 +328,7 @@ function Documents() {
         const updateData = {
           warehouse_id: whId,
           outputs_json: {
-            ...(extraction.outputs || {}),
+            ...currentOutputs,
             warehouse_id: whId,
             delivery_name: selectedWarehouse?.name || '',
             delivery_address: selectedWarehouse?.address || '',
@@ -337,8 +339,20 @@ function Documents() {
         }
 
         await api.updateExtraction(extraction.id, updateData)
-        fetchDocExtractions()
+      } else {
+        // Clear warehouse selection
+        const cleared = { ...currentOutputs }
+        delete cleared.warehouse_id
+        delete cleared.delivery_name
+        delete cleared.delivery_address
+        delete cleared.delivery_city
+        delete cleared.delivery_state
+        delete cleared.delivery_zip
+        await api.updateExtraction(extraction.id, { outputs_json: cleared })
       }
+      // Refresh both documents and extractions so UI reflects saved warehouse
+      fetchDocuments()
+      fetchDocExtractions()
     } catch (err) {
       console.error('Failed to update warehouse:', err)
       setError(`Failed to update warehouse: ${err.message}`)

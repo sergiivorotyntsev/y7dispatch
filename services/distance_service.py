@@ -78,15 +78,39 @@ class DistanceService:
             self._load_google_key()
 
     def _load_google_key(self):
-        """Try to load Google Maps API key from credential store."""
+        """Try to load Google Maps API key from credential store or env var."""
+        # 1. Try credential store (enabled credentials)
         try:
             from services.credential_store import get_credential_for_service
 
             cred = get_credential_for_service("google_maps")
-            if cred:
-                self.google_api_key = cred.get("api_key")
+            if cred and cred.get("api_key"):
+                self.google_api_key = cred["api_key"]
+                logger.info("Google Maps API key loaded from credential store")
+                return
         except Exception:
             pass
+
+        # 2. Try credential store raw (even disabled — user may have saved but not toggled)
+        try:
+            from services.credential_store import get_credential_raw
+
+            raw = get_credential_raw("google_maps")
+            if raw and raw.get("config", {}).get("api_key"):
+                self.google_api_key = raw["config"]["api_key"]
+                logger.info("Google Maps API key loaded from credential store (credential disabled)")
+                return
+        except Exception:
+            pass
+
+        # 3. Fallback to environment variable
+        import os
+        env_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+        if env_key:
+            self.google_api_key = env_key
+            logger.info("Google Maps API key loaded from GOOGLE_MAPS_API_KEY env var")
+        else:
+            logger.debug("No Google Maps API key found — using haversine estimates")
 
     # =========================================================================
     # Core distance calculation
