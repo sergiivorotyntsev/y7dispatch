@@ -3,7 +3,7 @@ Credential Management API Endpoints.
 
 CRUD + connection testing for integration credentials:
 - email_imap, email_forwarding, email_oauth
-- cd_api, sheets, anthropic
+- cd_api, sheets, anthropic, google_maps
 """
 
 import logging
@@ -183,6 +183,8 @@ async def _test_service(service: str, config: dict) -> dict:
         return await _test_sheets(config)
     elif service == "anthropic":
         return await _test_anthropic(config)
+    elif service == "google_maps":
+        return await _test_google_maps(config)
     else:
         return {"status": "failed", "message": f"No test available for {service}"}
 
@@ -439,3 +441,37 @@ async def _test_anthropic(config: dict) -> dict:
         }
     except Exception as e:
         return {"status": "failed", "message": f"Anthropic API test failed: {e}"}
+
+
+async def _test_google_maps(config: dict) -> dict:
+    """Test Google Maps API key with a simple Distance Matrix request."""
+    import httpx
+
+    api_key = config.get("api_key", "")
+    if not api_key:
+        return {"status": "failed", "message": "No api_key configured"}
+
+    try:
+        resp = httpx.get(
+            "https://maps.googleapis.com/maps/api/distancematrix/json",
+            params={
+                "origins": "02101",
+                "destinations": "10001",
+                "units": "imperial",
+                "key": api_key,
+            },
+            timeout=10,
+        )
+        data = resp.json()
+        if data.get("status") == "OK":
+            return {
+                "status": "ok",
+                "message": "Google Maps API key is valid",
+                "details": {"api_status": data["status"]},
+            }
+        return {
+            "status": "failed",
+            "message": f"Google API returned: {data.get('status')} — {data.get('error_message', '')}",
+        }
+    except Exception as e:
+        return {"status": "failed", "message": f"Google Maps test failed: {e}"}

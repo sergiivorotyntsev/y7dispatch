@@ -159,7 +159,7 @@ class DistanceService:
         dest_coords = _zip_to_coords(dest_zip)
 
         if not origin_coords or not dest_coords:
-            return DistanceResult(source="haversine")
+            return DistanceResult(source="unknown")
 
         straight_line = haversine(
             origin_coords[0], origin_coords[1],
