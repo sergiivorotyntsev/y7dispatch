@@ -32,8 +32,15 @@ export default function WarehousesTab() {
     is_default: false,
   })
 
+  // Google Maps API key state
+  const [gmapsKey, setGmapsKey] = useState('')
+  const [gmapsStatus, setGmapsStatus] = useState(null) // null | 'saved' | 'valid' | 'invalid'
+  const [gmapsTesting, setGmapsTesting] = useState(false)
+  const [gmapsSaving, setGmapsSaving] = useState(false)
+
   useEffect(() => {
     loadWarehouses()
+    loadGmapsStatus()
   }, [])
 
   async function loadWarehouses() {
@@ -45,6 +52,55 @@ export default function WarehousesTab() {
       console.error('Failed to load warehouses:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadGmapsStatus() {
+    try {
+      const cred = await api.getCredential('google_maps')
+      if (cred) {
+        setGmapsKey(cred.config?.api_key || '')
+        setGmapsStatus(cred.last_test_status === 'ok' ? 'valid' : 'saved')
+      }
+    } catch {
+      // No credential stored — that's fine
+      setGmapsStatus(null)
+    }
+  }
+
+  async function handleGmapsSave() {
+    if (!gmapsKey || gmapsKey.includes('\u25CF')) {
+      showMessage('error', 'Please enter a valid API key')
+      return
+    }
+    setGmapsSaving(true)
+    try {
+      await api.saveCredential('google_maps', { api_key: gmapsKey }, true)
+      setGmapsStatus('saved')
+      showMessage('success', 'Google Maps API key saved')
+    } catch (err) {
+      showMessage('error', err.message)
+    } finally {
+      setGmapsSaving(false)
+    }
+  }
+
+  async function handleGmapsTest() {
+    setGmapsTesting(true)
+    try {
+      const result = await api.testCredential('google_maps')
+      if (result.status === 'ok') {
+        setGmapsStatus('valid')
+        showMessage('success', `Google Maps API key is valid (${result.duration_ms}ms)`)
+      } else {
+        setGmapsStatus('invalid')
+        showMessage('error', `Test failed: ${result.message}`)
+      }
+    } catch (err) {
+      setGmapsStatus('invalid')
+      showMessage('error', err.message)
+    } finally {
+      setGmapsTesting(false)
     }
   }
 
@@ -122,8 +178,63 @@ export default function WarehousesTab() {
     }
   }
 
+  const gmapsStatusBadge = gmapsStatus === 'valid'
+    ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Valid</span>
+    : gmapsStatus === 'invalid'
+    ? <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Invalid</span>
+    : gmapsStatus === 'saved'
+    ? <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">Saved (untested)</span>
+    : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Not configured</span>
+
   return (
     <div className="space-y-6">
+      {/* Google Maps API Key */}
+      <div className="border rounded-lg p-4 bg-white">
+        <h4 className="font-medium mb-3 flex items-center gap-2">
+          Distance Services
+          {gmapsStatusBadge}
+        </h4>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1">Google Maps API Key</label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={gmapsKey}
+                onChange={e => { setGmapsKey(e.target.value); setGmapsStatus(gmapsStatus === 'valid' ? 'saved' : gmapsStatus) }}
+                placeholder="AIza..."
+                className="form-input flex-1 text-sm"
+              />
+              <button
+                onClick={handleGmapsSave}
+                disabled={gmapsSaving || !gmapsKey}
+                className="btn btn-primary text-sm px-3"
+              >
+                {gmapsSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={handleGmapsTest}
+                disabled={gmapsTesting || !gmapsStatus || gmapsStatus === null}
+                className="btn btn-secondary text-sm px-3"
+              >
+                {gmapsTesting ? 'Testing...' : 'Test'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Enables road distance and drive time calculations for warehouse options.
+              Without a key, approximate straight-line distances are used.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">CD Market Intelligence</span>
+            <span>Subscription required for transport pricing</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Warehouses Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-medium">Warehouses</h3>
@@ -346,9 +457,10 @@ export default function WarehousesTab() {
       <div className="bg-blue-50 p-4 rounded-lg">
         <h4 className="font-medium text-blue-800 mb-2">About Warehouses</h4>
         <ul className="text-sm text-blue-700 space-y-1">
-          <li>• Warehouses are used as delivery locations when exporting to Central Dispatch</li>
-          <li>• The default warehouse is auto-selected for new documents</li>
-          <li>• Transport Special Instructions are included in the CD listing notes</li>
+          <li>Warehouses are used as delivery locations when exporting to Central Dispatch</li>
+          <li>The default warehouse is auto-selected for new documents</li>
+          <li>Transport Special Instructions are included in the CD listing notes</li>
+          <li>Add a Google Maps API key above to enable road distance calculations</li>
         </ul>
       </div>
     </div>

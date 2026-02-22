@@ -994,6 +994,11 @@ function Documents() {
                           </option>
                         ))}
                       </select>
+                      {warehouseId && warehouseName && (
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {warehouses.find(w => w.id === parseInt(warehouseId))?.city || ''}{warehouses.find(w => w.id === parseInt(warehouseId))?.state ? `, ${warehouses.find(w => w.id === parseInt(warehouseId)).state}` : ''}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {editingPrice.docId === doc.id ? (

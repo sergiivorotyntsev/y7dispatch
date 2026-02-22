@@ -554,6 +554,15 @@ export const api = {
   // Email Context + Vision Extract (Review page)
   getEmailContext: (runId) => request(`/extractions/${runId}/email-context`),
   visionExtract: (runId) => request(`/extractions/${runId}/vision-extract`, { method: 'POST' }),
+
+  // Warehouse Distance & Options
+  getWarehouseOptions: (pickupZip, pickupCity = '', pickupState = '') => {
+    const params = new URLSearchParams({ pickup_zip: pickupZip })
+    if (pickupCity) params.set('pickup_city', pickupCity)
+    if (pickupState) params.set('pickup_state', pickupState)
+    return request(`/warehouses/options?${params}`)
+  },
+  getWarehouseOptionsForRun: (runId) => request(`/warehouses/options-for-run/${runId}`),
 }
 
 export default api
