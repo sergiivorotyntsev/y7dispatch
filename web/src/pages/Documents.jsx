@@ -932,7 +932,7 @@ function Documents() {
                 const pickupLocation = pickupCity && pickupState
                   ? `${pickupCity}, ${pickupState}`
                   : pickupName || pickupState || '-'
-                const priceTotal = doc.price_total || outputs.price_total || outputs.total_amount || null
+                const priceTotal = doc.price_total || outputs.price_total || outputs.final_price || outputs.total_amount || null
 
                 // Warehouse/Delivery info — prefer enriched doc.warehouse_name, fall back to lookup
                 const warehouseId = doc.warehouse_id || outputs.warehouse_id

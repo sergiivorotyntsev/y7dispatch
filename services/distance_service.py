@@ -72,10 +72,13 @@ class WarehouseOption:
 class DistanceService:
     """Service for calculating distances and fetching transport prices."""
 
+    _stale_cache_cleaned = False  # Class-level flag: clean once per process
+
     def __init__(self, google_api_key: Optional[str] = None):
         self.google_api_key = google_api_key
         if not self.google_api_key:
             self._load_google_key()
+        self._clean_stale_cache()
 
     def _load_google_key(self):
         """Try to load Google Maps API key from credential store or env var."""
@@ -111,6 +114,23 @@ class DistanceService:
             logger.info("Google Maps API key loaded from GOOGLE_MAPS_API_KEY env var")
         else:
             logger.debug("No Google Maps API key found — using haversine estimates")
+
+    @classmethod
+    def _clean_stale_cache(cls):
+        """Delete cache entries with NULL distance_source (legacy pre-OSRM entries)."""
+        if cls._stale_cache_cleaned:
+            return
+        cls._stale_cache_cleaned = True
+        try:
+            with get_connection() as conn:
+                result = conn.execute(
+                    "DELETE FROM distance_cache WHERE distance_source IS NULL"
+                )
+                if result.rowcount > 0:
+                    conn.commit()
+                    logger.info("Cleared %d stale distance cache entries (NULL source)", result.rowcount)
+        except Exception as e:
+            logger.debug("Stale cache cleanup skipped: %s", e)
 
     # =========================================================================
     # Core distance calculation
@@ -313,7 +333,7 @@ class DistanceService:
                     distance_text=cached["distance_text"] or "",
                     duration_minutes=cached["duration_minutes"],
                     duration_text=cached["duration_text"] or "",
-                    source=cached.get("distance_source") or "haversine",
+                    source=cached.get("distance_source") or "cached",
                 )
                 price = cached.get("transport_price")
                 price_source = cached.get("transport_price_source", "")

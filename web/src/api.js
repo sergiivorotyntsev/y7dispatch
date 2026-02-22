@@ -341,7 +341,15 @@ export const api = {
   }),
 
   // Email Worker
-  pollEmailNow: (sinceDays = 0) => request(`/email/poll?since_days=${sinceDays}`, { method: 'POST' }),
+  pollEmailNow: (sinceDays = 0, sinceDate = null) => {
+    const params = new URLSearchParams()
+    if (sinceDate) {
+      params.set('since_date', sinceDate)
+    } else {
+      params.set('since_days', sinceDays)
+    }
+    return request(`/email/poll?${params}`, { method: 'POST' })
+  },
   startEmailWorker: () => request('/email/worker/start', { method: 'POST' }),
   stopEmailWorker: () => request('/email/worker/stop', { method: 'POST' }),
   recoverEmails: (sinceDays = 7) => request(`/email/recover?since_days=${sinceDays}`, { method: 'POST' }),

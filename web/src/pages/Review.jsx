@@ -787,8 +787,8 @@ function Review() {
         <div className="flex gap-6">
           {/* PDF Viewer (Left Panel) */}
           {showPdf && pdfUrl && (
-            <div className="w-1/2 flex-shrink-0 sticky top-6">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="w-1/2 flex-shrink-0 sticky top-6" style={{ maxHeight: 'calc(100vh - 4rem)' }}>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
                 <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                   <span className="font-medium text-sm text-gray-700">Original Document</span>
                   <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-600 hover:text-primary-800">
@@ -799,7 +799,7 @@ function Review() {
                   src={pdfUrl}
                   title="Document PDF"
                   className="w-full border-0"
-                  style={{ height: 600 }}
+                  style={{ height: 'calc(100vh - 8rem)' }}
                 />
               </div>
             </div>

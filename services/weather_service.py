@@ -362,7 +362,7 @@ class WeatherService:
             # Get API key from credential store or env var
             api_key = os.environ.get("ANTHROPIC_API_KEY")
             try:
-                from api.credential_store import get_credential_for_service
+                from services.credential_store import get_credential_for_service
                 cred = get_credential_for_service("anthropic")
                 if cred and cred.get("api_key"):
                     api_key = cred["api_key"]

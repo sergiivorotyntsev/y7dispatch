@@ -253,14 +253,29 @@ app.include_router(weather.router)  # NWS weather alerts along transport routes
 
 
 @app.post("/api/email/poll", tags=["Email"])
-async def poll_email_now(since_days: int = Query(0, ge=0, le=30)):
+async def poll_email_now(
+    since_days: int = Query(0, ge=0, le=30),
+    since_date: str | None = Query(None, description="ISO date (YYYY-MM-DD) — overrides since_days if provided"),
+):
     """
     Poll email inbox now (manual trigger).
 
     Triggers an immediate poll of the configured email inbox.
     Uses mutex to prevent concurrent polls with auto-poller.
     Use since_days to look back further (0 = today, 7 = past week).
+    Alternatively, pass since_date (YYYY-MM-DD) for exact date control.
     """
+    # Convert since_date to since_days if provided
+    effective_since_days = since_days
+    if since_date:
+        try:
+            target = datetime.strptime(since_date, "%Y-%m-%d")
+            delta = (datetime.now() - target).days
+            effective_since_days = max(0, min(delta, 30))
+        except ValueError:
+            from fastapi import HTTPException
+            raise HTTPException(400, "since_date must be YYYY-MM-DD format")
+
     if _poll_lock.locked():
         return {"status": "busy", "message": "Poll already in progress", "results": []}
 
@@ -270,7 +285,7 @@ async def poll_email_now(since_days: int = Query(0, ge=0, le=30)):
             from api.workers.email_worker import get_worker
 
             worker = get_worker()
-            results = await asyncio.to_thread(worker.poll_once, since_days=since_days)
+            results = await asyncio.to_thread(worker.poll_once, since_days=effective_since_days)
             _poll_state["last_poll_at"] = datetime.now(timezone.utc).isoformat() + "Z"
             _poll_state["last_poll_error"] = None
             _poll_state["polls_completed"] += 1
