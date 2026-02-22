@@ -1284,6 +1284,68 @@ def run_extraction(
                     }
 
         # =================================================================
+        # INHERIT OPERATOR DATA FROM PREVIOUS RUNS
+        # Carry over gate_pass, warehouse_id, and other operator-set fields
+        # from the most recent previous run for the same document.
+        # These are set by the email worker or operator — not by extraction.
+        # =================================================================
+        _inherit_fields = [
+            "gate_pass", "warehouse_id",
+            "delivery_name", "delivery_address", "delivery_city",
+            "delivery_state", "delivery_zip",
+        ]
+        missing_inherit = [f for f in _inherit_fields if not outputs.get(f)]
+        if missing_inherit:
+            try:
+                import json
+                from api.database import get_connection
+                with get_connection() as conn:
+                    prev = conn.execute(
+                        "SELECT outputs_json FROM extraction_runs "
+                        "WHERE document_id = ? AND id != ? AND outputs_json IS NOT NULL "
+                        "ORDER BY id DESC LIMIT 1",
+                        (document_id, run_id),
+                    ).fetchone()
+                if prev and prev[0]:
+                    prev_outputs = json.loads(prev[0])
+                    for field in missing_inherit:
+                        if prev_outputs.get(field) and not outputs.get(field):
+                            outputs[field] = prev_outputs[field]
+            except Exception as e:
+                logger.debug("Gate pass / operator field inheritance failed: %s", e)
+
+        # Also try email_log as a gate_pass source
+        if not outputs.get("gate_pass"):
+            try:
+                import json
+                from api.database import get_connection
+                with get_connection() as conn:
+                    email_gp = conn.execute(
+                        "SELECT gate_pass FROM email_log "
+                        "WHERE extraction_run_ids LIKE ? AND gate_pass IS NOT NULL LIMIT 1",
+                        (f"%{run_id}%",),
+                    ).fetchone()
+                    if not email_gp:
+                        # Try matching by document's email metadata
+                        doc_email = conn.execute(
+                            "SELECT email_metadata_json FROM documents WHERE id = ?",
+                            (document_id,),
+                        ).fetchone()
+                        if doc_email and doc_email[0]:
+                            meta = json.loads(doc_email[0])
+                            msg_id = meta.get("message_id")
+                            if msg_id:
+                                email_gp = conn.execute(
+                                    "SELECT gate_pass FROM email_log "
+                                    "WHERE message_id = ? AND gate_pass IS NOT NULL LIMIT 1",
+                                    (msg_id,),
+                                ).fetchone()
+                    if email_gp and email_gp[0]:
+                        outputs["gate_pass"] = email_gp[0]
+            except Exception as e:
+                logger.debug("Email log gate_pass lookup failed: %s", e)
+
+        # =================================================================
         # AUTO-GENERATE LOAD ID
         # Generate unique load_id from make+model if extraction succeeded
         # =================================================================

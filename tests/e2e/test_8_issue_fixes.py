@@ -189,15 +189,14 @@ class TestDistanceSource:
     """Distance source is available in warehouse options."""
 
     def test_haversine_source_label(self, fix_db):
-        """Haversine distance has source='haversine'."""
+        """Distance source should be google, osrm, or haversine."""
         from services.distance_service import DistanceService
 
         svc = DistanceService()
         options = svc.get_warehouse_options("30301")
         assert len(options) >= 1
-        # Without Google Maps key, all distances should be haversine
         for opt in options:
-            assert opt.distance_source in ("haversine", "google")
+            assert opt.distance_source in ("haversine", "google", "osrm")
 
     def test_distance_source_in_option_response(self):
         """WarehouseOptionResponse model has distance_source field."""

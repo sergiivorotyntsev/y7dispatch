@@ -220,3 +220,16 @@ STEP 4 — ARCHITECT VERIFICATION:
 | Auction directory | services/auction_directory.py |
 | Tests | tests/e2e/ |
 | Docs | docs/DEVELOPMENT_JOURNAL.md, docs/CD_FIELD_CONFIG_FINAL-COMPLETED.csv |
+
+## Regression Prevention Protocol
+
+1. Before modifying ANY working feature: save current test output as baseline
+2. After fixing a bug: run ALL tests (`python -m pytest tests/ -q`), not just new ones
+3. Never change code unrelated to the current fix
+4. If a fix touches shared code (email_worker, Review.jsx): test ALL dependent features
+5. Commit message must list what was tested after the change
+6. Database: `data/control_panel.db` (NOT y7dispatch.db)
+7. Distance: Google Maps requires ", USA" suffix on ZIP codes for reliable results
+8. ZIP3 coords: `_ZIP3_COORDS` in distance_service.py — add entries when new ZIPs fail lookup
+9. Gate pass: inherited from previous extraction runs AND email_log on re-extraction
+10. Email poll: `since_days=7` default — already-processed emails are skipped via message_id dedup

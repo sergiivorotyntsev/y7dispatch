@@ -244,11 +244,11 @@ async def reprocess_email_from_source(email_id: int) -> dict[str, Any]:
         conn.execute("DELETE FROM email_log WHERE id = ?", (email_id,))
         conn.commit()
 
-    # Re-poll with 7-day lookback to find the original email
+    # Re-poll with 30-day lookback to find the original email
     from api.workers.email_worker import get_worker
 
     worker = get_worker()
-    results = worker.poll_once(since_days=7)
+    results = worker.poll_once(since_days=30)
 
     # Find result for this specific message
     reprocessed = None

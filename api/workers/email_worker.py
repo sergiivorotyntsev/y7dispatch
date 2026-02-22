@@ -1191,15 +1191,16 @@ class EmailWorker:
     # READ-ONLY mailbox access — no flags, no moves, no deletes.
     # All tracking is internal via email_log table (message_id UNIQUE dedup).
 
-    def poll_once(self, since_days: int = 0) -> list[ProcessingResult]:
+    def poll_once(self, since_days: int = 7) -> list[ProcessingResult]:
         """
         Poll inbox once and process emails.
 
         Uses server-side IMAP SEARCH filtering for allowed senders,
         logs every email to email_log table, and handles thread dedup.
+        Already-processed emails are skipped via message_id dedup in email_log.
 
         Args:
-            since_days: Look back N days (0 = today only, 7 = past week).
+            since_days: Look back N days (default 7 = past week).
         """
         import logging
         from datetime import datetime

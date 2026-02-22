@@ -197,18 +197,18 @@ class TestDistanceService:
         assert abs(result.distance_miles - 200.0) < 1
         assert result.duration_minutes == 240
 
-    def test_no_api_key_uses_haversine(self):
-        """Without Google key, falls back to haversine."""
+    def test_no_api_key_uses_fallback(self):
+        """Without Google key, falls back to OSRM or haversine."""
         from services.distance_service import DistanceService
 
         svc = DistanceService(google_api_key=None)
         svc.google_api_key = None  # Ensure no key
         result = svc.get_road_distance("02101", "10001")
 
-        assert result.source == "haversine"
+        assert result.source in ("osrm", "haversine")
         assert result.distance_miles is not None
-        # Haversine * 1.3 road factor: ~190 * 1.3 = ~247
-        assert 230 < result.distance_miles < 270
+        # OSRM gives road distance; haversine * 1.3 road factor
+        assert 180 < result.distance_miles < 300
 
     def test_cache_hit_skips_api(self):
         """Cached distance should be returned without calling API."""

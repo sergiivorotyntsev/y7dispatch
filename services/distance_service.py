@@ -122,13 +122,19 @@ class DistanceService:
         """
         Get road distance between two ZIP codes.
 
-        Tries Google Distance Matrix API first, falls back to haversine.
+        Priority: 1) Google Maps  2) OSRM (free)  3) Haversine estimate.
         """
         if self.google_api_key:
             try:
                 return self._google_distance(origin_zip, dest_zip)
             except Exception as e:
-                logger.warning("Google Distance Matrix failed, using haversine: %s", e)
+                logger.warning("Google Distance Matrix failed: %s", e)
+
+        # OSRM fallback (free, no key required)
+        try:
+            return self._osrm_distance(origin_zip, dest_zip)
+        except Exception as e:
+            logger.warning("OSRM fallback failed: %s", e)
 
         return self._haversine_distance(origin_zip, dest_zip)
 
@@ -138,8 +144,8 @@ class DistanceService:
 
         url = "https://maps.googleapis.com/maps/api/distancematrix/json"
         params = {
-            "origins": origin_zip,
-            "destinations": dest_zip,
+            "origins": f"{origin_zip}, USA",
+            "destinations": f"{dest_zip}, USA",
             "units": "imperial",
             "key": self.google_api_key,
         }
@@ -169,6 +175,54 @@ class DistanceService:
             duration_minutes=duration_minutes,
             duration_text=element["duration"]["text"],
             source="google",
+        )
+
+    def _osrm_distance(
+        self, origin_zip: str, dest_zip: str
+    ) -> DistanceResult:
+        """
+        Get road distance via OSRM (free, no API key required).
+
+        Uses project-osrm.org demo server. Rate-limited but reliable for
+        low-volume dispatching.
+        """
+        import httpx
+
+        origin_coords = _zip_to_coords(origin_zip)
+        dest_coords = _zip_to_coords(dest_zip)
+
+        if not origin_coords or not dest_coords:
+            raise ValueError(f"Cannot resolve coordinates for ZIP {origin_zip} or {dest_zip}")
+
+        # OSRM uses lon,lat (not lat,lon)
+        url = (
+            f"http://router.project-osrm.org/route/v1/driving/"
+            f"{origin_coords[1]},{origin_coords[0]};{dest_coords[1]},{dest_coords[0]}"
+            f"?overview=false"
+        )
+
+        resp = httpx.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("code") != "Ok" or not data.get("routes"):
+            raise ValueError(f"OSRM error: {data.get('code', 'no route')}")
+
+        route = data["routes"][0]
+        distance_meters = route["distance"]
+        distance_miles = round(distance_meters / 1609.344, 1)
+        duration_seconds = route["duration"]
+        duration_minutes = round(duration_seconds / 60, 0)
+
+        hours = int(duration_minutes // 60)
+        mins = int(duration_minutes % 60)
+
+        return DistanceResult(
+            distance_miles=distance_miles,
+            distance_text=f"{distance_miles:,.0f} mi",
+            duration_minutes=duration_minutes,
+            duration_text=f"{hours}h {mins}m",
+            source="osrm",
         )
 
     def _haversine_distance(
@@ -529,9 +583,25 @@ _ZIP3_COORDS = {
     "236": (37.0, -76.3),   # VA
     "237": (37.3, -76.5),   # VA
     "270": (35.8, -78.6),   # NC - Raleigh
-    "271": (36.1, -80.2),   # NC
-    "272": (35.2, -80.8),   # NC
-    "273": (36.1, -80.2),   # NC
+    "271": (36.1, -80.2),   # NC - Winston-Salem
+    "272": (35.2, -80.8),   # NC - Charlotte
+    "273": (36.1, -80.2),   # NC - Greensboro
+    "274": (35.6, -82.6),   # NC - Asheville
+    "275": (35.8, -78.6),   # NC - Raleigh area
+    "276": (36.1, -79.8),   # NC - Greensboro area
+    "277": (35.2, -80.8),   # NC - Charlotte area
+    "278": (35.6, -82.6),   # NC - Asheville area
+    "279": (35.1, -80.7),   # NC - Indian Trail
+    "280": (29.8, -81.3),   # SC - Columbia area
+    "281": (35.0, -78.9),   # NC - Fayetteville
+    "282": (35.2, -80.8),   # NC - Charlotte
+    "283": (34.2, -79.8),   # SC - Florence
+    "284": (34.8, -82.4),   # SC - Greenville
+    "285": (35.3, -83.5),   # NC - Sylva
+    "286": (36.2, -81.7),   # NC - Boone
+    "287": (36.3, -79.4),   # NC - Burlington
+    "288": (34.3, -77.9),   # NC - Wilmington
+    "289": (35.0, -80.6),   # NC - Monroe
     "280": (35.2, -80.8),   # NC - Charlotte
     "281": (35.2, -80.8),   # NC
     "282": (35.2, -80.8),   # NC
@@ -973,8 +1043,39 @@ _ZIP3_COORDS = {
 
 
 def _zip_to_coords(zip_code: str) -> Optional[tuple[float, float]]:
-    """Look up approximate lat/lon for a ZIP code using 3-digit prefix."""
+    """Look up approximate lat/lon for a ZIP code using 3-digit prefix.
+
+    Falls back to Google Geocoding API if ZIP3 prefix is not in the lookup table.
+    """
     if not zip_code or len(zip_code) < 3:
         return None
     prefix = zip_code[:3]
-    return _ZIP3_COORDS.get(prefix)
+    coords = _ZIP3_COORDS.get(prefix)
+    if coords:
+        return coords
+
+    # Fallback: Google Geocoding API
+    try:
+        import httpx
+
+        from services.credential_store import get_credential_for_service
+
+        cred = get_credential_for_service("google_maps")
+        if cred and cred.get("api_key"):
+            resp = httpx.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"address": f"{zip_code}, USA", "key": cred["api_key"]},
+                timeout=5,
+            )
+            data = resp.json()
+            if data.get("results"):
+                loc = data["results"][0]["geometry"]["location"]
+                result = (loc["lat"], loc["lng"])
+                # Cache for future lookups
+                _ZIP3_COORDS[prefix] = result
+                logger.info("Geocoded ZIP %s -> %s (cached as %s)", zip_code, result, prefix)
+                return result
+    except Exception as e:
+        logger.debug("Geocoding fallback failed for ZIP %s: %s", zip_code, e)
+
+    return None
