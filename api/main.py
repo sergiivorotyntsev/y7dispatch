@@ -66,6 +66,7 @@ from api.routes import (
     test,
     training,
     warehouses,
+    weather,
 )
 
 
@@ -243,6 +244,7 @@ app.include_router(listings.router)  # Load ID generation + listing management
 app.include_router(attachments.router)  # Attachment download/list for vehicle release PDFs
 app.include_router(auction_directory.router)  # Auction phone directory lookup
 app.include_router(email_log.router)  # Email log browsing + management
+app.include_router(weather.router)  # NWS weather alerts along transport routes
 
 
 # =============================================================================
