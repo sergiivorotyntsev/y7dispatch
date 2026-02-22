@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api'
+import { parseUTCDate } from '../../utils/date'
 
 /**
  * Production Corrections Panel
@@ -122,7 +123,7 @@ export default function ProductionCorrectionsPanel() {
                   <span className="text-gray-900">→ {corr.new_value}</span>
                 </div>
                 <div className="mt-1 text-xs text-gray-500">
-                  {corr.created_at ? new Date(corr.created_at).toLocaleString() : ''}
+                  {corr.created_at ? parseUTCDate(corr.created_at).toLocaleString() : ''}
                   {corr.applied_to_training && (
                     <span className="ml-2 text-green-600">✓ Applied</span>
                   )}

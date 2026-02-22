@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api'
+import { parseUTCDate } from '../utils/date'
 import {
   CD_FIELDS,
   StatusIndicator,
@@ -795,7 +796,7 @@ function TestLab() {
                           <StatusBadge status={run.status} />
                         </td>
                         <td className="text-xs text-gray-500">
-                          {run.created_at ? new Date(run.created_at).toLocaleString() : '-'}
+                          {run.created_at ? parseUTCDate(run.created_at).toLocaleString() : '-'}
                         </td>
                         <td>
                           <div className="flex space-x-2">

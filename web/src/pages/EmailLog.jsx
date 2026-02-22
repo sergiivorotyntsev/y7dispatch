@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
+import { parseUTCDate, formatTimeAgo as utilFormatTimeAgo } from '../utils/date'
 
 function EmailLog() {
   const navigate = useNavigate()
@@ -142,14 +143,7 @@ function EmailLog() {
   }
 
   function formatTimeAgo(dateStr) {
-    if (!dateStr) return null
-    const diff = Date.now() - new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z').getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return 'just now'
-    if (mins < 60) return `${mins} min ago`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return `${hrs}h ago`
-    return `${Math.floor(hrs / 24)}d ago`
+    return utilFormatTimeAgo(dateStr)
   }
 
   function getStatusBadge(status) {
@@ -170,7 +164,9 @@ function EmailLog() {
   function formatDate(dateStr) {
     if (!dateStr) return '-'
     try {
-      return new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z').toLocaleString('en-US', {
+      const d = parseUTCDate(dateStr)
+      if (!d) return '-'
+      return d.toLocaleString('en-US', {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
       })
     } catch { return dateStr }

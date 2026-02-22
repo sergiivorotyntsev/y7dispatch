@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api'
+import { parseUTCDate } from '../../utils/date'
 
 export default function AuditLogTab() {
   const [logs, setLogs] = useState([])
@@ -73,7 +74,7 @@ export default function AuditLogTab() {
               {logs.map(log => (
                 <tr key={log.id}>
                   <td className="text-xs text-gray-500 whitespace-nowrap">
-                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}
+                    {log.timestamp ? parseUTCDate(log.timestamp).toLocaleString() : '-'}
                   </td>
                   <td>
                     <span className="badge badge-info">{log.integration}</span>

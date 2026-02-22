@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSettings } from './SettingsContext'
 import api from '../../api'
+import { parseUTCDate } from '../../utils/date'
 
 export default function EmailTab() {
   const { showMessage, setSaving } = useSettings()
@@ -370,7 +371,7 @@ export default function EmailTab() {
             {pollStatus.is_polling ? (
               <span className="text-blue-600 font-medium">Polling now...</span>
             ) : pollStatus.last_poll_at ? (
-              <span>Last poll: {new Date(pollStatus.last_poll_at).toLocaleString()} ({pollStatus.polls_completed} total)</span>
+              <span>Last poll: {parseUTCDate(pollStatus.last_poll_at).toLocaleString()} ({pollStatus.polls_completed} total)</span>
             ) : (
               <span className="text-gray-400">No polls completed yet</span>
             )}
@@ -543,7 +544,7 @@ export default function EmailTab() {
                 {activity.slice(0, 20).map(item => (
                   <tr key={item.id}>
                     <td className="text-xs text-gray-500">
-                      {item.timestamp ? new Date(item.timestamp).toLocaleString() : '-'}
+                      {item.timestamp ? parseUTCDate(item.timestamp).toLocaleString() : '-'}
                     </td>
                     <td className="truncate max-w-[200px]">{item.subject || '-'}</td>
                     <td>

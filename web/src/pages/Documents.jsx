@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import ExportPreviewModal from '../components/ExportPreviewModal'
+import { parseUTCDate } from '../utils/date'
 
 /**
  * Documents Page - Production Workflow
@@ -20,7 +21,7 @@ function groupByDate(docs) {
   const groups = {}
   docs.forEach(doc => {
     const date = doc.created_at
-      ? new Date(doc.created_at + 'Z').toLocaleDateString('en-US', {
+      ? parseUTCDate(doc.created_at).toLocaleDateString('en-US', {
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
         })
       : 'Unknown Date'
@@ -1065,8 +1066,8 @@ function Documents() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {doc.created_at ? (
-                        <span title={new Date(doc.created_at + 'Z').toLocaleString()}>
-                          {new Date(doc.created_at + 'Z').toLocaleString('en-US', {
+                        <span title={parseUTCDate(doc.created_at).toLocaleString()}>
+                          {parseUTCDate(doc.created_at).toLocaleString('en-US', {
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',
