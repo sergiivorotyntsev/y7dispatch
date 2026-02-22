@@ -41,14 +41,8 @@ function DeliverySection({ warehouses, selectedWarehouse, handleWarehouseChange,
     return () => { cancelled = true }
   }, [runId])
 
-  // Auto-select best value if nothing selected yet
-  useEffect(() => {
-    if (!options?.options?.length || selectedWarehouse) return
-    const best = options.options.find(o => o.best_value)
-    if (best) {
-      handleWarehouseChange(best.warehouse_id.toString())
-    }
-  }, [options, selectedWarehouse, handleWarehouseChange])
+  // Note: No auto-select — user must explicitly pick a warehouse.
+  // BEST VALUE badge highlights the recommended option.
 
   const hasDistanceOptions = options?.options?.length > 0
   const pickupDisplay = fields?.pickup_city?.corrected || fields?.pickup_city?.predicted || ''
@@ -113,9 +107,13 @@ function DeliverySection({ warehouses, selectedWarehouse, handleWarehouseChange,
                         <>
                           <span>{opt.distance_text || `${Math.round(opt.distance_miles).toLocaleString()} mi`}</span>
                           {opt.duration_text && <span>{opt.duration_text}</span>}
-                          {isApproximate && opt.distance_source === 'haversine' && (
-                            <span className="text-gray-400">(approximate)</span>
-                          )}
+                          {opt.distance_source === 'google' ? (
+                            <span className="text-green-600 text-[10px]">via Google Maps</span>
+                          ) : opt.distance_source === 'haversine' ? (
+                            <span className="text-gray-400 text-[10px]">~ straight-line est.</span>
+                          ) : opt.distance_source === 'cache' ? (
+                            <span className="text-blue-400 text-[10px]">cached</span>
+                          ) : null}
                         </>
                       ) : (
                         <span className="text-gray-400">Distance unavailable</span>

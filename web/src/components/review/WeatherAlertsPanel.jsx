@@ -143,6 +143,29 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             </div>
           )}
 
+          {/* AI Summary */}
+          {data?.ai_summary && (
+            <div className={`p-3 rounded border mb-2 ${
+              data.risk_level === 'high' ? 'bg-red-50 border-red-300' :
+              data.risk_level === 'medium' ? 'bg-amber-50 border-amber-200' :
+              'bg-blue-50 border-blue-200'
+            }`}>
+              <div className="flex items-start gap-2">
+                <span className={`mt-0.5 text-xs font-semibold px-1.5 py-0.5 rounded ${
+                  data.risk_level === 'high' ? 'bg-red-200 text-red-800' :
+                  data.risk_level === 'medium' ? 'bg-amber-200 text-amber-800' :
+                  'bg-blue-200 text-blue-800'
+                }`}>{data.risk_level.toUpperCase()} RISK</span>
+                <p className="text-sm text-gray-800">{data.ai_summary}</p>
+              </div>
+              {data.optimal_pickup_suggestion && (
+                <p className="text-xs mt-2 ml-14 text-gray-600">
+                  Suggested pickup: after {data.optimal_pickup_suggestion}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Alerts */}
           {data && hasAlerts && (
             <div className="space-y-2">

@@ -46,6 +46,7 @@ class WarehouseCreate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     notes: Optional[str] = None
+    buyer_reference: Optional[str] = None
 
     @field_validator("code")
     @classmethod
@@ -75,6 +76,7 @@ class WarehouseUpdate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     notes: Optional[str] = None
+    buyer_reference: Optional[str] = None
 
     @field_validator("state")
     @classmethod
@@ -102,6 +104,7 @@ class WarehouseResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     notes: Optional[str] = None
+    buyer_reference: Optional[str] = None
 
 
 class WarehouseListResponse(BaseModel):
@@ -173,6 +176,10 @@ def init_warehouses_schema():
             pass
         try:
             conn.execute("ALTER TABLE warehouses ADD COLUMN notes TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN buyer_reference TEXT")
         except Exception:
             pass
 
@@ -292,8 +299,8 @@ async def create_warehouse(data: WarehouseCreate):
 
         cursor = conn.execute(
             """
-            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, contact_phone, location_type, transport_special_instructions, is_default, is_active, latitude, longitude, notes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, contact_phone, location_type, transport_special_instructions, is_default, is_active, latitude, longitude, notes, buyer_reference, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.code,
@@ -312,6 +319,7 @@ async def create_warehouse(data: WarehouseCreate):
                 data.latitude,
                 data.longitude,
                 data.notes,
+                data.buyer_reference,
                 now,
                 now,
             ),

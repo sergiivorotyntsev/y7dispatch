@@ -48,6 +48,9 @@ class RouteAlertsResponse(BaseModel):
     waypoints_checked: int = 0
     cached: bool = False
     checked_at: str = ""
+    ai_summary: Optional[str] = None
+    risk_level: str = "low"
+    optimal_pickup_suggestion: Optional[str] = None
 
 
 # =============================================================================

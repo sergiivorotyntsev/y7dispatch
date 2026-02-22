@@ -98,6 +98,7 @@ class CDPayloadPreview(BaseModel):
     payload: dict
     validation_errors: list[str] = []
     is_valid: bool = True
+    cd_listing_id: Optional[str] = None
 
 
 class CDExportResponse(BaseModel):
@@ -109,6 +110,7 @@ class CDExportResponse(BaseModel):
     exported_count: int = 0
     failed_count: int = 0
     message: str
+    cd_listing_ids: list[str] = []
 
 
 class ExportJobResponse(BaseModel):
@@ -1421,6 +1423,7 @@ async def export_to_cd(
                     cd_listing_id=cd_listing_id,
                 )
                 exported_count += 1
+                preview.cd_listing_id = cd_listing_id
 
                 # Update run status
                 ExtractionRunRepository.update(run_id, status="exported")
@@ -1483,12 +1486,15 @@ async def export_to_cd(
         message = ", ".join(parts) + "."
         status = "completed" if failed_count == 0 and skipped_count == 0 else "partial"
 
+    cd_listing_ids = [p.cd_listing_id for p in previews if p.cd_listing_id]
+
     return CDExportResponse(
         status=status,
         previews=previews,
         exported_count=exported_count,
         failed_count=failed_count,
         message=message,
+        cd_listing_ids=cd_listing_ids,
     )
 
 

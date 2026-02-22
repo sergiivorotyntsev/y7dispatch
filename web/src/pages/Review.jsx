@@ -139,19 +139,11 @@ function Review() {
     return `TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY). Pick-up location - ${pickupName}, Delivery - ${whName}`
   }, [])
 
-  // Load warehouses
+  // Load warehouses — do NOT auto-select; user must choose or restore from saved state
   const loadWarehouses = useCallback(async () => {
     try {
       const data = await api.listWarehouses()
       setWarehouses(data.items || [])
-      const defaultWh = (data.items || []).find(w => w.is_default)
-      if (defaultWh) {
-        setSelectedWarehouse(defaultWh.id.toString())
-        setTransportSpecialInstructions(defaultWh.transport_special_instructions || defaultWh.hours || '')
-      } else if (data.items?.length > 0) {
-        setSelectedWarehouse(data.items[0].id.toString())
-        setTransportSpecialInstructions(data.items[0].transport_special_instructions || data.items[0].hours || '')
-      }
     } catch (err) {
       console.error('Failed to load warehouses:', err)
     }
@@ -242,18 +234,40 @@ function Review() {
 
       setFields(initialFields)
 
-      // Initialize load_id from backend if already generated
-      if (runData.run?.outputs?.load_id) {
-        setLoadId(runData.run.outputs.load_id)
-      }
+      // Restore saved operator overrides from outputs_json
+      const out = runData.run?.outputs || {}
+      if (out.load_id) setLoadId(out.load_id)
+      if (out.final_price != null && out.final_price !== '') setFinalPrice(String(out.final_price))
+      if (out.trailer_type) setTrailerType(out.trailer_type)
+      if (out.requires_inspection != null) setRequiresInspection(out.requires_inspection)
+      if (out.cod_amount != null) setCodAmount(String(out.cod_amount))
+      if (out.cod_payment_method) setCodPaymentMethod(out.cod_payment_method)
+      if (out.cod_payment_location) setCodPaymentLocation(out.cod_payment_location)
+      if (out.balance_payment_method) setBalancePaymentMethod(out.balance_payment_method)
+      if (out.balance_payment_time) setBalancePaymentTime(out.balance_payment_time)
+      if (out.balance_terms_begin_on) setBalanceTermsBeginOn(out.balance_terms_begin_on)
+      if (out.load_specific_terms) setLoadSpecificTerms(out.load_specific_terms)
+      if (out.transport_special_instructions) setTransportSpecialInstructions(out.transport_special_instructions)
+      if (out.warehouse_id) setSelectedWarehouse(String(out.warehouse_id))
 
       // Detect if already approved/exported
       if (['approved', 'exported'].includes(runData.run?.status)) {
         setIsApproved(true)
       }
 
-      // Initialize dates based on extraction data
-      initializeDates(initialFields, runData.run?.auction_type_code)
+      // Initialize dates — prefer saved values, then extraction-based
+      if (out.available_date) {
+        setAvailableDate(out.available_date)
+        if (out.expiration_date) setExpirationDate(out.expiration_date)
+        else {
+          const expDate = new Date(out.available_date)
+          expDate.setDate(expDate.getDate() + 30)
+          setExpirationDate(expDate.toISOString().split('T')[0])
+        }
+        if (out.desired_delivery_date) setDesiredDeliveryDate(out.desired_delivery_date)
+      } else {
+        initializeDates(initialFields, runData.run?.auction_type_code)
+      }
 
       await loadWarehouses()
       await loadPricing()
@@ -550,7 +564,7 @@ function Review() {
   // Handle CD export execution
   async function handleExport(result) {
     if (result?.exported_count > 0 || result?.posted > 0) {
-      const listingId = result?.previews?.[0]?.cd_listing_id || result?.cd_listing_id || 'unknown'
+      const listingId = result?.cd_listing_ids?.[0] || result?.previews?.[0]?.cd_listing_id || 'unknown'
       setExportResult({ cd_listing_id: listingId, status: 'exported' })
       setIsApproved(true)
       setSuccess(`Exported to Central Dispatch! Listing ID: ${listingId}`)

@@ -513,6 +513,7 @@ class TestWeatherAPI:
         assert set(data.keys()) == {
             "alerts", "route_states", "clear_states", "alert_states",
             "waypoints_checked", "cached", "checked_at",
+            "ai_summary", "risk_level", "optimal_pickup_suggestion",
         }
 
         # If alerts present, verify alert shape

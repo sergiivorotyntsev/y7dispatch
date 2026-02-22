@@ -155,6 +155,9 @@ class RouteAlertsResult:
     waypoints_checked: int = 0
     cached: bool = False
     checked_at: str = ""
+    ai_summary: Optional[str] = None
+    risk_level: str = "low"  # low, medium, high
+    optimal_pickup_suggestion: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -165,6 +168,9 @@ class RouteAlertsResult:
             "waypoints_checked": self.waypoints_checked,
             "cached": self.cached,
             "checked_at": self.checked_at,
+            "ai_summary": self.ai_summary,
+            "risk_level": self.risk_level,
+            "optimal_pickup_suggestion": self.optimal_pickup_suggestion,
         }
 
 
@@ -279,6 +285,16 @@ class WeatherService:
         clear_states = sorted(set(route_states) - alert_state_set)
 
         now = datetime.now(timezone.utc).isoformat()
+
+        # Generate AI summary if there are alerts
+        ai_summary = None
+        risk_level = "low"
+        optimal_pickup = None
+        if unique_alerts:
+            ai_summary, risk_level, optimal_pickup = self._generate_ai_summary(
+                unique_alerts, route_states, origin_state, dest_state
+            )
+
         result = RouteAlertsResult(
             alerts=unique_alerts,
             route_states=route_states,
@@ -287,6 +303,9 @@ class WeatherService:
             waypoints_checked=len(waypoints),
             cached=False,
             checked_at=now,
+            ai_summary=ai_summary,
+            risk_level=risk_level,
+            optimal_pickup_suggestion=optimal_pickup,
         )
 
         # Cache result
@@ -294,6 +313,114 @@ class WeatherService:
             self._cache_result(cache_key, result)
 
         return result
+
+    # -------------------------------------------------------------------------
+    # AI Summary
+    # -------------------------------------------------------------------------
+
+    def _generate_ai_summary(
+        self,
+        alerts: list[RouteAlert],
+        route_states: list[str],
+        origin_state: str = "",
+        dest_state: str = "",
+    ) -> tuple[Optional[str], str, Optional[str]]:
+        """Generate AI-powered summary of weather alerts for transport route.
+
+        Returns (summary_text, risk_level, optimal_pickup_suggestion).
+        """
+        # Determine risk level from alert severities
+        severities = [a.severity for a in alerts]
+        if "critical" in severities:
+            risk_level = "high"
+        elif "warning" in severities:
+            risk_level = "medium"
+        else:
+            risk_level = "low"
+
+        # Build alert summary for AI prompt
+        alert_lines = []
+        for a in alerts[:10]:  # Limit to 10 for token efficiency
+            expires_info = f", expires {a.expires}" if a.expires else ""
+            alert_lines.append(f"- {a.event} ({a.severity}): {a.headline}{expires_info}")
+        alert_text = "\n".join(alert_lines)
+
+        route_desc = " → ".join(route_states) if route_states else f"{origin_state} → {dest_state}"
+
+        prompt = (
+            f"You are a vehicle transport dispatcher assistant. Summarize these weather alerts "
+            f"for a car carrier route ({route_desc}) in 2-3 concise sentences.\n\n"
+            f"Alerts:\n{alert_text}\n\n"
+            f"Include: (1) what conditions to expect, (2) impact on transport timing, "
+            f"(3) if delay is recommended, suggest waiting until alerts expire.\n"
+            f"Keep it practical for a truck driver. No markdown."
+        )
+
+        try:
+            import os
+
+            # Get API key from credential store or env var
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            try:
+                from api.credential_store import get_credential_for_service
+                cred = get_credential_for_service("anthropic")
+                if cred and cred.get("api_key"):
+                    api_key = cred["api_key"]
+            except Exception:
+                pass
+
+            if not api_key:
+                logger.debug("No Anthropic API key available for weather summary")
+                return self._fallback_summary(alerts, risk_level), risk_level, None
+
+            import anthropic
+
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            summary = response.content[0].text.strip()
+
+            # Determine optimal pickup suggestion from alert expiry times
+            optimal_pickup = self._suggest_optimal_pickup(alerts)
+
+            return summary, risk_level, optimal_pickup
+
+        except Exception as e:
+            logger.warning("AI weather summary failed: %s", e)
+            return self._fallback_summary(alerts, risk_level), risk_level, None
+
+    def _fallback_summary(self, alerts: list[RouteAlert], risk_level: str) -> str:
+        """Generate a simple summary without AI when Anthropic is unavailable."""
+        events = sorted(set(a.event for a in alerts))
+        count = len(alerts)
+        if risk_level == "high":
+            return f"{count} active alert(s) including {', '.join(events[:3])}. Consider delaying pickup until conditions improve."
+        elif risk_level == "medium":
+            return f"{count} active alert(s): {', '.join(events[:3])}. Monitor conditions before dispatching."
+        else:
+            return f"{count} advisory alert(s): {', '.join(events[:3])}. Proceed with caution."
+
+    def _suggest_optimal_pickup(self, alerts: list[RouteAlert]) -> Optional[str]:
+        """Suggest when to pick up based on alert expiry times."""
+        expiry_times = []
+        for a in alerts:
+            if a.expires and a.severity in ("critical", "warning"):
+                try:
+                    exp = datetime.fromisoformat(a.expires.replace("Z", "+00:00"))
+                    expiry_times.append(exp)
+                except (ValueError, TypeError):
+                    pass
+
+        if not expiry_times:
+            return None
+
+        latest_expiry = max(expiry_times)
+        # Add 2-hour buffer after alerts expire
+        suggested = latest_expiry + timedelta(hours=2)
+        return suggested.strftime("%Y-%m-%d %H:%M UTC")
 
     # -------------------------------------------------------------------------
     # Waypoint interpolation

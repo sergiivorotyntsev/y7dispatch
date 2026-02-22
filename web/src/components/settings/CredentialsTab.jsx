@@ -5,6 +5,7 @@ import api from '../../api'
 const SERVICES = [
   { id: 'sheets', label: 'Google Sheets', group: 'sheets' },
   { id: 'anthropic', label: 'Anthropic (Claude)', group: 'anthropic' },
+  { id: 'google_maps', label: 'Google Maps', group: 'google_maps' },
 ]
 
 export default function CredentialsTab() {
@@ -135,6 +136,27 @@ export default function CredentialsTab() {
           hasCredential={!!credentials.anthropic}
         />
       </CredentialCard>
+
+      {/* Google Maps */}
+      <CredentialCard
+        title="Google Maps (Distance Services)"
+        expanded={expandedCard === 'google_maps'}
+        onToggle={() => setExpandedCard(expandedCard === 'google_maps' ? null : 'google_maps')}
+        configured={!!credentials.google_maps}
+        testStatus={testResults.google_maps}
+        dbTestStatus={credentials.google_maps?.last_test_status}
+      >
+        <GoogleMapsForm
+          initial={credentials.google_maps?.config || {}}
+          enabled={credentials.google_maps?.enabled || false}
+          onSave={(config, enabled) => handleSave('google_maps', config, enabled)}
+          onTest={() => handleTest('google_maps')}
+          onDelete={() => handleDelete('google_maps')}
+          testing={testing.google_maps}
+          testResult={testResults.google_maps}
+          hasCredential={!!credentials.google_maps}
+        />
+      </CredentialCard>
     </div>
   )
 }
@@ -148,6 +170,7 @@ function StatusSummary({ credentials }) {
   const services = [
     { key: 'sheets', label: 'Google Sheets' },
     { key: 'anthropic', label: 'Anthropic' },
+    { key: 'google_maps', label: 'Google Maps' },
   ]
 
   return (
@@ -289,6 +312,27 @@ function AnthropicForm({ initial, enabled: initEnabled, onSave, onTest, onDelete
           <label className="form-label">API Key</label>
           <input type="password" value={config.api_key || ''} onChange={e => update('api_key', e.target.value)} placeholder="sk-ant-..." className="form-input w-full" />
           <p className="text-xs text-gray-400 mt-1">Used for Claude Haiku extraction. Falls back to ANTHROPIC_API_KEY env var if not set.</p>
+        </div>
+      </div>
+      <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
+      <TestResultBanner result={testResult} />
+    </div>
+  )
+}
+
+function GoogleMapsForm({ initial, enabled: initEnabled, onSave, onTest, onDelete, testing, testResult, hasCredential }) {
+  const [config, setConfig] = useState(initial)
+  const [enabled, setEnabled] = useState(initEnabled)
+  const update = (k, v) => setConfig(prev => ({ ...prev, [k]: v }))
+
+  return (
+    <div>
+      <EnableToggle enabled={enabled} onChange={setEnabled} />
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <label className="form-label">API Key</label>
+          <input type="password" value={config.api_key || ''} onChange={e => update('api_key', e.target.value)} placeholder="AIza..." className="form-input w-full" />
+          <p className="text-xs text-gray-400 mt-1">Enables road distance and drive time calculations for warehouse options. Without a key, approximate straight-line distances are used.</p>
         </div>
       </div>
       <FormButtons onSave={() => onSave(config, enabled)} onTest={onTest} onDelete={onDelete} testing={testing} hasCredential={hasCredential} />
