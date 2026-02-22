@@ -994,11 +994,14 @@ function Documents() {
                           </option>
                         ))}
                       </select>
-                      {warehouseId && warehouseName && (
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {warehouses.find(w => w.id === parseInt(warehouseId))?.city || ''}{warehouses.find(w => w.id === parseInt(warehouseId))?.state ? `, ${warehouses.find(w => w.id === parseInt(warehouseId)).state}` : ''}
-                        </div>
-                      )}
+                      {warehouseId && warehouseName && (() => {
+                        const wh = warehouses.find(w => w.id === parseInt(warehouseId))
+                        return wh ? (
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {wh.city || ''}{wh.state ? `, ${wh.state}` : ''}
+                          </div>
+                        ) : null
+                      })()}
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {editingPrice.docId === doc.id ? (
