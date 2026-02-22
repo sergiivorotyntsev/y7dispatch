@@ -352,18 +352,28 @@ class TestDeliveryIntegration:
             conn.commit()
         return run_id
 
+    def _ensure_nj_warehouse(self):
+        """Create the NJ warehouse explicitly (YAML sync is unreliable across test boundaries)."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            existing = conn.execute("SELECT id FROM warehouses WHERE code='NJ'").fetchone()
+            if existing:
+                return existing[0]
+            conn.execute(
+                """INSERT INTO warehouses (code, name, state, city, address, zip_code, is_active)
+                   VALUES ('NJ', 'New Jersey Warehouse', 'NJ', 'Newark', '123 Industrial Blvd', '07102', 1)"""
+            )
+            conn.commit()
+            row = conn.execute("SELECT id FROM warehouses WHERE code='NJ'").fetchone()
+            return row[0]
+
     def test_warehouse_fills_delivery_stop(self):
         """Warehouse selection fills delivery stop in CD payload."""
-        from api.database import get_connection
         from api.routes.exports import OperatorOverrides, build_cd_payload
 
         run_id = self._create_test_run()
-
-        # Get warehouse ID
-        with get_connection() as conn:
-            wh = conn.execute("SELECT id FROM warehouses WHERE code='NJ'").fetchone()
-            assert wh is not None, "NJ warehouse should exist from YAML sync"
-            wh_id = wh[0]
+        wh_id = self._ensure_nj_warehouse()
 
         overrides = OperatorOverrides(
             warehouse_id=wh_id,
@@ -409,16 +419,13 @@ class TestDeliveryIntegration:
 
     def test_transport_instructions_in_payload(self):
         """Transport special instructions flow to payload."""
-        from api.database import get_connection
         from api.routes.exports import OperatorOverrides, build_cd_payload
 
         run_id = self._create_test_run()
-
-        with get_connection() as conn:
-            wh = conn.execute("SELECT id FROM warehouses WHERE code='NJ'").fetchone()
+        wh_id = self._ensure_nj_warehouse()
 
         overrides = OperatorOverrides(
-            warehouse_id=wh[0],
+            warehouse_id=wh_id,
             final_price=500.0,
             available_date=datetime.now().strftime("%Y-%m-%d"),
             transport_special_instructions="Mon-Fri 8am-5pm, call ahead",
