@@ -1,0 +1,18 @@
+{
+  "cd": {
+    "client_id": "e1835676-903a-4b12-87a2-d1b4bd4e3075",
+    "client_secret": "fb9b49e4-36e7-42f2-996b-919f4d1a3fd9",
+    "marketplace_id": "40139",
+    "scopes": "marketplace",
+    "environment": "test",
+    "shipper_username": "abd7268d"
+  },
+  "export_targets": [],
+  "email": {
+    "imap_server": "outlook.office365.com",
+    "imap_port": 993,
+    "email_address": "info@y7agency.com",
+    "password": ""
+  },
+  "enable_email_ingest": false
+}

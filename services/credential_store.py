@@ -36,6 +36,7 @@ VALID_SERVICES = {
     "cd_api",
     "sheets",
     "anthropic",
+    "google_maps",
 }
 
 

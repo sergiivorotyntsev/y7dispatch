@@ -43,6 +43,9 @@ class WarehouseCreate(BaseModel):
     location_type: Optional[str] = "BUSINESS"
     transport_special_instructions: Optional[str] = None
     is_default: bool = False
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    notes: Optional[str] = None
 
     @field_validator("code")
     @classmethod
@@ -69,6 +72,9 @@ class WarehouseUpdate(BaseModel):
     location_type: Optional[str] = None
     transport_special_instructions: Optional[str] = None
     is_default: Optional[bool] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    notes: Optional[str] = None
 
     @field_validator("state")
     @classmethod
@@ -93,6 +99,9 @@ class WarehouseResponse(BaseModel):
     transport_special_instructions: Optional[str] = None
     is_default: bool = False
     is_active: bool = True
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    notes: Optional[str] = None
 
 
 class WarehouseListResponse(BaseModel):
@@ -154,11 +163,44 @@ def init_warehouses_schema():
             conn.execute("ALTER TABLE warehouses ADD COLUMN location_type TEXT DEFAULT 'BUSINESS'")
         except Exception:
             pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN latitude REAL")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN longitude REAL")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN notes TEXT")
+        except Exception:
+            pass
 
         # Create indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_active ON warehouses(is_active)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_warehouses_state ON warehouses(state)")
+
+        # Distance cache table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS distance_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                origin_zip TEXT NOT NULL,
+                destination_warehouse_id INTEGER NOT NULL,
+                distance_miles REAL,
+                distance_text TEXT,
+                duration_minutes REAL,
+                duration_text TEXT,
+                transport_price REAL,
+                transport_price_source TEXT,
+                calculated_at TIMESTAMP DEFAULT (datetime('now')),
+                UNIQUE(origin_zip, destination_warehouse_id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_distance_cache_lookup "
+            "ON distance_cache(origin_zip, destination_warehouse_id)"
+        )
 
         conn.commit()
 
@@ -250,8 +292,8 @@ async def create_warehouse(data: WarehouseCreate):
 
         cursor = conn.execute(
             """
-            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, contact_phone, location_type, transport_special_instructions, is_default, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, contact_phone, location_type, transport_special_instructions, is_default, is_active, latitude, longitude, notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.code,
@@ -267,6 +309,9 @@ async def create_warehouse(data: WarehouseCreate):
                 data.transport_special_instructions,
                 data.is_default,
                 True,
+                data.latitude,
+                data.longitude,
+                data.notes,
                 now,
                 now,
             ),
@@ -397,6 +442,110 @@ async def sync_warehouses_from_yaml():
         raise HTTPException(status_code=500, detail=f"Sync failed: {e}")
 
 
+# =============================================================================
+# DISTANCE / OPTIONS MODELS
+# =============================================================================
+
+
+class WarehouseOptionResponse(BaseModel):
+    """A warehouse option with distance and pricing info."""
+
+    warehouse_id: int
+    warehouse_code: str
+    warehouse_name: str
+    city: str = ""
+    state: str = ""
+    zip_code: str = ""
+    distance_miles: Optional[float] = None
+    distance_text: str = ""
+    duration_minutes: Optional[float] = None
+    duration_text: str = ""
+    distance_source: str = ""
+    transport_price: Optional[float] = None
+    transport_price_source: str = ""
+    is_default: bool = False
+    best_value: bool = False
+
+
+class WarehouseOptionsResponse(BaseModel):
+    """Response for warehouse options with distance/pricing."""
+
+    options: list[WarehouseOptionResponse]
+    pickup_zip: str
+    google_maps_available: bool = False
+    cd_pricing_available: bool = False
+
+
+@router.get("/options", response_model=WarehouseOptionsResponse)
+async def get_warehouse_options(
+    pickup_zip: str = Query(..., min_length=3, max_length=10, description="Pickup ZIP code"),
+    pickup_city: str = Query("", description="Pickup city (optional)"),
+    pickup_state: str = Query("", description="Pickup state (optional)"),
+):
+    """
+    Get all active warehouses with distance and price for a pickup location.
+
+    Sorted by price (if available) or distance. Best option marked.
+    """
+    from services.distance_service import DistanceService
+
+    svc = DistanceService()
+    options = svc.get_warehouse_options(pickup_zip, pickup_city, pickup_state)
+
+    return WarehouseOptionsResponse(
+        options=[WarehouseOptionResponse(**o.__dict__) for o in options],
+        pickup_zip=pickup_zip,
+        google_maps_available=bool(svc.google_api_key),
+        cd_pricing_available=False,  # Stub until CD subscription
+    )
+
+
+@router.get("/options-for-run/{run_id}", response_model=WarehouseOptionsResponse)
+async def get_warehouse_options_for_run(run_id: int):
+    """
+    Get warehouse options for a specific extraction run.
+
+    Reads pickup ZIP from extraction outputs and returns options.
+    """
+    import json
+
+    from api.models import ExtractionRunRepository
+
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Extraction run not found")
+
+    outputs = run.outputs_json
+    if isinstance(outputs, str):
+        try:
+            outputs = json.loads(outputs)
+        except (json.JSONDecodeError, TypeError):
+            outputs = {}
+    outputs = outputs or {}
+
+    pickup_zip = outputs.get("pickup_zip", "")
+    pickup_city = outputs.get("pickup_city", "")
+    pickup_state = outputs.get("pickup_state", "")
+
+    if not pickup_zip:
+        raise HTTPException(
+            status_code=400,
+            detail="No pickup ZIP found in extraction outputs",
+        )
+
+    from services.distance_service import DistanceService
+
+    svc = DistanceService()
+    options = svc.get_warehouse_options(pickup_zip, pickup_city, pickup_state)
+
+    return WarehouseOptionsResponse(
+        options=[WarehouseOptionResponse(**o.__dict__) for o in options],
+        pickup_zip=pickup_zip,
+        google_maps_available=bool(svc.google_api_key),
+        cd_pricing_available=False,
+    )
+
+
 @router.get("/{id}", response_model=WarehouseResponse)
 async def get_warehouse(id: int):
     """Get a warehouse by ID."""
@@ -440,6 +589,12 @@ async def update_warehouse(id: int, data: WarehouseUpdate):
         updates["transport_special_instructions"] = data.transport_special_instructions
     if data.is_default is not None:
         updates["is_default"] = data.is_default
+    if data.latitude is not None:
+        updates["latitude"] = data.latitude
+    if data.longitude is not None:
+        updates["longitude"] = data.longitude
+    if data.notes is not None:
+        updates["notes"] = data.notes
 
     if not updates:
         return await get_warehouse(id)
@@ -520,4 +675,7 @@ def _row_to_response(row: dict) -> WarehouseResponse:
         transport_special_instructions=row.get("transport_special_instructions"),
         is_default=row.get("is_default", False),
         is_active=row.get("is_active", True),
+        latitude=row.get("latitude"),
+        longitude=row.get("longitude"),
+        notes=row.get("notes"),
     )
