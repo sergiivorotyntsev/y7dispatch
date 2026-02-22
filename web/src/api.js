@@ -563,6 +563,16 @@ export const api = {
     return request(`/warehouses/options?${params}`)
   },
   getWarehouseOptionsForRun: (runId) => request(`/warehouses/options-for-run/${runId}`),
+
+  // Weather Alerts
+  getRouteAlerts: (pickupZip, warehouseId) => {
+    const params = new URLSearchParams({ origin_zip: pickupZip, warehouse_id: warehouseId })
+    return request(`/weather/route-alerts?${params}`)
+  },
+  getRouteAlertsForRun: (runId, warehouseId) => {
+    const whParam = warehouseId ? `?warehouse_id=${warehouseId}` : ''
+    return request(`/weather/route-alerts-for-run/${runId}${whParam}`)
+  },
 }
 
 export default api

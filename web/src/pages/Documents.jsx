@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import ExportPreviewModal from '../components/ExportPreviewModal'
 import { parseUTCDate } from '../utils/date'
+import WeatherIndicator from '../components/WeatherIndicator'
 
 /**
  * Documents Page - Production Workflow
@@ -997,8 +998,9 @@ function Documents() {
                       {warehouseId && warehouseName && (() => {
                         const wh = warehouses.find(w => w.id === parseInt(warehouseId))
                         return wh ? (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {wh.city || ''}{wh.state ? `, ${wh.state}` : ''}
+                          <div className="text-xs text-gray-400 mt-0.5 flex items-center">
+                            <span>{wh.city || ''}{wh.state ? `, ${wh.state}` : ''}</span>
+                            <WeatherIndicator runId={extRunId} warehouseId={warehouseId} />
                           </div>
                         ) : null
                       })()}

@@ -12,6 +12,7 @@ import ExtractionInfoBar from '../components/review/ExtractionInfoBar'
 import VehicleSection from '../components/review/VehicleSection'
 import PickupSection from '../components/review/PickupSection'
 import DeliverySection from '../components/review/DeliverySection'
+import WeatherAlertsPanel from '../components/review/WeatherAlertsPanel'
 import DatesSection from '../components/review/DatesSection'
 import PricingPaymentSection from '../components/review/PricingPaymentSection'
 import AdditionalInfoSection from '../components/review/AdditionalInfoSection'
@@ -817,6 +818,12 @@ function Review() {
               fields={fields}
               updateField={updateField}
               runId={runId}
+            />
+
+            {/* Weather alerts along route */}
+            <WeatherAlertsPanel
+              runId={runId}
+              warehouseId={selectedWarehouse}
             />
 
             {/* Section 5: Dates */}
