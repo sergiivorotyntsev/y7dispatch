@@ -255,3 +255,77 @@ async def backfill_load_ids():
             updated += 1
 
     return {"updated": updated, "skipped": skipped, "total_checked": len(rows)}
+
+
+class RecalcLoadIdResponse(BaseModel):
+    run_id: int
+    old_load_id: str | None
+    new_load_id: str
+    make: str
+    model: str
+    sequence: int
+
+
+@router.post("/recalculate-load-id/{run_id}", response_model=RecalcLoadIdResponse)
+async def recalculate_load_id(run_id: int):
+    """
+    Recalculate Load ID for a specific extraction run.
+
+    Use when make/model has been corrected after initial Load ID generation.
+    Removes old Load ID from registry and generates a fresh one.
+    """
+    import json
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Extraction run {run_id} not found")
+
+    try:
+        outputs = json.loads(row["outputs_json"]) if row["outputs_json"] else {}
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=400, detail="Could not parse outputs_json")
+
+    make = outputs.get("vehicle_make", "")
+    model = outputs.get("vehicle_model", "")
+    if not make or not model:
+        raise HTTPException(
+            status_code=400,
+            detail="Extraction run missing vehicle_make or vehicle_model",
+        )
+
+    old_load_id = outputs.get("load_id")
+
+    # Remove old load_id from registry so it can be reused
+    if old_load_id:
+        with get_connection() as conn:
+            conn.execute("DELETE FROM load_ids WHERE load_id = ?", (old_load_id,))
+            conn.commit()
+
+    # Generate fresh load_id
+    result = create_load_id(make, model)
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to generate Load ID")
+
+    new_load_id, sequence = result
+
+    # Update extraction run
+    outputs["load_id"] = new_load_id
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+            (json.dumps(outputs), run_id),
+        )
+        conn.commit()
+
+    return RecalcLoadIdResponse(
+        run_id=run_id,
+        old_load_id=old_load_id,
+        new_load_id=new_load_id,
+        make=make,
+        model=model,
+        sequence=sequence,
+    )

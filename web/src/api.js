@@ -431,6 +431,7 @@ export const api = {
 
   // Load ID Generation
   generateLoadId: (make, model) => request(`/listings/generate-load-id?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`),
+  recalculateLoadId: (runId) => request(`/listings/recalculate-load-id/${runId}`, { method: 'POST' }),
 
   // Email Scan + Process (2-step flow)
   scanEmails: (sinceDate, untilDate = null) => {

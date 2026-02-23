@@ -357,3 +357,100 @@ class TestDefaultPaymentFields:
         from api.listing_fields import LISTING_FIELDS
         field = next(f for f in LISTING_FIELDS if f.key == "load_id")
         assert field.editable_in_review is False
+
+
+# ===========================================================================
+# Test Load ID Recalculation
+# ===========================================================================
+
+class TestLoadIdRecalculation:
+    """POST /api/listings/recalculate-load-id/{run_id} endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _ensure_extraction_runs_table(self, temp_database):
+        """Ensure extraction_runs table exists for all tests in this class."""
+        conn = sqlite3.connect(temp_database)
+        conn.execute("CREATE TABLE IF NOT EXISTS extraction_runs (id INTEGER PRIMARY KEY, document_id INTEGER, status TEXT DEFAULT 'completed', outputs_json TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        conn.commit()
+        conn.close()
+
+    def _insert_run(self, db_path, run_id, make, model, load_id=None):
+        """Helper: insert a fake extraction_run with outputs_json."""
+        import json
+        outputs = {"vehicle_make": make, "vehicle_model": model}
+        if load_id:
+            outputs["load_id"] = load_id
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (?, 1, 'completed', ?)",
+            (run_id, json.dumps(outputs)),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_recalculate_generates_new_load_id(self, client, temp_database):
+        """Recalculate should generate a fresh load_id and update the run."""
+        import json
+        self._insert_run(temp_database, 999, "Toyota", "Camry")
+        resp = client.post("/api/listings/recalculate-load-id/999")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["run_id"] == 999
+        assert data["make"] == "Toyota"
+        assert data["model"] == "Camry"
+        now = datetime.now()
+        expected_prefix = f"{now.month}{now.strftime('%d')}TOYCA"
+        assert data["new_load_id"].startswith(expected_prefix)
+
+    def test_recalculate_removes_old_load_id(self, client, temp_database):
+        """Old load_id should be removed from load_ids table after recalculate."""
+        # First generate a load_id
+        resp1 = client.get("/api/listings/generate-load-id?make=Ford&model=Focus")
+        old_id = resp1.json()["load_id"]
+
+        # Insert run with that load_id
+        self._insert_run(temp_database, 888, "Ford", "Focus", load_id=old_id)
+
+        # Recalculate
+        resp2 = client.post("/api/listings/recalculate-load-id/888")
+        assert resp2.status_code == 200
+        data = resp2.json()
+        assert data["old_load_id"] == old_id
+        # New load_id should be generated (sequence resets since old was deleted)
+        assert data["new_load_id"] is not None
+
+    def test_recalculate_nonexistent_run_returns_404(self, client):
+        """Recalculate for non-existent run returns 404."""
+        resp = client.post("/api/listings/recalculate-load-id/99999")
+        assert resp.status_code == 404
+
+    def test_recalculate_run_without_make_model_returns_400(self, client, temp_database):
+        """Run missing make/model returns 400."""
+        import json
+        conn = sqlite3.connect(temp_database)
+        conn.execute("CREATE TABLE IF NOT EXISTS extraction_runs (id INTEGER PRIMARY KEY, document_id INTEGER, status TEXT DEFAULT 'completed', outputs_json TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (777, 1, 'completed', ?)",
+            (json.dumps({"some_field": "value"}),),
+        )
+        conn.commit()
+        conn.close()
+        resp = client.post("/api/listings/recalculate-load-id/777")
+        assert resp.status_code == 400
+        assert "vehicle_make" in resp.json()["detail"]
+
+    def test_recalculate_updates_outputs_json(self, client, temp_database):
+        """After recalculate, outputs_json in DB should have the new load_id."""
+        import json
+        self._insert_run(temp_database, 666, "Jeep", "Grand Cherokee", load_id="OLD123")
+        resp = client.post("/api/listings/recalculate-load-id/666")
+        assert resp.status_code == 200
+        new_id = resp.json()["new_load_id"]
+
+        # Verify in DB
+        conn = sqlite3.connect(temp_database)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT outputs_json FROM extraction_runs WHERE id = 666").fetchone()
+        conn.close()
+        outputs = json.loads(row["outputs_json"])
+        assert outputs["load_id"] == new_id

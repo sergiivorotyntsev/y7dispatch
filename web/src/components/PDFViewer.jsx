@@ -237,7 +237,6 @@ function PDFViewer({
               zones={zones.filter(z => (z.page_num || 1) === currentPage)}
               highlightedField={highlightedField}
               onZoneClick={(zone) => {
-                console.log('Zone clicked:', zone)
                 // Could scroll to first field in zone
               }}
             />
