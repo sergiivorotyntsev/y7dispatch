@@ -290,11 +290,47 @@ async def poll_email_now(
             _poll_state["last_poll_error"] = None
             _poll_state["polls_completed"] += 1
 
+            # Detect VIN duplicates across processed runs
+            vin_duplicates = []
+            processed_run_ids = [r.run_id for r in results if r.status == "processed" and r.run_id]
+            if processed_run_ids:
+                try:
+                    import json as _json
+                    from api.database import get_connection as _gc
+                    with _gc() as conn:
+                        for run_id in processed_run_ids:
+                            row = conn.execute(
+                                "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+                            ).fetchone()
+                            if not row or not row[0]:
+                                continue
+                            outputs = _json.loads(row[0])
+                            vin = outputs.get("vehicle_vin")
+                            if not vin or len(vin) != 17:
+                                continue
+                            # Check for other runs with same VIN
+                            existing = conn.execute(
+                                "SELECT id, status FROM extraction_runs "
+                                "WHERE id != ? AND outputs_json LIKE ? "
+                                "ORDER BY id DESC LIMIT 1",
+                                (run_id, f'%"{vin}"%'),
+                            ).fetchone()
+                            if existing:
+                                vin_duplicates.append({
+                                    "vin": vin,
+                                    "new_run_id": run_id,
+                                    "existing_run_id": existing["id"],
+                                    "existing_status": existing["status"],
+                                })
+                except Exception:
+                    pass  # Non-critical — don't fail the poll
+
             return {
                 "status": "ok",
                 "processed": len([r for r in results if r.status == "processed"]),
                 "skipped": len([r for r in results if r.status == "skipped"]),
                 "failed": len([r for r in results if r.status == "failed"]),
+                "vin_duplicates": vin_duplicates,
                 "results": [
                     {
                         "message_id": r.message_id,

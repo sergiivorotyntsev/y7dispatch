@@ -743,7 +743,7 @@ class EmailWorker:
                     sender_name,
                     msg.subject,
                     msg.date,
-                    body_preview[:500] if body_preview else "",
+                    body_preview[:2000] if body_preview else "",
                     msg.has_pdf,
                     len(msg.pdf_filenames),
                     json.dumps(msg.pdf_filenames) if msg.pdf_filenames else "[]",

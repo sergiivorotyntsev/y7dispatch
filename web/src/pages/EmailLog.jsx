@@ -23,6 +23,10 @@ function EmailLog() {
   const [processingId, setProcessingId] = useState(null)
   const [polling, setPolling] = useState(false)
 
+  // Poll date picker
+  const [pollSinceDate, setPollSinceDate] = useState('')
+  const [pollResult, setPollResult] = useState(null)
+
   // Auto-poll status
   const [pollStatus, setPollStatus] = useState(null)
 
@@ -124,17 +128,23 @@ function EmailLog() {
     }
   }
 
-  async function handlePollNow() {
+  async function handlePollNow(sinceDays = null) {
     setPolling(true)
+    setPollResult(null)
     try {
-      const result = await api.pollEmails(0)
+      let result
+      if (pollSinceDate) {
+        result = await api.pollEmailNow(0, pollSinceDate)
+      } else if (sinceDays !== null) {
+        result = await api.pollEmailNow(sinceDays)
+      } else {
+        result = await api.pollEmailNow(7)
+      }
       setError(null)
       fetchEmails()
       fetchStats()
       fetchPollStatus()
-      if (result.results_count !== undefined) {
-        alert(`Poll complete: ${result.results_count} emails processed`)
-      }
+      setPollResult(result)
     } catch (err) {
       setError(`Poll failed: ${err.message}`)
     } finally {
@@ -187,18 +197,92 @@ function EmailLog() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Email Log</h1>
           <p className="text-sm text-gray-500 mt-1">Ingested emails and processing status</p>
         </div>
-        <button
-          onClick={handlePollNow}
-          disabled={polling}
-          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-        >
-          {polling ? 'Polling...' : 'Poll Now'}
-        </button>
+      </div>
+
+      {/* Poll Controls */}
+      <div className="mb-4 px-4 py-3 bg-white border rounded-lg shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-gray-700">Poll emails from:</span>
+          <input
+            type="date"
+            value={pollSinceDate}
+            onChange={e => setPollSinceDate(e.target.value)}
+            className="form-input text-sm px-2 py-1.5 border-gray-300 rounded"
+            max={new Date().toISOString().split('T')[0]}
+          />
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => { setPollSinceDate(''); handlePollNow(7) }}
+              disabled={polling}
+              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+            >
+              7 days
+            </button>
+            <button
+              onClick={() => { setPollSinceDate(''); handlePollNow(14) }}
+              disabled={polling}
+              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+            >
+              14 days
+            </button>
+            <button
+              onClick={() => { setPollSinceDate(''); handlePollNow(30) }}
+              disabled={polling}
+              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+            >
+              30 days
+            </button>
+          </div>
+          <button
+            onClick={() => handlePollNow()}
+            disabled={polling}
+            className="px-4 py-1.5 bg-primary-600 text-white text-sm rounded hover:bg-primary-700 disabled:opacity-50"
+          >
+            {polling ? 'Polling...' : 'Poll Now'}
+          </button>
+        </div>
+
+        {/* Poll result notification */}
+        {pollResult && (
+          <div className="mt-3 p-2.5 bg-green-50 border border-green-200 rounded text-sm">
+            <div className="flex items-center gap-2 text-green-800">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="font-medium">
+                Poll complete: {pollResult.processed || 0} processed, {pollResult.skipped || 0} skipped, {pollResult.failed || 0} failed
+              </span>
+              <button onClick={() => setPollResult(null)} className="ml-auto text-green-600 hover:text-green-800 text-xs">Dismiss</button>
+            </div>
+            {/* VIN duplicate warnings */}
+            {pollResult.vin_duplicates?.length > 0 && (
+              <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded">
+                <div className="text-amber-800 text-xs font-medium mb-1">
+                  {pollResult.vin_duplicates.length} duplicate VIN{pollResult.vin_duplicates.length !== 1 ? 's' : ''} detected:
+                </div>
+                {pollResult.vin_duplicates.map((dup, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs text-amber-700 ml-2">
+                    <span className="font-mono">{dup.vin}</span>
+                    <span>- already {dup.existing_status?.replace('_', ' ') || 'exists'}</span>
+                    {dup.existing_run_id && (
+                      <button
+                        onClick={() => navigate(`/review/${dup.existing_run_id}`)}
+                        className="text-blue-600 hover:text-blue-800 underline"
+                      >
+                        View
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Auto-poll status bar */}

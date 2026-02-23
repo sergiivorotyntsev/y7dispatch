@@ -78,7 +78,7 @@ export default function EmailContextPanel({ runId, document }) {
           {emailCtx.body && (
             <div className="mt-2">
               <div className="text-xs text-blue-700 font-medium mb-1">Body:</div>
-              <div className="bg-white rounded p-3 text-sm text-gray-700 whitespace-pre-wrap border border-blue-100 max-h-32 overflow-auto">
+              <div className="bg-white rounded p-3 text-sm text-gray-700 whitespace-pre-wrap border border-blue-100 max-h-48 overflow-auto">
                 {emailCtx.body}
               </div>
             </div>
