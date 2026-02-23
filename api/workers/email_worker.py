@@ -433,10 +433,12 @@ class EmailWorker:
                     outputs = {}
 
             # Don't overwrite VIN already extracted from PDF
-            if outputs.get("vehicle_vin"):
+            if outputs.get("vehicle_vin") or outputs.get("vin"):
                 return
 
+            # Save to both canonical names for compatibility with review items + CD export
             outputs["vehicle_vin"] = vin
+            outputs["vin"] = vin
             outputs["vin_source"] = "email_subject"
 
             conn.execute(
@@ -494,7 +496,7 @@ class EmailWorker:
         return None
 
     def _update_run_attachments(self, run_id: int, attachment_info: dict):
-        """Add attachment info to extraction_runs.attachments_json."""
+        """Add attachment info to extraction_runs.attachments_json (with dedup)."""
         with get_connection() as conn:
             # Ensure column exists
             try:
@@ -513,6 +515,15 @@ class EmailWorker:
                     existing = json.loads(row["attachments_json"])
                 except Exception:
                     existing = []
+
+            # Dedup: skip if attachment with same normalized filename already exists
+            new_name = (attachment_info.get("filename") or "").lower().replace(" ", "_")
+            already_exists = any(
+                (a.get("filename") or "").lower().replace(" ", "_") == new_name
+                for a in existing
+            )
+            if already_exists:
+                return
 
             existing.append(attachment_info)
 

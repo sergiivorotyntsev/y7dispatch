@@ -46,12 +46,19 @@ export default function EmailContextPanel({ runId, document, runAttachments, onV
   // Email attachments have: {filename, is_main_document, view_url, type}
   // Run attachments have: {filename, original_filename, type, url}
   const mergedAttachments = []
-  const seenFilenames = new Set()
+  const seenNormalized = new Set()
+
+  // Normalize filename for dedup: lowercase, spaces→underscores, strip (N) suffixes
+  function normalizeForDedup(name) {
+    return (name || '').toLowerCase().trim().replace(/\s+/g, '_').replace(/_?\(\d+\)/g, '').replace(/[\r\n]/g, '')
+  }
 
   // 1. Email attachments first (they have is_main_document flag)
   if (emailCtx?.attachments) {
     for (const att of emailCtx.attachments) {
-      seenFilenames.add(att.filename)
+      const norm = normalizeForDedup(att.filename)
+      if (seenNormalized.has(norm)) continue
+      seenNormalized.add(norm)
       mergedAttachments.push({
         filename: att.filename,
         displayName: att.filename,
@@ -62,19 +69,19 @@ export default function EmailContextPanel({ runId, document, runAttachments, onV
     }
   }
 
-  // 2. Run attachments not already in email list
+  // 2. Run attachments not already in email list (dedup by normalized name)
   if (runAttachments) {
     for (const att of runAttachments) {
-      if (!seenFilenames.has(att.filename)) {
-        seenFilenames.add(att.filename)
-        mergedAttachments.push({
-          filename: att.filename,
-          displayName: att.original_filename || att.filename,
-          isMain: false,
-          viewUrl: att.url,
-          type: att.type || guessType(att.filename),
-        })
-      }
+      const norm = normalizeForDedup(att.original_filename || att.filename)
+      if (seenNormalized.has(norm)) continue
+      seenNormalized.add(norm)
+      mergedAttachments.push({
+        filename: att.filename,
+        displayName: att.original_filename || att.filename,
+        isMain: false,
+        viewUrl: att.url,
+        type: att.type || guessType(att.filename),
+      })
     }
   }
 
@@ -107,8 +114,12 @@ export default function EmailContextPanel({ runId, document, runAttachments, onV
   }
 
   function handleView(att) {
-    if (onViewAttachment && att.viewUrl) {
-      // Load in the main viewer panel (supports both PDF iframe and image rendering)
+    if (!onViewAttachment) return
+    if (att.isMain) {
+      // Reset to main document (null tells Review.jsx to use pdfUrl)
+      onViewAttachment(null)
+    } else if (att.viewUrl) {
+      // Load attachment in the main viewer panel
       onViewAttachment(att.viewUrl)
     }
   }

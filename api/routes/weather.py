@@ -189,15 +189,36 @@ async def get_route_alerts_for_run(
         raise HTTPException(status_code=404, detail="Extraction run not found")
 
     outputs = json.loads(run_row[1]) if run_row[1] else {}
-    pickup_zip = outputs.get("pickup_zip", "")
+    # Try multiple field names for pickup ZIP (extraction may use different keys)
+    pickup_zip = (
+        outputs.get("pickup_zip")
+        or outputs.get("pickup_zip_code")
+        or outputs.get("pickup_zipcode")
+        or ""
+    ).strip()
     pickup_state = outputs.get("pickup_state", "")
+    pickup_city = outputs.get("pickup_city", "")
 
-    if not pickup_zip:
-        raise HTTPException(status_code=400, detail="Extraction run has no pickup ZIP")
+    origin_coords = None
+    if pickup_zip:
+        origin_coords = _zip_to_coords(pickup_zip)
 
-    origin_coords = _zip_to_coords(pickup_zip)
+    # Fallback: geocode from city + state when ZIP is missing or unresolvable
+    if not origin_coords and pickup_city and pickup_state:
+        try:
+            from services.warehouse import WarehouseService
+            ws = WarehouseService()
+            origin_coords = ws.geocode(f"{pickup_city}, {pickup_state}")
+            if origin_coords:
+                logger.info("Weather: resolved coords from city/state: %s, %s", pickup_city, pickup_state)
+        except Exception as e:
+            logger.debug("City/state geocode failed: %s", e)
+
     if not origin_coords:
-        raise HTTPException(status_code=400, detail=f"Cannot resolve coordinates for pickup ZIP: {pickup_zip}")
+        detail = "Extraction run has no pickup ZIP"
+        if pickup_city or pickup_state:
+            detail += f" (city={pickup_city}, state={pickup_state} could not be geocoded)"
+        raise HTTPException(status_code=400, detail=detail)
 
     # Resolve warehouse
     if warehouse_id:

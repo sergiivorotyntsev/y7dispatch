@@ -188,16 +188,19 @@ function Review() {
 
       if (runData.run?.document_id) {
         setPdfUrl(`/api/documents/${runData.run.document_id}/file`)
-        // Fetch document info for email metadata
-        try {
-          const docData = await api.getDocument(runData.run.document_id)
-          setDocument(docData)
-        } catch (err) {
-          console.debug('Could not load document details:', err.message)
-        }
       }
 
-      const itemsData = await api.getReviewItems(runId)
+      // Parallelize document metadata + review items (both independent after extraction)
+      const [docResult, itemsData] = await Promise.all([
+        runData.run?.document_id
+          ? api.getDocument(runData.run.document_id).catch(err => {
+              console.debug('Could not load document details:', err.message)
+              return null
+            })
+          : Promise.resolve(null),
+        api.getReviewItems(runId),
+      ])
+      if (docResult) setDocument(docResult)
       setItems(itemsData.items || [])
 
       // Initialize field values with enriched metadata from API
@@ -234,6 +237,25 @@ function Review() {
           section: 'additional',
           fieldType: 'text',
           required: false,
+        }
+      }
+
+      // Inject VIN from outputs_json (e.g. extracted from email subject) if review_items has no VIN
+      const existingVin = initialFields.vin?.corrected || initialFields.vehicle_vin?.corrected
+      const outputVin = runData.run?.outputs?.vin || runData.run?.outputs?.vehicle_vin
+      if (!existingVin && outputVin) {
+        initialFields.vin = {
+          key: 'vin',
+          label: 'VIN',
+          predicted: outputVin,
+          corrected: outputVin,
+          confidence: 0.9,
+          cdKey: 'vehicle_vin',
+          status: 'review',
+          export: true,
+          section: 'vehicle',
+          fieldType: 'text',
+          required: true,
         }
       }
 
