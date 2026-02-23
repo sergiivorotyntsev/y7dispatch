@@ -2327,6 +2327,12 @@ def _run_migrations():
         except Exception:
             pass
 
+        # Migration: Add created_at index for ORDER BY performance
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at DESC)")
+        except Exception:
+            pass
+
         # Migration: Add error_message column to extraction_runs
         try:
             conn.execute("ALTER TABLE extraction_runs ADD COLUMN error_message TEXT")

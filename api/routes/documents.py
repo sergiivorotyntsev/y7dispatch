@@ -662,8 +662,18 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
     auction_cost = outputs.get("total_amount")
     doc_dict["auction_cost"] = float(auction_cost) if auction_cost is not None else None
 
-    # Distance for $/mile calculation
+    # Distance for $/mile calculation — try outputs first, then distance_cache
     distance = outputs.get("distance_miles")
+    if distance is None:
+        pickup_zip = outputs.get("pickup_zip")
+        wh_id_for_dist = outputs.get("warehouse_id")
+        if pickup_zip and wh_id_for_dist:
+            dist_row = conn.execute(
+                "SELECT distance_miles FROM distance_cache WHERE origin_zip = ? AND destination_warehouse_id = ?",
+                (str(pickup_zip), int(wh_id_for_dist)),
+            ).fetchone()
+            if dist_row:
+                distance = dist_row["distance_miles"]
     doc_dict["distance_miles"] = float(distance) if distance is not None else None
 
     # Warehouse selection (set during review)
@@ -695,132 +705,138 @@ async def list_documents(
     """List documents with optional filtering and search."""
     from api.database import get_connection
 
-    if search and search.strip():
-        # Search across extraction outputs (VIN, make, model, lot)
-        q = f"%{search.strip()}%"
-        q_upper = f"%{search.strip().upper()}%"
+    with get_connection() as conn:
+        # Pre-load auction types into a dict (typically <10 rows) to avoid N+1
+        at_rows = conn.execute("SELECT id, code FROM auction_types").fetchall()
+        at_code_map = {r["id"]: r["code"] for r in at_rows}
 
-        with get_connection() as conn:
-            # Join documents with their latest extraction run outputs
-            sql = """
-                SELECT d.*, er.outputs_json, er.id as _run_id, er.status as _run_status
-                FROM documents d
-                LEFT JOIN extraction_runs er ON er.document_id = d.id
-                    AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
-                WHERE (d.is_test IS NULL OR d.is_test = 0)
-                  AND (d.source IS NULL OR d.source != 'test_lab')
-                  AND (d.archived_at IS NULL OR d.archived_at = '')
-                  AND (
-                    json_extract(er.outputs_json, '$.vehicle_vin') LIKE ?
-                    OR json_extract(er.outputs_json, '$.vehicle_make') LIKE ?
-                    OR json_extract(er.outputs_json, '$.vehicle_model') LIKE ?
-                    OR json_extract(er.outputs_json, '$.vehicle_lot') LIKE ?
-                    OR json_extract(er.outputs_json, '$.gate_pass') LIKE ?
-                    OR d.filename LIKE ?
-                  )
-                ORDER BY d.created_at DESC
-                LIMIT ? OFFSET ?
-            """
-            if include_archived:
-                sql = sql.replace("AND (d.archived_at IS NULL OR d.archived_at = '')", "")
-            rows = conn.execute(sql, [q_upper, q, q, q, q, q, limit, offset]).fetchall()
-
-            items = []
-            for row in rows:
-                d = dict(row)
-                # Remove join artifacts before constructing Document
-                d.pop("outputs_json", None)
-                d.pop("_run_id", None)
-                d.pop("_run_status", None)
-                doc = Document(**d)
-                at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
-                enriched = _enrich_doc_with_extraction(doc.__dict__.copy(), conn)
-                enriched["auction_type_code"] = at.code if at else None
-                items.append(DocumentResponse(**enriched))
-
-            # Total count for search
-            count_sql = """
-                SELECT COUNT(*)
-                FROM documents d
-                LEFT JOIN extraction_runs er ON er.document_id = d.id
-                    AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
-                WHERE (d.is_test IS NULL OR d.is_test = 0)
-                  AND (d.source IS NULL OR d.source != 'test_lab')
-                  AND (d.archived_at IS NULL OR d.archived_at = '')
-                  AND (
-                    json_extract(er.outputs_json, '$.vehicle_vin') LIKE ?
-                    OR json_extract(er.outputs_json, '$.vehicle_make') LIKE ?
-                    OR json_extract(er.outputs_json, '$.vehicle_model') LIKE ?
-                    OR json_extract(er.outputs_json, '$.vehicle_lot') LIKE ?
-                    OR json_extract(er.outputs_json, '$.gate_pass') LIKE ?
-                    OR d.filename LIKE ?
-                  )
-            """
-            if include_archived:
-                count_sql = count_sql.replace("AND (d.archived_at IS NULL OR d.archived_at = '')", "")
-            total = conn.execute(count_sql, [q_upper, q, q, q, q, q]).fetchone()[0]
-
-        return DocumentListResponse(items=items, total=total)
-
-    if auction_type_id:
-        docs = DocumentRepository.list_by_auction_type(
-            auction_type_id=auction_type_id,
-            dataset_split=dataset_split,
-            limit=limit,
-            offset=offset,
-        )
-        counts = DocumentRepository.count_by_auction_type(auction_type_id)
-    else:
-        sql = "SELECT * FROM documents WHERE 1=1"
+        # Base query with LEFT JOIN to get extraction data in single query
+        base_join = """
+            SELECT d.*, er.outputs_json AS _outputs_json, er.id AS _run_id, er.status AS _run_status
+            FROM documents d
+            LEFT JOIN extraction_runs er ON er.document_id = d.id
+                AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
+        """
+        base_where = " WHERE (d.is_test IS NULL OR d.is_test = 0) AND (d.source IS NULL OR d.source != 'test_lab')"
+        if not include_archived:
+            base_where += " AND (d.archived_at IS NULL OR d.archived_at = '')"
         params = []
 
+        if search and search.strip():
+            q = f"%{search.strip()}%"
+            q_upper = f"%{search.strip().upper()}%"
+            base_where += """
+                AND (
+                    json_extract(er.outputs_json, '$.vehicle_vin') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_make') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_model') LIKE ?
+                    OR json_extract(er.outputs_json, '$.vehicle_lot') LIKE ?
+                    OR json_extract(er.outputs_json, '$.gate_pass') LIKE ?
+                    OR d.filename LIKE ?
+                )
+            """
+            params.extend([q_upper, q, q, q, q, q])
+        elif auction_type_id:
+            base_where += " AND d.auction_type_id = ?"
+            params.append(auction_type_id)
+
         if dataset_split:
-            sql += " AND dataset_split = ?"
+            base_where += " AND d.dataset_split = ?"
             params.append(dataset_split)
 
-        # Exclude Test Lab documents by default for production Documents page
-        if exclude_test_lab:
-            sql += " AND (is_test IS NULL OR is_test = 0)"
-            sql += " AND (source IS NULL OR source != 'test_lab')"
+        # Count query (reuses same WHERE clause)
+        total = conn.execute(f"SELECT COUNT(*) FROM documents d LEFT JOIN extraction_runs er ON er.document_id = d.id AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id){base_where}", params).fetchone()[0]
 
-        # Exclude archived documents by default
-        if not include_archived:
-            sql += " AND (archived_at IS NULL OR archived_at = '')"
+        # Main query with pagination
+        sql = f"{base_join}{base_where} ORDER BY d.created_at DESC LIMIT ? OFFSET ?"
+        rows = conn.execute(sql, params + [limit, offset]).fetchall()
 
-        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
+        # Build response using JOIN data — no N+1 enrichment
+        items = []
+        for row in rows:
+            d = dict(row)
+            outputs_json_raw = d.pop("_outputs_json", None)
+            run_id = d.pop("_run_id", None)
+            run_status = d.pop("_run_status", None)
 
-        with get_connection() as conn:
-            rows = conn.execute(sql, params).fetchall()
-            docs = [Document(**dict(row)) for row in rows]
+            # Parse extraction outputs once
+            outputs = {}
+            if outputs_json_raw:
+                try:
+                    outputs = json.loads(outputs_json_raw)
+                except Exception:
+                    pass
 
-            # Get counts (also excluding test lab docs)
-            count_filter = ""
-            if exclude_test_lab:
-                count_filter = " AND (is_test IS NULL OR is_test = 0) AND (source IS NULL OR source != 'test_lab')"
+            def _str(val):
+                return str(val) if val is not None else None
 
-            train_count = conn.execute(
-                f"SELECT COUNT(*) FROM documents WHERE dataset_split = 'train'{count_filter}"
-            ).fetchone()[0]
-            test_count = conn.execute(
-                f"SELECT COUNT(*) FROM documents WHERE dataset_split = 'test'{count_filter}"
-            ).fetchone()[0]
-            counts = {"train": train_count, "test": test_count}
+            # Enrich from joined extraction data (inline, no separate query)
+            d["extraction_run_id"] = run_id
+            d["extraction_status"] = run_status
+            d["load_id"] = _str(outputs.get("load_id"))
+            d["vin"] = _str(outputs.get("vehicle_vin"))
+            d["vehicle_year"] = _str(outputs.get("vehicle_year"))
+            d["vehicle_make"] = _str(outputs.get("vehicle_make"))
+            d["vehicle_model"] = _str(outputs.get("vehicle_model"))
+            d["vehicle_lot"] = _str(outputs.get("vehicle_lot"))
+            d["pickup_city"] = _str(outputs.get("pickup_city"))
+            d["pickup_state"] = _str(outputs.get("pickup_state"))
+            d["pickup_name"] = _str(outputs.get("pickup_name"))
+            d["gate_pass"] = _str(outputs.get("gate_pass"))
+            d["auction_type_code"] = at_code_map.get(d.get("auction_type_id"))
 
-    # Enrich with auction type codes and extraction data
-    items = []
-    with get_connection() as conn:
-        for doc in docs:
-            at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
-            enriched = _enrich_doc_with_extraction(doc.__dict__.copy(), conn)
-            enriched["auction_type_code"] = at.code if at else None
-            items.append(DocumentResponse(**enriched))
+            # Transport price
+            price = outputs.get("price_total")
+            if price is None:
+                price = outputs.get("final_price")
+            d["price_total"] = float(price) if price is not None else None
+
+            # Auction cost
+            auction_cost = outputs.get("total_amount")
+            d["auction_cost"] = float(auction_cost) if auction_cost is not None else None
+
+            # Distance — try outputs, then distance_cache
+            distance = outputs.get("distance_miles")
+            if distance is None:
+                pickup_zip = outputs.get("pickup_zip")
+                wh_id_for_dist = outputs.get("warehouse_id")
+                if pickup_zip and wh_id_for_dist:
+                    dist_row = conn.execute(
+                        "SELECT distance_miles FROM distance_cache WHERE origin_zip = ? AND destination_warehouse_id = ?",
+                        (str(pickup_zip), int(wh_id_for_dist)),
+                    ).fetchone()
+                    if dist_row:
+                        distance = dist_row["distance_miles"]
+            d["distance_miles"] = float(distance) if distance is not None else None
+
+            # Warehouse
+            wh_id = outputs.get("warehouse_id")
+            if wh_id is not None:
+                d["warehouse_id"] = int(wh_id)
+                wh_row = conn.execute(
+                    "SELECT name FROM warehouses WHERE id = ?", (int(wh_id),)
+                ).fetchone()
+                d["warehouse_name"] = wh_row["name"] if wh_row else None
+            else:
+                d["warehouse_id"] = None
+                d["warehouse_name"] = None
+
+            items.append(DocumentResponse(**d))
+
+        # Counts for split badges
+        count_filter = " AND (is_test IS NULL OR is_test = 0) AND (source IS NULL OR source != 'test_lab')"
+        train_count = conn.execute(
+            f"SELECT COUNT(*) FROM documents WHERE dataset_split = 'train'{count_filter}"
+        ).fetchone()[0]
+        test_count = conn.execute(
+            f"SELECT COUNT(*) FROM documents WHERE dataset_split = 'test'{count_filter}"
+        ).fetchone()[0]
 
     return DocumentListResponse(
         items=items,
-        total=len(items),
-        train_count=counts.get("train", 0),
-        test_count=counts.get("test", 0),
+        total=total,
+        train_count=train_count,
+        test_count=test_count,
     )
 
 

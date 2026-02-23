@@ -292,7 +292,9 @@ class WeatherService:
         optimal_pickup = None
         if unique_alerts:
             ai_summary, risk_level, optimal_pickup = self._generate_ai_summary(
-                unique_alerts, route_states, origin_state, dest_state
+                unique_alerts, route_states, origin_state, dest_state,
+                distance_miles=getattr(self, '_last_distance_miles', None),
+                duration_minutes=getattr(self, '_last_duration_minutes', None),
             )
 
         result = RouteAlertsResult(
@@ -324,6 +326,8 @@ class WeatherService:
         route_states: list[str],
         origin_state: str = "",
         dest_state: str = "",
+        distance_miles: Optional[float] = None,
+        duration_minutes: Optional[float] = None,
     ) -> tuple[Optional[str], str, Optional[str]]:
         """Generate AI-powered summary of weather alerts for transport route.
 
@@ -347,12 +351,23 @@ class WeatherService:
 
         route_desc = " → ".join(route_states) if route_states else f"{origin_state} → {dest_state}"
 
+        # Transit time context for AI
+        transit_context = ""
+        if distance_miles and duration_minutes:
+            drive_hours = round(duration_minutes / 60, 1)
+            total_hours = round(drive_hours + 2, 1)  # +1.5h pickup +0.5h delivery
+            transit_context = (
+                f"\nTransit info: {round(distance_miles)}mi, {drive_hours}h drive, "
+                f"~{total_hours}h total (including 1.5h pickup + 0.5h delivery).\n"
+            )
+
         prompt = (
             f"You are a vehicle transport dispatcher assistant. Summarize these weather alerts "
             f"for a car carrier route ({route_desc}) in 2-3 concise sentences.\n\n"
-            f"Alerts:\n{alert_text}\n\n"
+            f"Alerts:\n{alert_text}\n{transit_context}\n"
             f"Include: (1) what conditions to expect, (2) impact on transport timing, "
-            f"(3) if delay is recommended, suggest waiting until alerts expire.\n"
+            f"(3) if delay is recommended, suggest waiting until alerts expire "
+            f"and note when roads should be clear (add 6-12h after severe weather for road clearing).\n"
             f"Keep it practical for a truck driver. No markdown."
         )
 

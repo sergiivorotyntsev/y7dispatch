@@ -40,6 +40,12 @@ class AlertResponse(BaseModel):
     source: str = ""
 
 
+class TransitInfo(BaseModel):
+    distance_miles: Optional[float] = None
+    drive_hours: Optional[float] = None
+    total_hours: Optional[float] = None
+
+
 class RouteAlertsResponse(BaseModel):
     alerts: list[AlertResponse] = Field(default_factory=list)
     route_states: list[str] = Field(default_factory=list)
@@ -51,6 +57,7 @@ class RouteAlertsResponse(BaseModel):
     ai_summary: Optional[str] = None
     risk_level: str = "low"
     optimal_pickup_suggestion: Optional[str] = None
+    transit: Optional[TransitInfo] = None
 
 
 # =============================================================================
@@ -198,7 +205,23 @@ async def get_route_alerts_for_run(
         raise HTTPException(status_code=400, detail=f"Cannot resolve coordinates for warehouse {wh['code']}")
 
     cache_key = f"route:{pickup_zip}:{wh['id']}"
+
+    # Look up distance/duration for transit-aware AI summary
+    distance_miles = None
+    duration_minutes = None
+    with get_connection() as conn:
+        dist_row = conn.execute(
+            "SELECT distance_miles, duration_minutes FROM distance_cache WHERE origin_zip = ? AND destination_warehouse_id = ?",
+            (pickup_zip, wh["id"]),
+        ).fetchone()
+        if dist_row:
+            distance_miles = dist_row["distance_miles"]
+            duration_minutes = dist_row["duration_minutes"]
+
     svc = WeatherService()
+    # Pass transit data for AI summary context
+    svc._last_distance_miles = distance_miles
+    svc._last_duration_minutes = duration_minutes
     result = svc.get_route_alerts(
         origin_lat=origin_coords[0],
         origin_lon=origin_coords[1],
@@ -209,7 +232,17 @@ async def get_route_alerts_for_run(
         cache_key=cache_key,
     )
 
-    return result.to_dict()
+    # Add transit info to response
+    resp = result.to_dict()
+    if distance_miles:
+        drive_hours = round(duration_minutes / 60, 1) if duration_minutes else None
+        resp["transit"] = {
+            "distance_miles": round(distance_miles, 1),
+            "drive_hours": drive_hours,
+            "total_hours": round(drive_hours + 2, 1) if drive_hours else None,
+        }
+
+    return resp
 
 
 # =============================================================================

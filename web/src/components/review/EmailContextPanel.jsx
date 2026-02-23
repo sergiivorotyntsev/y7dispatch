@@ -193,13 +193,17 @@ export default function EmailContextPanel({ runId, document, runAttachments, onV
                         </span>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                        {att.viewUrl && !att.isMain && (
+                        {att.viewUrl && (
                           <button
                             type="button"
                             onClick={() => handleView(att)}
-                            className="px-2 py-1 text-xs bg-blue-50 border border-blue-300 text-blue-700 rounded hover:bg-blue-100"
+                            className={`px-2 py-1 text-xs rounded ${
+                              att.isMain
+                                ? 'bg-blue-100 border border-blue-400 text-blue-800 hover:bg-blue-200'
+                                : 'bg-blue-50 border border-blue-300 text-blue-700 hover:bg-blue-100'
+                            }`}
                           >
-                            Open in viewer
+                            {att.isMain ? 'View main doc' : 'Open in viewer'}
                           </button>
                         )}
                         {att.viewUrl && isImage(att.type) && (

@@ -180,6 +180,22 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             </div>
           )}
 
+          {/* Transit info */}
+          {data?.transit && (
+            <div className="p-2 bg-gray-50 border border-gray-200 rounded mb-2 flex items-center gap-4 text-xs text-gray-600">
+              <span className="font-medium text-gray-700">Transit:</span>
+              {data.transit.distance_miles && (
+                <span>{Math.round(data.transit.distance_miles)} mi</span>
+              )}
+              {data.transit.drive_hours && (
+                <span>{data.transit.drive_hours}h drive</span>
+              )}
+              {data.transit.total_hours && (
+                <span>{data.transit.total_hours}h total (incl. loading)</span>
+              )}
+            </div>
+          )}
+
           {/* Alerts */}
           {data && hasAlerts && (
             <div className="space-y-2">
