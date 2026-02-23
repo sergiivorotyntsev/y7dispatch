@@ -1495,6 +1495,411 @@ class EmailWorker:
 
         return results
 
+    @staticmethod
+    def _build_search_criteria_range(
+        allowed_senders: list[str],
+        since_date_str: str,
+        until_date_str: str | None = None,
+    ) -> str:
+        """Build IMAP SEARCH criteria with date range and sender filtering.
+
+        Args:
+            since_date_str: IMAP-format date e.g. "04-Feb-2026"
+            until_date_str: Optional IMAP-format BEFORE date (exclusive upper bound)
+        """
+        date_clause = f"SINCE {since_date_str}"
+        if until_date_str:
+            date_clause += f" BEFORE {until_date_str}"
+
+        if not allowed_senders:
+            return f"({date_clause})"
+
+        email_senders = [s for s in allowed_senders if not s.startswith("@")]
+        if not email_senders:
+            return f"({date_clause})"
+
+        def _nest_or(items: list[str]) -> str:
+            if len(items) == 1:
+                return f'FROM "{items[0]}"'
+            if len(items) == 2:
+                return f'(OR FROM "{items[0]}" FROM "{items[1]}")'
+            return f'(OR FROM "{items[0]}" {_nest_or(items[1:])})'
+
+        if len(email_senders) == 1:
+            return f'({date_clause} FROM "{email_senders[0]}")'
+        or_clause = _nest_or(email_senders)
+        return f"({date_clause} {or_clause})"
+
+    def scan_emails(self, since_date: str, until_date: str | None = None) -> dict:
+        """Scan inbox for emails in date range WITHOUT processing.
+
+        Connects to IMAP, lists emails, cross-references with email_log
+        and extraction_runs for duplicate/already-processed detection.
+
+        Args:
+            since_date: ISO date string (YYYY-MM-DD)
+            until_date: Optional ISO date string for upper bound (exclusive)
+
+        Returns:
+            dict with emails list and summary counts
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        self._init_email_log_table()
+
+        if not self._connect():
+            return {"emails": [], "total": 0, "already_processed": 0, "new": 0,
+                    "error": "Could not connect to email server"}
+
+        try:
+            allowed_senders = self._load_allowed_senders()
+            self.imap.select("INBOX", readonly=True)
+
+            # Convert ISO dates to IMAP format (DD-Mon-YYYY)
+            since_dt = datetime.strptime(since_date, "%Y-%m-%d")
+            since_imap = since_dt.strftime("%d-%b-%Y")
+            until_imap = None
+            if until_date:
+                # BEFORE is exclusive in IMAP, add 1 day
+                until_dt = datetime.strptime(until_date, "%Y-%m-%d")
+                from datetime import timedelta
+                until_imap = (until_dt + timedelta(days=1)).strftime("%d-%b-%Y")
+
+            criteria = self._build_search_criteria_range(
+                allowed_senders, since_imap, until_imap
+            )
+            logger.info("[EmailWorker] SCAN IMAP SEARCH: %s", criteria)
+            status, messages = self.imap.search(None, criteria)
+            if status != "OK":
+                return {"emails": [], "total": 0, "already_processed": 0, "new": 0,
+                        "error": "IMAP search failed"}
+
+            msg_ids = messages[0].split() if messages[0] else []
+            msg_ids.reverse()  # newest first
+            # Scan up to 100 emails (display only, not processing)
+            uids = msg_ids[:100]
+            logger.info("[EmailWorker] Scan found %d emails (showing %d)", len(msg_ids), len(uids))
+
+            # Gather known message_ids and VINs from DB
+            with get_connection() as conn:
+                known_rows = conn.execute(
+                    "SELECT message_id, status, extraction_run_ids FROM email_log"
+                ).fetchall()
+                known_map = {}
+                for row in known_rows:
+                    known_map[row["message_id"]] = {
+                        "status": row["status"],
+                        "run_ids": row["extraction_run_ids"],
+                    }
+
+                # Build VIN set from all extraction runs
+                vin_runs = conn.execute(
+                    "SELECT id, status, outputs_json FROM extraction_runs WHERE outputs_json IS NOT NULL"
+                ).fetchall()
+                vin_to_run = {}
+                for vr in vin_runs:
+                    try:
+                        outputs = json.loads(vr["outputs_json"])
+                        vin = outputs.get("vehicle_vin", "")
+                        if vin and len(vin) == 17:
+                            vin_to_run[vin] = {"run_id": vr["id"], "status": vr["status"]}
+                    except Exception:
+                        pass
+
+            emails = []
+            for uid in uids:
+                uid_str = uid.decode() if isinstance(uid, bytes) else uid
+                try:
+                    status, data = self.imap.fetch(uid, "(RFC822)")
+                    if status != "OK":
+                        continue
+
+                    raw_email = data[0][1]
+                    msg = self._parse_message(uid_str, raw_email)
+
+                    # Check if already processed
+                    known = known_map.get(msg.message_id)
+                    already_processed = known is not None and known["status"] == "processed"
+                    existing_run_id = None
+                    existing_status = None
+                    if known and known["run_ids"]:
+                        try:
+                            run_ids = json.loads(known["run_ids"])
+                            if run_ids:
+                                existing_run_id = run_ids[0]
+                                with get_connection() as conn:
+                                    rrow = conn.execute(
+                                        "SELECT status FROM extraction_runs WHERE id = ?",
+                                        (existing_run_id,),
+                                    ).fetchone()
+                                    if rrow:
+                                        existing_status = rrow["status"]
+                        except Exception:
+                            pass
+
+                    # Extract VIN from subject
+                    vin_in_subject = self._extract_vin_from_subject(msg.subject)
+
+                    # Check for VIN duplicates
+                    vin_duplicate = False
+                    if vin_in_subject and vin_in_subject in vin_to_run:
+                        vin_duplicate = True
+
+                    # Parse date
+                    email_date = msg.date
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        dt = parsedate_to_datetime(msg.date)
+                        email_date = dt.astimezone(timezone.utc).isoformat()
+                    except Exception:
+                        pass
+
+                    emails.append({
+                        "message_id": msg.message_id,
+                        "subject": msg.subject,
+                        "sender": msg.sender,
+                        "date": email_date,
+                        "attachment_count": len(msg.pdf_filenames),
+                        "attachment_names": msg.pdf_filenames,
+                        "already_processed": already_processed,
+                        "existing_run_id": existing_run_id,
+                        "existing_status": existing_status,
+                        "vin_in_subject": vin_in_subject,
+                        "vin_duplicate": vin_duplicate,
+                    })
+                except Exception as e:
+                    logger.warning("[EmailWorker] Scan error for uid=%s: %s", uid_str, e)
+                    continue
+
+            already_count = sum(1 for e in emails if e["already_processed"])
+            return {
+                "emails": emails,
+                "total": len(emails),
+                "already_processed": already_count,
+                "new": len(emails) - already_count,
+            }
+
+        finally:
+            self._disconnect()
+
+    def process_selected(self, message_ids: list[str]) -> dict:
+        """Process only selected emails by message_id.
+
+        Downloads from IMAP, runs through existing processing pipeline.
+        Only processes emails whose message_id matches.
+
+        Args:
+            message_ids: List of email Message-ID strings to process.
+
+        Returns:
+            dict with processed/failed counts and per-item results.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        if not message_ids:
+            return {"processed": 0, "failed": 0, "results": []}
+
+        if not self._connect():
+            return {"processed": 0, "failed": 0, "results": [],
+                    "error": "Could not connect to email server"}
+
+        try:
+            rules = self._load_rules()
+            allowed_senders = self._load_allowed_senders()
+            self.imap.select("INBOX")
+
+            # Search broadly to find the matching emails
+            # Use a 60-day lookback to cover reasonable range
+            from datetime import timedelta
+            since_date = (datetime.now() - timedelta(days=60)).strftime("%d-%b-%Y")
+            criteria = f"(SINCE {since_date})"
+            status, messages = self.imap.search(None, criteria)
+            if status != "OK":
+                return {"processed": 0, "failed": 0, "results": [],
+                        "error": "IMAP search failed"}
+
+            all_uids = messages[0].split() if messages[0] else []
+            all_uids.reverse()
+
+            target_ids = set(message_ids)
+            results = []
+
+            for uid in all_uids:
+                if not target_ids:
+                    break  # All targets found
+
+                uid_str = uid.decode() if isinstance(uid, bytes) else uid
+                try:
+                    status, data = self.imap.fetch(uid, "(RFC822)")
+                    if status != "OK":
+                        continue
+
+                    raw_email = data[0][1]
+                    msg = self._parse_message(uid_str, raw_email)
+
+                    if msg.message_id not in target_ids:
+                        continue
+
+                    target_ids.discard(msg.message_id)
+
+                    # Extract body text + gate pass
+                    body_text = self._get_email_body_text(msg.raw_message)
+                    gate_pass = self._extract_gate_pass(body_text)
+
+                    # Insert into email_log (or get existing)
+                    log_id = self._insert_email_log(msg, body_preview=body_text, gate_pass=gate_pass)
+                    if log_id is None:
+                        # Already in email_log — update status to reprocess
+                        self._update_email_log(msg.message_id, status="processing")
+
+                    if not msg.has_pdf:
+                        self._update_email_log(msg.message_id, status="failed",
+                                               error_message="No PDF attachments")
+                        results.append({
+                            "message_id": msg.message_id,
+                            "status": "failed",
+                            "error": "No PDF attachment",
+                            "run_id": None,
+                            "vin": None,
+                        })
+                        continue
+
+                    # Process: mark as processing
+                    self._update_email_log(msg.message_id, status="processing")
+
+                    email_metadata = {
+                        "sender": msg.sender,
+                        "subject": msg.subject,
+                        "message_id": msg.message_id,
+                        "date": msg.date,
+                    }
+
+                    classified = self._classify_and_rank_attachments(msg)
+
+                    # Determine auction type from rule or auto-detect
+                    rule = self._match_rule(msg, rules)
+                    auction_type_id = rule.get("auction_type_id") if rule else None
+
+                    last_doc_id = None
+                    last_run_id = None
+                    run_ids = []
+
+                    for pdf_filename in classified["invoice"]:
+                        file_path = self._save_attachment(msg, pdf_filename)
+                        if file_path:
+                            if not auction_type_id:
+                                try:
+                                    with open(file_path, "rb") as f:
+                                        import pdfplumber
+                                        with pdfplumber.open(f) as pdf:
+                                            text = ""
+                                            for page in pdf.pages[:3]:
+                                                t = page.extract_text()
+                                                if t:
+                                                    text += t
+                                    auction_type_id = self._detect_auction_type(text)
+                                except Exception:
+                                    auction_type_id = 1
+
+                            doc_id, run_id = self._process_pdf(
+                                file_path, auction_type_id,
+                                email_metadata=email_metadata,
+                            )
+                            last_doc_id = doc_id
+                            last_run_id = run_id
+                            if run_id:
+                                run_ids.append(run_id)
+
+                            if gate_pass and run_id:
+                                self._save_gate_pass_to_run(run_id, gate_pass)
+
+                    # Save secondary attachments
+                    for pdf_filename in classified.get("listing_page", []):
+                        if last_run_id:
+                            self._save_vehicle_release(msg, pdf_filename, last_run_id,
+                                                       att_type="listing_page")
+                    for pdf_filename in classified.get("condition_report", []):
+                        if last_run_id:
+                            self._save_vehicle_release(msg, pdf_filename, last_run_id,
+                                                       att_type="condition_report")
+                    for pdf_filename in classified.get("vehicle_release", []):
+                        if last_run_id:
+                            self._save_vehicle_release(msg, pdf_filename, last_run_id)
+
+                    if gate_pass and run_ids:
+                        for rid in run_ids:
+                            self._save_gate_pass_to_run(rid, gate_pass)
+
+                    # VIN from subject fallback
+                    subject_vin = self._extract_vin_from_subject(msg.subject)
+                    if subject_vin and run_ids:
+                        for rid in run_ids:
+                            self._save_vin_to_run(rid, subject_vin)
+
+                    # Extract VIN from outputs for result
+                    result_vin = subject_vin
+                    if last_run_id and not result_vin:
+                        try:
+                            with get_connection() as conn:
+                                rrow = conn.execute(
+                                    "SELECT outputs_json FROM extraction_runs WHERE id = ?",
+                                    (last_run_id,),
+                                ).fetchone()
+                                if rrow and rrow["outputs_json"]:
+                                    result_vin = json.loads(rrow["outputs_json"]).get("vehicle_vin")
+                        except Exception:
+                            pass
+
+                    # Update email_log
+                    self._update_email_log(
+                        msg.message_id,
+                        status="processed",
+                        processed_at=datetime.now(timezone.utc).isoformat() + "Z",
+                        extraction_run_ids=json.dumps(run_ids) if run_ids else None,
+                        gate_pass=gate_pass,
+                    )
+
+                    results.append({
+                        "message_id": msg.message_id,
+                        "status": "success",
+                        "run_id": last_run_id,
+                        "vin": result_vin,
+                    })
+
+                except Exception as e:
+                    logger.error("[EmailWorker] process_selected error uid=%s: %s", uid_str, e)
+                    results.append({
+                        "message_id": uid_str,
+                        "status": "failed",
+                        "error": str(e),
+                        "run_id": None,
+                        "vin": None,
+                    })
+
+            # Any message_ids not found in mailbox
+            for mid in target_ids:
+                results.append({
+                    "message_id": mid,
+                    "status": "failed",
+                    "error": "Message not found in mailbox",
+                    "run_id": None,
+                    "vin": None,
+                })
+
+            processed = sum(1 for r in results if r["status"] == "success")
+            failed = sum(1 for r in results if r["status"] == "failed")
+            return {
+                "processed": processed,
+                "failed": failed,
+                "results": results,
+            }
+
+        finally:
+            self._disconnect()
+
     async def run(self):
         """Run worker loop."""
         self.running = True

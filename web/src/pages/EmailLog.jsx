@@ -23,12 +23,25 @@ function EmailLog() {
   const [processingId, setProcessingId] = useState(null)
   const [polling, setPolling] = useState(false)
 
-  // Poll date picker
+  // Poll date picker (legacy, kept for auto-poll)
   const [pollSinceDate, setPollSinceDate] = useState('')
   const [pollResult, setPollResult] = useState(null)
 
   // Auto-poll status
   const [pollStatus, setPollStatus] = useState(null)
+
+  // 2-step scan → select → process
+  const [scanFrom, setScanFrom] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return d.toISOString().split('T')[0]
+  })
+  const [scanTo, setScanTo] = useState(new Date().toISOString().split('T')[0])
+  const [scanning, setScanning] = useState(false)
+  const [scanResults, setScanResults] = useState(null)
+  const [selectedMsgIds, setSelectedMsgIds] = useState(new Set())
+  const [processing, setProcessing] = useState(false)
+  const [processResult, setProcessResult] = useState(null)
 
   // Debounce search
   useEffect(() => {
@@ -152,6 +165,69 @@ function EmailLog() {
     }
   }
 
+  // 2-step scan handler
+  async function handleScan() {
+    if (!scanFrom) return
+    setScanning(true)
+    setScanResults(null)
+    setSelectedMsgIds(new Set())
+    setProcessResult(null)
+    try {
+      const result = await api.scanEmails(scanFrom, scanTo || null)
+      setScanResults(result)
+      // Auto-select all new (unprocessed) emails
+      const newIds = new Set()
+      for (const e of (result.emails || [])) {
+        if (!e.already_processed && !e.vin_duplicate) {
+          newIds.add(e.message_id)
+        }
+      }
+      setSelectedMsgIds(newIds)
+    } catch (err) {
+      setError(`Scan failed: ${err.message}`)
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  // Process selected emails
+  async function handleProcessSelected() {
+    const ids = Array.from(selectedMsgIds)
+    if (ids.length === 0) return
+    setProcessing(true)
+    setProcessResult(null)
+    try {
+      const result = await api.processSelectedEmails(ids)
+      setProcessResult(result)
+      // Refresh email log + stats
+      fetchEmails()
+      fetchStats()
+      fetchPollStatus()
+    } catch (err) {
+      setError(`Process failed: ${err.message}`)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  function toggleScanSelect(messageId) {
+    setSelectedMsgIds(prev => {
+      const next = new Set(prev)
+      if (next.has(messageId)) next.delete(messageId)
+      else next.add(messageId)
+      return next
+    })
+  }
+
+  function selectAllNew() {
+    if (!scanResults?.emails) return
+    const newIds = new Set()
+    for (const e of scanResults.emails) {
+      if (!e.already_processed) newIds.add(e.message_id)
+    }
+    setSelectedMsgIds(newIds)
+  }
+
   function formatTimeAgo(dateStr) {
     return utilFormatTimeAgo(dateStr)
   }
@@ -204,81 +280,211 @@ function EmailLog() {
         </div>
       </div>
 
-      {/* Poll Controls */}
+      {/* Scan Emails — 2-step flow */}
       <div className="mb-4 px-4 py-3 bg-white border rounded-lg shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-gray-700">Poll emails from:</span>
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <span className="text-sm font-medium text-gray-700">Scan emails:</span>
+          <span className="text-xs text-gray-500">From</span>
           <input
             type="date"
-            value={pollSinceDate}
-            onChange={e => setPollSinceDate(e.target.value)}
+            value={scanFrom}
+            onChange={e => setScanFrom(e.target.value)}
+            className="form-input text-sm px-2 py-1.5 border-gray-300 rounded"
+            max={new Date().toISOString().split('T')[0]}
+          />
+          <span className="text-xs text-gray-500">To</span>
+          <input
+            type="date"
+            value={scanTo}
+            onChange={e => setScanTo(e.target.value)}
             className="form-input text-sm px-2 py-1.5 border-gray-300 rounded"
             max={new Date().toISOString().split('T')[0]}
           />
           <div className="flex gap-1.5">
             <button
-              onClick={() => { setPollSinceDate(''); handlePollNow(7) }}
-              disabled={polling}
-              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-            >
-              7 days
-            </button>
+              onClick={() => {
+                const d = new Date(); d.setDate(d.getDate() - 7)
+                setScanFrom(d.toISOString().split('T')[0])
+                setScanTo(new Date().toISOString().split('T')[0])
+              }}
+              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >7d</button>
             <button
-              onClick={() => { setPollSinceDate(''); handlePollNow(14) }}
-              disabled={polling}
-              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-            >
-              14 days
-            </button>
+              onClick={() => {
+                const d = new Date(); d.setDate(d.getDate() - 14)
+                setScanFrom(d.toISOString().split('T')[0])
+                setScanTo(new Date().toISOString().split('T')[0])
+              }}
+              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >14d</button>
             <button
-              onClick={() => { setPollSinceDate(''); handlePollNow(30) }}
-              disabled={polling}
-              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-            >
-              30 days
-            </button>
+              onClick={() => {
+                const d = new Date(); d.setDate(d.getDate() - 30)
+                setScanFrom(d.toISOString().split('T')[0])
+                setScanTo(new Date().toISOString().split('T')[0])
+              }}
+              className="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >30d</button>
           </div>
           <button
-            onClick={() => handlePollNow()}
-            disabled={polling}
+            onClick={handleScan}
+            disabled={scanning || !scanFrom}
             className="px-4 py-1.5 bg-primary-600 text-white text-sm rounded hover:bg-primary-700 disabled:opacity-50"
           >
-            {polling ? 'Polling...' : 'Poll Now'}
+            {scanning ? 'Scanning...' : 'Scan Inbox'}
           </button>
         </div>
 
-        {/* Poll result notification */}
-        {pollResult && (
-          <div className="mt-3 p-2.5 bg-green-50 border border-green-200 rounded text-sm">
-            <div className="flex items-center gap-2 text-green-800">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span className="font-medium">
-                Poll complete: {pollResult.processed || 0} processed, {pollResult.skipped || 0} skipped, {pollResult.failed || 0} failed
+        {/* Scan results */}
+        {scanResults && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-700">
+                Found <strong>{scanResults.total}</strong> emails
+                ({scanResults.already_processed} already processed, <strong>{scanResults.new}</strong> new)
               </span>
-              <button onClick={() => setPollResult(null)} className="ml-auto text-green-600 hover:text-green-800 text-xs">Dismiss</button>
+              <div className="flex items-center gap-2">
+                {scanResults.new > 0 && (
+                  <button onClick={selectAllNew} className="text-xs text-blue-600 hover:text-blue-800">
+                    Select All New ({scanResults.new})
+                  </button>
+                )}
+                {selectedMsgIds.size > 0 && (
+                  <button onClick={() => setSelectedMsgIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700">
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
-            {/* VIN duplicate warnings */}
-            {pollResult.vin_duplicates?.length > 0 && (
-              <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded">
-                <div className="text-amber-800 text-xs font-medium mb-1">
-                  {pollResult.vin_duplicates.length} duplicate VIN{pollResult.vin_duplicates.length !== 1 ? 's' : ''} detected:
-                </div>
-                {pollResult.vin_duplicates.map((dup, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-amber-700 ml-2">
-                    <span className="font-mono">{dup.vin}</span>
-                    <span>- already {dup.existing_status?.replace('_', ' ') || 'exists'}</span>
-                    {dup.existing_run_id && (
-                      <button
-                        onClick={() => navigate(`/review/${dup.existing_run_id}`)}
-                        className="text-blue-600 hover:text-blue-800 underline"
-                      >
-                        View
-                      </button>
-                    )}
+
+            {/* Email scan list with checkboxes */}
+            {scanResults.emails?.length > 0 && (
+              <div className="border rounded-lg max-h-80 overflow-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 w-8"></th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Date</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Subject</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">From</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">PDF</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {scanResults.emails.map((em) => {
+                      const isNew = !em.already_processed
+                      const isDup = em.vin_duplicate
+                      return (
+                        <tr key={em.message_id} className={`${selectedMsgIds.has(em.message_id) ? 'bg-blue-50' : ''} hover:bg-gray-50`}>
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedMsgIds.has(em.message_id)}
+                              onChange={() => toggleScanSelect(em.message_id)}
+                              className="form-checkbox h-4 w-4 text-primary-600"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                            {formatDate(em.date)}
+                          </td>
+                          <td className="px-3 py-2 max-w-[300px]">
+                            <span className="truncate block text-gray-900" title={em.subject}>
+                              {em.subject?.length > 50 ? em.subject.substring(0, 47) + '...' : em.subject}
+                            </span>
+                            {em.vin_in_subject && (
+                              <span className="font-mono text-xs text-gray-500">{em.vin_in_subject}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-gray-600">
+                            {shortenEmail(em.sender)}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {em.attachment_count > 0 ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
+                                {em.attachment_count}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">0</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {em.already_processed ? (
+                              <span className="inline-flex items-center gap-1">
+                                <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">Processed</span>
+                                {em.existing_run_id && (
+                                  <button
+                                    onClick={() => navigate(`/review/${em.existing_run_id}`)}
+                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                  >View</button>
+                                )}
+                              </span>
+                            ) : isDup ? (
+                              <span className="px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-700">DUP VIN</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 text-xs rounded bg-yellow-100 text-yellow-800">NEW</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Process selected button */}
+            {selectedMsgIds.size > 0 && !processResult && (
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={handleProcessSelected}
+                  disabled={processing}
+                  className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  {processing ? `Processing ${selectedMsgIds.size}...` : `Process Selected (${selectedMsgIds.size})`}
+                </button>
+                {processing && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                    Processing...
                   </div>
-                ))}
+                )}
+              </div>
+            )}
+
+            {/* Process results */}
+            {processResult && (
+              <div className={`mt-3 p-3 rounded-lg border ${
+                processResult.failed === 0
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-yellow-50 border-yellow-200'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">
+                    {processResult.processed} processed, {processResult.failed} failed
+                  </span>
+                  <button onClick={() => { setProcessResult(null); setScanResults(null) }}
+                    className="text-xs text-gray-500 hover:text-gray-700">Dismiss</button>
+                </div>
+                <div className="space-y-1">
+                  {processResult.results?.map((r, i) => (
+                    <div key={i} className={`flex items-center gap-2 text-sm ${
+                      r.status === 'success' ? 'text-green-800' : 'text-red-700'
+                    }`}>
+                      <span>{r.status === 'success' ? '\u2705' : '\u274C'}</span>
+                      {r.vin && <span className="font-mono text-xs">{r.vin}</span>}
+                      {r.run_id && (
+                        <button
+                          onClick={() => navigate(`/review/${r.run_id}`)}
+                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          Run #{r.run_id}
+                        </button>
+                      )}
+                      {r.error && <span className="text-xs text-red-600">{r.error}</span>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

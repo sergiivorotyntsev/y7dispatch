@@ -432,6 +432,17 @@ export const api = {
   // Load ID Generation
   generateLoadId: (make, model) => request(`/listings/generate-load-id?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`),
 
+  // Email Scan + Process (2-step flow)
+  scanEmails: (sinceDate, untilDate = null) => {
+    const body = { since_date: sinceDate }
+    if (untilDate) body.until_date = untilDate
+    return request('/email/scan', { method: 'POST', body: JSON.stringify(body) })
+  },
+  processSelectedEmails: (messageIds) => request('/email/process-selected', {
+    method: 'POST',
+    body: JSON.stringify({ message_ids: messageIds }),
+  }),
+
   // Email Auto-Polling
   getPollStatus: () => request('/email/poll-status'),
   updatePollSettings: ({ enabled, interval_minutes, since_days } = {}) => {

@@ -107,6 +107,46 @@ async def health_check():
     except Exception as e:
         checks["export_targets"] = {"status": "error", "error": str(e)}
 
+    # Check API keys
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    checks["anthropic_api"] = {
+        "configured": bool(anthropic_key and anthropic_key != "sk-ant-your-key-here"),
+    }
+
+    # Check email credentials via credential store
+    try:
+        from api.database import get_connection
+        with get_connection() as conn:
+            email_cred = conn.execute(
+                "SELECT id FROM credential_store WHERE service = 'email' LIMIT 1"
+            ).fetchone()
+            checks["email_config"] = {
+                "configured": email_cred is not None,
+            }
+    except Exception:
+        checks["email_config"] = {"configured": False}
+
+    # Check CD API credentials
+    cd_id = os.getenv("CD_CLIENT_ID", "")
+    checks["cd_api"] = {
+        "configured": bool(cd_id and cd_id != "your-client-id"),
+    }
+
+    # Database table counts (quick health indicator)
+    try:
+        from api.database import get_connection
+        counts = {}
+        with get_connection() as conn:
+            for table in ("documents", "extraction_runs", "email_log"):
+                try:
+                    row = conn.execute(f"SELECT COUNT(*) as c FROM {table}").fetchone()
+                    counts[table] = row["c"]
+                except Exception:
+                    counts[table] = -1  # table doesn't exist
+        checks["data_counts"] = counts
+    except Exception:
+        checks["data_counts"] = {}
+
     git_info = get_git_info()
 
     return HealthResponse(

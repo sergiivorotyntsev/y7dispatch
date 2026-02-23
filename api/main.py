@@ -171,7 +171,12 @@ async def _run_email_poll(since_days: int = 7):
 
 
 async def _email_polling_loop():
-    """Background loop that polls emails at configurable interval."""
+    """Background loop that polls emails at configurable interval.
+
+    Uses last_poll_at to compute lookback — only checks for NEW emails
+    since the last successful poll. Falls back to 1 day on first run.
+    Already-processed emails are skipped via message_id dedup in email_log.
+    """
     # Initial delay — let app finish startup
     await asyncio.sleep(10)
 
@@ -180,11 +185,20 @@ async def _email_polling_loop():
             settings = _load_poll_settings()
             if settings.get("auto_poll_enabled", True):
                 interval = settings.get("poll_interval_minutes", 5)
-                since_days = settings.get("poll_since_days", 7)
+
+                # Compute since_days from last_poll_at (default: 1 day for first run)
+                since_days = 1
+                if _poll_state["last_poll_at"]:
+                    try:
+                        last = datetime.fromisoformat(_poll_state["last_poll_at"].replace("Z", "+00:00"))
+                        delta = (datetime.now(timezone.utc) - last).days
+                        since_days = max(0, min(delta + 1, 30))  # +1 for safety overlap
+                    except Exception:
+                        since_days = 1
 
                 await _run_email_poll(since_days)
 
-                logger.info(f"Email auto-poll complete. Next in {interval} min")
+                logger.info(f"Email auto-poll complete (since_days={since_days}). Next in {interval} min")
                 await asyncio.sleep(interval * 60)
             else:
                 # Check again in 60 seconds if disabled
@@ -352,6 +366,89 @@ async def poll_email_now(
             _poll_state["is_polling"] = False
 
 
+@app.post("/api/email/scan", tags=["Email"])
+async def scan_email_inbox(request: Request):
+    """
+    Scan email inbox for messages in a date range WITHOUT processing.
+
+    Returns list of emails with metadata: subject, sender, date, attachments,
+    already-processed status, VIN detection, and duplicate warnings.
+
+    Body: { "since_date": "2026-02-04", "until_date": "2026-02-13" }
+    """
+    body = await request.json()
+    since_date = body.get("since_date")
+    until_date = body.get("until_date")
+
+    if not since_date:
+        from fastapi import HTTPException
+        raise HTTPException(400, "since_date is required (YYYY-MM-DD)")
+
+    # Validate date format
+    try:
+        datetime.strptime(since_date, "%Y-%m-%d")
+        if until_date:
+            datetime.strptime(until_date, "%Y-%m-%d")
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(400, "Dates must be YYYY-MM-DD format")
+
+    if _poll_lock.locked():
+        return {"emails": [], "total": 0, "already_processed": 0, "new": 0,
+                "error": "Poll already in progress — try again shortly"}
+
+    async with _poll_lock:
+        _poll_state["is_polling"] = True
+        try:
+            from api.workers.email_worker import get_worker
+            worker = get_worker()
+            result = await asyncio.to_thread(worker.scan_emails, since_date, until_date)
+            return result
+        except Exception as e:
+            _poll_state["last_poll_error"] = str(e)
+            raise
+        finally:
+            _poll_state["is_polling"] = False
+
+
+@app.post("/api/email/process-selected", tags=["Email"])
+async def process_selected_emails(request: Request):
+    """
+    Process only selected emails by message_id.
+
+    Body: { "message_ids": ["abc123@gmail.com", "def456@gmail.com"] }
+    """
+    body = await request.json()
+    message_ids = body.get("message_ids", [])
+
+    if not message_ids:
+        from fastapi import HTTPException
+        raise HTTPException(400, "message_ids list is required and cannot be empty")
+
+    if len(message_ids) > 50:
+        from fastapi import HTTPException
+        raise HTTPException(400, "Max 50 emails per batch")
+
+    if _poll_lock.locked():
+        return {"processed": 0, "failed": 0, "results": [],
+                "error": "Poll already in progress — try again shortly"}
+
+    async with _poll_lock:
+        _poll_state["is_polling"] = True
+        try:
+            from api.workers.email_worker import get_worker
+            worker = get_worker()
+            result = await asyncio.to_thread(worker.process_selected, message_ids)
+            _poll_state["last_poll_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+            _poll_state["last_poll_error"] = None
+            return result
+        except Exception as e:
+            _poll_state["last_poll_error"] = str(e)
+            raise
+        finally:
+            _poll_state["is_polling"] = False
+
+
 @app.post("/api/email/worker/start", tags=["Email"])
 async def start_email_worker():
     """Start the background email polling worker."""
@@ -475,6 +572,17 @@ async def reset_email_data_endpoint():
 # Initialize database on startup
 @app.on_event("startup")
 async def startup():
+    # Configure structured logging from environment
+    import os
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_format = os.getenv("LOG_FORMAT", "text")
+    if log_format == "json":
+        fmt = '{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}'
+    else:
+        fmt = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+    logging.basicConfig(level=getattr(logging, log_level, logging.INFO), format=fmt, force=True)
+    logger.info("y7dispatch starting (log_level=%s, format=%s)", log_level, log_format)
+
     # Initialize original schema
     init_db()
     # Initialize new MVP schema (creates tables + runs migrations)

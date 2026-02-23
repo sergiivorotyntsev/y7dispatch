@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./uploads:/app/uploads
+      - ./warehouses.yaml:/app/warehouses.yaml:ro
+      - ./cd_defaults.yaml:/app/cd_defaults.yaml:ro
+      - ./cd_field_mapping.yaml:/app/cd_field_mapping.yaml:ro
+      - ./cd_field_mapping_v2.yaml:/app/cd_field_mapping_v2.yaml:ro
+      - ./pricing_config.yaml:/app/pricing_config.yaml:ro
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=data/control_panel.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
