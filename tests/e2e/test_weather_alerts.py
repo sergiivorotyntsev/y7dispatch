@@ -474,7 +474,10 @@ class TestWeatherAPI:
             conn.commit()
 
         resp = client.get("/api/weather/route-alerts-for-run/3")
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["alerts"] == []
+        assert "not available" in (data.get("ai_summary") or "").lower()
 
     def test_response_shape(self):
         """Verify full response shape matches RouteAlertsResponse schema."""

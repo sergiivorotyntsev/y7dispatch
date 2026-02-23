@@ -156,9 +156,11 @@ class EmailWorker:
           "listing_page"     — auction listing with photos (save as attachment)
           "condition_report" — vehicle condition report
           "vehicle_release"  — Manheim release doc
+          "banking"          — wire/ACH/bank documents (NEVER extract)
           "unknown"          — can't determine from filename alone
 
         Priority order:
+          0. Banking/wire/ACH documents → NEVER extract (highest exclusion)
           1. Exact invoice names ("invoice.pdf", etc.)
           2. Invoice keywords ("invoice", "bill", "receipt")
           3. Listing page indicators (auction slug with vehicle + location)
@@ -167,6 +169,16 @@ class EmailWorker:
           6. Unknown (fallback)
         """
         fn_lower = filename.lower().strip()
+
+        # 0. Banking/wire/ACH documents — NEVER extract
+        #    These are payment instructions, not vehicle documents.
+        #    Use word-boundary-aware matching to avoid false positives (e.g. "attachment").
+        if any(w in fn_lower for w in ['wire', ' ach ', '_ach_', 'ach.', 'wire_ach',
+                                        'wire & ach', 'wire and ach',
+                                        'payment instruction', 'remittance']) \
+           or re.search(r'\bach\b', fn_lower) \
+           or re.search(r'\bbank\b', fn_lower):
+            return 'banking'
 
         # 1. Exact or near-exact invoice names (highest priority)
         #    - "invoice.pdf" = Copart Sales Receipt/Bill of Sale
@@ -312,6 +324,7 @@ class EmailWorker:
             "listing_page": [],
             "condition_report": [],
             "vehicle_release": [],
+            "banking": [],
         }
 
         unknowns = []
@@ -1461,6 +1474,14 @@ class EmailWorker:
                             else:
                                 self._save_attachment(msg, pdf_filename)
 
+                        # 4b. Save BANKING PDFs as attachments (never extract)
+                        for pdf_filename in classified["banking"]:
+                            if last_run_id:
+                                self._save_vehicle_release(msg, pdf_filename, last_run_id,
+                                                           att_type="banking")
+                            else:
+                                self._save_attachment(msg, pdf_filename)
+
                         # 5. Save IMAGE attachments (PNG, JPG, etc.)
                         for img_filename in msg.image_filenames:
                             if last_run_id:
@@ -1857,6 +1878,10 @@ class EmailWorker:
                     for pdf_filename in classified.get("vehicle_release", []):
                         if last_run_id:
                             self._save_vehicle_release(msg, pdf_filename, last_run_id)
+                    for pdf_filename in classified.get("banking", []):
+                        if last_run_id:
+                            self._save_vehicle_release(msg, pdf_filename, last_run_id,
+                                                       att_type="banking")
 
                     # Save IMAGE attachments (PNG, JPG, etc.)
                     for img_filename in msg.image_filenames:

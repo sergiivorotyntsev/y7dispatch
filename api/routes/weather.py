@@ -215,10 +215,21 @@ async def get_route_alerts_for_run(
             logger.debug("City/state geocode failed: %s", e)
 
     if not origin_coords:
-        detail = "Extraction run has no pickup ZIP"
+        # Graceful degradation: return empty response instead of 400
+        msg = "Pickup location not available"
         if pickup_city or pickup_state:
-            detail += f" (city={pickup_city}, state={pickup_state} could not be geocoded)"
-        raise HTTPException(status_code=400, detail=detail)
+            msg += f" (city={pickup_city}, state={pickup_state} could not be resolved)"
+        return RouteAlertsResponse(
+            alerts=[],
+            route_states=[],
+            clear_states=[],
+            alert_states=[],
+            waypoints_checked=0,
+            cached=False,
+            checked_at="",
+            ai_summary=msg,
+            risk_level="low",
+        )
 
     # Resolve warehouse
     if warehouse_id:

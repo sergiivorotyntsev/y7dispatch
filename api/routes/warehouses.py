@@ -488,6 +488,7 @@ class WarehouseOptionsResponse(BaseModel):
     pickup_zip: str
     google_maps_available: bool = False
     cd_pricing_available: bool = False
+    message: Optional[str] = None
 
 
 @router.get("/options", response_model=WarehouseOptionsResponse)
@@ -542,9 +543,13 @@ async def get_warehouse_options_for_run(run_id: int):
     pickup_state = outputs.get("pickup_state", "")
 
     if not pickup_zip:
-        raise HTTPException(
-            status_code=400,
-            detail="No pickup ZIP found in extraction outputs",
+        # Graceful degradation: return empty options instead of 400
+        return WarehouseOptionsResponse(
+            options=[],
+            pickup_zip="",
+            google_maps_available=False,
+            cd_pricing_available=False,
+            message="Pickup location not available — select warehouse manually",
         )
 
     from services.distance_service import DistanceService
