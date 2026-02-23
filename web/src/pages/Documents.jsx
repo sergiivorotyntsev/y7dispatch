@@ -1108,11 +1108,14 @@ function Documents() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Warehouse
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                   Auction Cost
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                   Transport
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  $/mile
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Status
@@ -1138,7 +1141,7 @@ function Documents() {
                       className="bg-gray-100 cursor-pointer hover:bg-gray-200"
                       onClick={() => toggleDate(date)}
                     >
-                      <td colSpan={12} className="px-4 py-2">
+                      <td colSpan={13} className="px-4 py-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-semibold text-gray-700">
                             {date} <span className="font-normal text-gray-500">({dateDocs.length} {dateDocs.length === 1 ? 'load' : 'loads'})</span>
@@ -1182,6 +1185,19 @@ function Documents() {
                 const priceTotal = doc.price_total != null ? doc.price_total
                   : outputs.price_total != null ? outputs.price_total
                   : outputs.final_price != null ? outputs.final_price
+                  : null
+
+                // Auction cost (vehicle purchase price) — display only, not editable
+                const auctionCost = doc.auction_cost != null ? doc.auction_cost
+                  : outputs.total_amount != null ? parseFloat(outputs.total_amount)
+                  : null
+
+                // Distance for $/mile calculation
+                const distanceMiles = doc.distance_miles != null ? doc.distance_miles
+                  : outputs.distance_miles != null ? parseFloat(outputs.distance_miles)
+                  : null
+                const ratePerMile = (priceTotal != null && distanceMiles > 0)
+                  ? (priceTotal / distanceMiles).toFixed(2)
                   : null
 
                 // Warehouse/Delivery info — prefer enriched doc.warehouse_name, fall back to lookup
@@ -1269,7 +1285,12 @@ function Documents() {
                         ) : null
                       })()}
                     </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    {/* Auction Cost — read-only display */}
+                    <td className="px-4 py-3 text-right text-sm text-gray-500">
+                      {auctionCost != null ? `$${parseFloat(auctionCost).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '\u2014'}
+                    </td>
+                    {/* Transport — editable price */}
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       {editingPrice.docId === doc.id ? (
                         <input
                           type="number"
@@ -1303,8 +1324,9 @@ function Documents() {
                         </button>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
-                      {'\u2014'}
+                    {/* $/mile — computed */}
+                    <td className="px-4 py-3 text-right text-sm text-gray-500">
+                      {ratePerMile != null ? `$${ratePerMile}` : '\u2014'}
                     </td>
                     <td className="px-4 py-3">
                       {isOnHold && (

@@ -612,6 +612,74 @@ function Review() {
     }
   }
 
+  // Save changes without changing status (for approved/on_hold/needs_review docs)
+  async function handleSaveChanges() {
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const itemsToSubmit = Object.values(fields).filter(f => f.id).map(f => ({
+        item_id: f.id,
+        corrected_value: f.corrected || '',
+        is_match_ok: f.status === 'correct' || f.status === 'corrected',
+        export_field: f.export,
+      }))
+
+      // Apply warehouse data
+      const wh = warehouses.find(w => w.id.toString() === selectedWarehouse)
+      if (wh) {
+        const deliveryMappings = {
+          'delivery_name': wh.name,
+          'delivery_address': wh.address,
+          'delivery_city': wh.city,
+          'delivery_state': wh.state,
+          'delivery_zip': wh.zip_code,
+          'delivery_phone': wh.phone || '',
+          'delivery_contact': wh.contact_name || '',
+          'transport_special_instructions': transportSpecialInstructions,
+          'load_specific_terms': loadSpecificTerms,
+        }
+        for (const item of itemsToSubmit) {
+          const fieldData = Object.values(fields).find(f => f.id === item.item_id)
+          if (fieldData && deliveryMappings[fieldData.key]) {
+            item.corrected_value = deliveryMappings[fieldData.key]
+          }
+        }
+      }
+
+      await api.submitReview({
+        run_id: parseInt(runId),
+        items: itemsToSubmit,
+        warehouse_id: selectedWarehouse ? parseInt(selectedWarehouse) : null,
+        mark_for_export: false,
+        load_specific_terms: loadSpecificTerms,
+        transport_special_instructions: transportSpecialInstructions,
+        final_price: finalPrice ? parseFloat(finalPrice) : null,
+        available_date: availableDate || null,
+        expiration_date: expirationDate || null,
+        desired_delivery_date: desiredDeliveryDate || null,
+        load_id: loadId || null,
+        trailer_type: trailerType,
+        requires_inspection: requiresInspection,
+        cod_amount: parseFloat(codAmount) || 0,
+        cod_payment_method: codPaymentMethod,
+        cod_payment_location: codPaymentLocation,
+        balance_payment_method: balancePaymentMethod,
+        balance_payment_time: balancePaymentTime,
+        balance_terms_begin_on: balanceTermsBeginOn,
+        vehicle_is_inoperable: fields.vehicle_is_inoperable?.corrected === 'true' || fields.vehicle_is_inoperable?.corrected === true || false,
+      })
+
+      setSuccess('Changes saved successfully.')
+
+    } catch (err) {
+      setError(`Failed to save: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -706,11 +774,26 @@ function Review() {
               <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving...' : 'Save & Train'}
               </button>
-            ) : !isApproved && !isExported ? (
-              <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
-                {saving ? 'Approving...' : 'Approve for Export'}
-              </button>
-            ) : null}
+            ) : (
+              <>
+                {/* Save Changes — available for all non-exported, non-archived statuses */}
+                {!isExported && run?.status !== 'archived' && (
+                  <button
+                    onClick={handleSaveChanges}
+                    className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-md hover:bg-blue-100"
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
+                {/* Approve for Export — only for non-approved, non-exported */}
+                {!isApproved && !isExported && (
+                  <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
+                    {saving ? 'Approving...' : 'Approve for Export'}
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -963,6 +1046,7 @@ function Review() {
               saving={saving}
               handleSubmitTraining={handleSubmitTraining}
               handleSubmitProduction={handleSubmitProduction}
+              handleSaveChanges={handleSaveChanges}
               showExportModal={showExportModal}
               setShowExportModal={setShowExportModal}
               exportResult={exportResult}
@@ -971,6 +1055,7 @@ function Review() {
               selectedWarehouse={selectedWarehouse}
               isApproved={isApproved}
               isExported={isExported}
+              runStatus={run?.status}
               correctCount={correctCount}
               totalCount={fieldList.length}
               correctedCount={correctedCount}

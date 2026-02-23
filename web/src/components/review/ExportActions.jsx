@@ -11,10 +11,10 @@ import PreflightBanner from '../PreflightBanner'
 
 function ExportActions({
   runId, isTrainingMode, saving,
-  handleSubmitTraining, handleSubmitProduction,
+  handleSubmitTraining, handleSubmitProduction, handleSaveChanges,
   showExportModal, setShowExportModal,
   exportResult, exportError, exporting,
-  selectedWarehouse, isApproved, isExported,
+  selectedWarehouse, isApproved, isExported, runStatus,
   correctCount, totalCount, correctedCount, needsReviewCount,
 }) {
   return (
@@ -93,19 +93,33 @@ function ExportActions({
                 <> {' \u2022 '} <span className="text-orange-600 font-medium">{needsReviewCount}</span> need review</>
               )}
             </div>
-            {/* Action button */}
+            {/* Action buttons */}
             {isTrainingMode ? (
               <button onClick={handleSubmitTraining} className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving...' : 'Save & Train'}
               </button>
-            ) : isApproved ? (
-              <span className="px-4 py-2 rounded-md text-sm font-medium bg-green-100 text-green-800 border border-green-300">
-                Approved
-              </span>
             ) : (
-              <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
-                {saving ? 'Approving...' : 'Approve for Export'}
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Save Changes — all non-exported, non-archived */}
+                {!isExported && runStatus !== 'archived' && handleSaveChanges && (
+                  <button
+                    onClick={handleSaveChanges}
+                    className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-md hover:bg-blue-100"
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
+                {isApproved ? (
+                  <span className="px-4 py-2 rounded-md text-sm font-medium bg-green-100 text-green-800 border border-green-300">
+                    Approved
+                  </span>
+                ) : !isExported ? (
+                  <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
+                    {saving ? 'Approving...' : 'Approve for Export'}
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
           {/* Helper text — hidden when approved */}

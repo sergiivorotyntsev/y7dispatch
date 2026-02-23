@@ -214,6 +214,8 @@ class DocumentResponse(BaseModel):
     warehouse_id: Optional[int] = None
     warehouse_name: Optional[str] = None
     price_total: Optional[float] = None
+    auction_cost: Optional[float] = None
+    distance_miles: Optional[float] = None
     extraction_status: Optional[str] = None
     extraction_run_id: Optional[int] = None
 
@@ -655,6 +657,14 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
         price = outputs.get("final_price")
     # Intentionally do NOT fall back to total_amount — that's auction cost, not transport price
     doc_dict["price_total"] = float(price) if price is not None else None
+
+    # Auction cost (vehicle purchase price) — separate from transport price
+    auction_cost = outputs.get("total_amount")
+    doc_dict["auction_cost"] = float(auction_cost) if auction_cost is not None else None
+
+    # Distance for $/mile calculation
+    distance = outputs.get("distance_miles")
+    doc_dict["distance_miles"] = float(distance) if distance is not None else None
 
     # Warehouse selection (set during review)
     wh_id = outputs.get("warehouse_id")

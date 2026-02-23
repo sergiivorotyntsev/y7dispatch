@@ -575,3 +575,202 @@ class TestAttachmentInlineServing:
                 att_dir.rmdir()
             except OSError:
                 pass
+
+
+# ===========================================================================
+# Test Auction Cost + Distance Fields in Documents API
+# ===========================================================================
+
+class TestAuctionCostAndDistance:
+    """Verify documents API returns auction_cost and distance_miles as separate fields."""
+
+    def test_auction_cost_returned_separately(self, client):
+        """total_amount should be returned as auction_cost, not price_total."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (9960, '99600000-0000-0000-0000-000000009960', 1, 'auction_cost.pdf', '/tmp/auction_cost.pdf', 'train')"
+            )
+            outputs = json.dumps({
+                "vehicle_vin": "AUCCOST1234567890",
+                "vehicle_make": "Toyota",
+                "vehicle_model": "Camry",
+                "total_amount": 15000.0,
+                "final_price": 350.0,
+            })
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json) "
+                "VALUES (9960, '99600000-0000-0000-0000-0000000r9960', 1, 9960, 'approved', ?)",
+                (outputs,),
+            )
+            conn.commit()
+
+        resp = client.get("/api/documents?limit=500")
+        docs = resp.json().get("items", [])
+        doc = next((d for d in docs if d.get("id") == 9960), None)
+        assert doc is not None
+        # auction_cost comes from total_amount
+        assert doc.get("auction_cost") == 15000.0
+        # price_total comes from final_price (transport price)
+        assert doc.get("price_total") == 350.0
+
+    def test_distance_miles_returned(self, client):
+        """distance_miles from outputs_json should be in API response."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (9961, '99610000-0000-0000-0000-000000009961', 1, 'distance.pdf', '/tmp/distance.pdf', 'train')"
+            )
+            outputs = json.dumps({
+                "vehicle_vin": "DISTANCE1234567890",
+                "vehicle_make": "Honda",
+                "vehicle_model": "Accord",
+                "final_price": 400.0,
+                "distance_miles": 650.5,
+            })
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json) "
+                "VALUES (9961, '99610000-0000-0000-0000-0000000r9961', 1, 9961, 'approved', ?)",
+                (outputs,),
+            )
+            conn.commit()
+
+        resp = client.get("/api/documents?limit=500")
+        docs = resp.json().get("items", [])
+        doc = next((d for d in docs if d.get("id") == 9961), None)
+        assert doc is not None
+        assert doc.get("distance_miles") == 650.5
+        assert doc.get("price_total") == 400.0
+
+    def test_no_auction_cost_returns_null(self, client):
+        """If no total_amount in outputs, auction_cost should be null."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (9962, '99620000-0000-0000-0000-000000009962', 1, 'no_auction.pdf', '/tmp/no_auction.pdf', 'train')"
+            )
+            outputs = json.dumps({
+                "vehicle_vin": "NOAUCTION123456789",
+                "vehicle_make": "Nissan",
+                "vehicle_model": "Altima",
+                "final_price": 200.0,
+            })
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json) "
+                "VALUES (9962, '99620000-0000-0000-0000-0000000r9962', 1, 9962, 'approved', ?)",
+                (outputs,),
+            )
+            conn.commit()
+
+        resp = client.get("/api/documents?limit=500")
+        docs = resp.json().get("items", [])
+        doc = next((d for d in docs if d.get("id") == 9962), None)
+        assert doc is not None
+        assert doc.get("auction_cost") is None
+        assert doc.get("price_total") == 200.0
+
+
+# ===========================================================================
+# Test Attachment Dedup (spaces vs underscores in filenames)
+# ===========================================================================
+
+class TestAttachmentDedup:
+    """Verify email-context deduplicates attachments with sanitized filenames."""
+
+    def test_space_vs_underscore_dedup(self, client):
+        """Attachment with spaces in email_log and underscores in run attachments should appear once."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_log (
+                    id INTEGER PRIMARY KEY,
+                    message_id TEXT, sender TEXT, subject TEXT,
+                    body_preview TEXT, attachment_names TEXT,
+                    received_date TEXT, extraction_run_ids TEXT,
+                    status TEXT DEFAULT 'processed'
+                )
+            """)
+            # Document
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split, source, email_metadata_json) "
+                "VALUES (9970, '99700000-0000-0000-0000-000000009970', 1, '20260222_report.pdf', '/tmp/report.pdf', 'train', 'email', ?)",
+                (json.dumps({"sender": "a@b.com", "subject": "Vehicle", "date": "2026-02-22"}),)
+            )
+            # Run with sanitized filename (underscores)
+            run_atts = json.dumps([{
+                "filename": "2019_DODGE_GRAND_CARAVAN.pdf",
+                "original_filename": "2019 DODGE GRAND CARAVAN.pdf",
+                "type": "listing_page",
+                "url": "/api/documents/9970/attachments/2019_DODGE_GRAND_CARAVAN.pdf",
+            }])
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json, attachments_json) "
+                "VALUES (9970, '99700000-0000-0000-0000-0000000r9970', 1, 9970, 'completed', '{}', ?)",
+                (run_atts,),
+            )
+            # Email log with original filename (spaces)
+            conn.execute(
+                "INSERT OR REPLACE INTO email_log (id, message_id, sender, subject, body_preview, attachment_names, received_date, extraction_run_ids) "
+                "VALUES (9970, '<dedup@test.com>', 'a@b.com', 'Vehicle', 'body', ?, '2026-02-22', ?)",
+                (json.dumps(["2019 DODGE GRAND CARAVAN.pdf", "20260222_report.pdf"]), json.dumps([9970])),
+            )
+            conn.commit()
+
+        resp = client.get("/api/extractions/9970/email-context")
+        assert resp.status_code == 200
+        atts = resp.json().get("attachments", [])
+        filenames = [a["filename"] for a in atts]
+        # Should be exactly 2 (main doc + one listing page), NOT 3
+        assert len(atts) == 2, f"Expected 2 attachments (deduped), got {len(atts)}: {filenames}"
+
+    def test_sanitized_filename_gets_view_url(self, client):
+        """Attachment with spaces in email_log should resolve view_url from sanitized run attachment."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_log (
+                    id INTEGER PRIMARY KEY,
+                    message_id TEXT, sender TEXT, subject TEXT,
+                    body_preview TEXT, attachment_names TEXT,
+                    received_date TEXT, extraction_run_ids TEXT,
+                    status TEXT DEFAULT 'processed'
+                )
+            """)
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split, source, email_metadata_json) "
+                "VALUES (9971, '99710000-0000-0000-0000-000000009971', 1, 'main_doc.pdf', '/tmp/main_doc.pdf', 'train', 'email', ?)",
+                (json.dumps({"sender": "x@y.com", "subject": "Test", "date": "2026-02-22"}),)
+            )
+            run_atts = json.dumps([{
+                "filename": "Vehicle_Report.pdf",
+                "original_filename": "Vehicle Report.pdf",
+                "type": "listing_page",
+                "url": "/api/documents/9971/attachments/Vehicle_Report.pdf",
+            }])
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json, attachments_json) "
+                "VALUES (9971, '99710000-0000-0000-0000-0000000r9971', 1, 9971, 'completed', '{}', ?)",
+                (run_atts,),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO email_log (id, message_id, sender, subject, body_preview, attachment_names, received_date, extraction_run_ids) "
+                "VALUES (9971, '<url@test.com>', 'x@y.com', 'Test', 'body', ?, '2026-02-22', ?)",
+                (json.dumps(["Vehicle Report.pdf", "main_doc.pdf"]), json.dumps([9971])),
+            )
+            conn.commit()
+
+        resp = client.get("/api/extractions/9971/email-context")
+        assert resp.status_code == 200
+        atts = resp.json().get("attachments", [])
+        report = next((a for a in atts if "Vehicle" in a["filename"]), None)
+        assert report is not None, f"Vehicle Report attachment not found: {atts}"
+        # Should resolve view_url from run attachments via sanitized name lookup
+        assert report.get("view_url") is not None, f"Expected view_url for Vehicle Report, got null"

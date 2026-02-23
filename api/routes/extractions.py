@@ -2482,6 +2482,7 @@ async def get_email_context(run_id: int):
             date = row["received_date"] or email_meta.get("date")
 
             # Build run-attachment lookup for view URLs
+            # Key by both sanitized and original filenames to handle mismatch
             run_att_map = {}
             try:
                 att_row = conn.execute(
@@ -2490,11 +2491,24 @@ async def get_email_context(run_id: int):
                 ).fetchone()
                 if att_row and att_row["attachments_json"]:
                     for ra in json.loads(att_row["attachments_json"]):
-                        run_att_map[ra.get("filename", "")] = ra
+                        fname = ra.get("filename", "")
+                        run_att_map[fname] = ra
+                        # Also key by original name (with spaces) for cross-lookup
+                        orig = ra.get("original_filename", "")
+                        if orig and orig != fname:
+                            run_att_map[orig] = ra
+                        # Also key by normalized form (spaces→underscores)
+                        normalized = fname.replace(" ", "_")
+                        if normalized != fname:
+                            run_att_map[normalized] = ra
             except Exception:
                 pass
 
-            # Parse attachment names
+            def _normalize_filename(name):
+                """Normalize filename for dedup: lowercase, spaces→underscores."""
+                return (name or "").lower().replace(" ", "_")
+
+            # Parse attachment names and deduplicate
             att_names_raw = row["attachment_names"]
             if att_names_raw:
                 try:
@@ -2504,26 +2518,45 @@ async def get_email_context(run_id: int):
 
                 from pathlib import Path
                 att_base = Path("data/attachments")
+                seen_normalized = set()
 
                 for att_name in att_names:
+                    # Deduplicate by normalized filename
+                    norm = _normalize_filename(att_name)
+                    if norm in seen_normalized:
+                        continue
+                    seen_normalized.add(norm)
+
                     is_main = att_name in (doc.filename or "")
+                    # Also check sanitized version against doc filename
+                    if not is_main:
+                        sanitized = att_name.replace(" ", "_")
+                        is_main = sanitized in (doc.filename or "")
+
                     # Resolve view_url: main doc → document file, others → run attachment
-                    # Only generate URL if file actually exists to avoid 404s
+                    # Try both original and sanitized names for lookup
                     if is_main:
                         view_url = f"/api/documents/{doc.id}/file"
                     elif att_name in run_att_map:
                         view_url = run_att_map[att_name].get("url")
+                    elif att_name.replace(" ", "_") in run_att_map:
+                        view_url = run_att_map[att_name.replace(" ", "_")].get("url")
                     else:
-                        # Check if file exists on disk before generating URL
+                        # Check if file exists on disk (try both original and sanitized names)
                         candidate = att_base / str(run_id) / Path(att_name).name
+                        candidate_sanitized = att_base / str(run_id) / Path(att_name.replace(" ", "_")).name
                         if candidate.exists():
                             view_url = f"/api/documents/{run_id}/attachments/{att_name}"
+                        elif candidate_sanitized.exists():
+                            view_url = f"/api/documents/{run_id}/attachments/{att_name.replace(' ', '_')}"
                         else:
                             view_url = None
                     # Determine attachment type from run attachment or file extension
                     att_type = None
                     if att_name in run_att_map:
                         att_type = run_att_map[att_name].get("type")
+                    elif att_name.replace(" ", "_") in run_att_map:
+                        att_type = run_att_map[att_name.replace(" ", "_")].get("type")
                     if not att_type:
                         ext = att_name.rsplit(".", 1)[-1].lower() if "." in att_name else ""
                         if ext == "pdf":
