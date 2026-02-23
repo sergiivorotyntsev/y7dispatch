@@ -157,7 +157,7 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             </div>
           )}
 
-          {/* AI Summary */}
+          {/* AI Summary + Recommendation */}
           {data?.ai_summary && (
             <div className={`p-3 rounded border mb-2 ${
               data.risk_level === 'high' ? 'bg-red-50 border-red-300' :
@@ -172,11 +172,54 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
                 }`}>{data.risk_level.toUpperCase()} RISK</span>
                 <p className="text-sm text-gray-800">{data.ai_summary}</p>
               </div>
-              {data.optimal_pickup_suggestion && (
+
+              {/* Recommended pickup date */}
+              {data.recommended_pickup_date && (
+                <div className="mt-2 ml-14 p-2 bg-white bg-opacity-60 rounded border border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-sm font-medium text-gray-900">
+                      Recommended pickup: {data.recommended_pickup_date}
+                    </span>
+                  </div>
+                  {data.recommendation_reason && (
+                    <p className="text-xs text-gray-600 mt-1 ml-6">{data.recommendation_reason}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Fallback: old optimal_pickup_suggestion if no structured recommendation */}
+              {!data.recommended_pickup_date && data.optimal_pickup_suggestion && (
                 <p className="text-xs mt-2 ml-14 text-gray-600">
                   Suggested pickup: after {data.optimal_pickup_suggestion}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Pickup Scenarios */}
+          {data?.scenarios?.length > 0 && (
+            <div className="mb-2 space-y-1">
+              <p className="text-xs font-medium text-gray-600 mb-1">Pickup Scenarios:</p>
+              {data.scenarios.map((s, idx) => (
+                <div key={idx} className={`p-2 rounded border text-xs flex items-start gap-2 ${
+                  s.risk === 'high' ? 'bg-red-50 border-red-200' :
+                  s.risk === 'medium' ? 'bg-amber-50 border-amber-200' :
+                  'bg-green-50 border-green-200'
+                }`}>
+                  <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                    s.risk === 'high' ? 'bg-red-400' :
+                    s.risk === 'medium' ? 'bg-amber-400' :
+                    'bg-green-400'
+                  }`}></span>
+                  <div>
+                    <span className="font-medium text-gray-800">{s.label}</span>
+                    <span className="text-gray-600 ml-1">— {s.detail}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 

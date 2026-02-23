@@ -273,7 +273,7 @@ class TestWeatherAISummary:
             # No API key set → goes to fallback
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("ANTHROPIC_API_KEY", None)
-                summary, risk, pickup = svc._generate_ai_summary(
+                summary, risk, pickup, rec_date, rec_reason, scenarios = svc._generate_ai_summary(
                     [RouteAlert(event="Blizzard Warning", severity="critical")],
                     ["MA", "CT"],
                 )

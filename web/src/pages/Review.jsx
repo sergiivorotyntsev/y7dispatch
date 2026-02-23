@@ -74,6 +74,7 @@ function Review() {
   const [warehouses, setWarehouses] = useState([])
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
   const [manualDeliveryOverride, setManualDeliveryOverride] = useState(false)
+  const [distanceMiles, setDistanceMiles] = useState(null)
 
   // Market Intelligence Pricing
   const [pricing, setPricing] = useState(null)
@@ -173,7 +174,9 @@ function Review() {
     setExpirationDate(expDate.toISOString().split('T')[0])
   }
 
-  // Fetch run and review items
+  // Stream 1 (FAST): Core data — extraction + review items + document
+  // Sets loading=false as soon as viewer + fields are ready.
+  // Warehouses, pricing, attachments load independently after.
   const fetchData = useCallback(async () => {
     if (!runId) return
 
@@ -217,9 +220,6 @@ function Review() {
         }
       }
       // Inject gate_pass from outputs_json if review_items has no value for it.
-      // gate_pass comes from email body → saved to extraction_run outputs_json.
-      // Review_items may have an empty gate_pass placeholder (predicted_value=null),
-      // so check the actual value, not just key existence.
       const existingGatePass = initialFields.gate_pass?.corrected || initialFields.gate_pass?.predicted
       if (!existingGatePass && runData.run?.outputs?.gate_pass) {
         initialFields.gate_pass = {
@@ -274,40 +274,50 @@ function Review() {
         initializeDates(initialFields, runData.run?.auction_type_code)
       }
 
-      const whList = await loadWarehouses()
-      await loadPricing()
-
-      // Load attachments (vehicle release, condition reports)
-      try {
-        const attData = await api.listAttachments(runId)
-        setAttachments(attData.attachments || [])
-      } catch (err) {
-        // Attachments are optional — don't fail the page
-        console.debug('No attachments for run:', err.message)
-      }
-
       // Set initial Load-Specific Terms for production mode
       if (!isTrainingMode && runData.run?.auction_type_code) {
         setLoadSpecificTerms(generateLoadSpecificTerms(runData.run.auction_type_code, null))
-      }
-
-      // Populate transport instructions from warehouse if not saved in outputs
-      if (out.warehouse_id && !out.transport_special_instructions) {
-        const wh = whList.find(w => w.id === out.warehouse_id || w.id.toString() === String(out.warehouse_id))
-        if (wh?.transport_special_instructions) {
-          setTransportSpecialInstructions(wh.transport_special_instructions)
-        }
       }
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [runId, loadWarehouses, loadPricing, isTrainingMode, generateLoadSpecificTerms])
+  }, [runId, isTrainingMode, generateLoadSpecificTerms])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Stream 2 (MEDIUM): Warehouses + pricing + attachments — load independently
+  // Never blocks the PDF viewer or form fields.
+  useEffect(() => {
+    if (!run) return
+    const out = run.outputs || {}
+
+    async function loadSecondary() {
+      // Load warehouses, pricing, attachments in parallel
+      const [whList] = await Promise.all([
+        loadWarehouses(),
+        loadPricing(),
+        api.listAttachments(runId).then(data => {
+          setAttachments(data.attachments || [])
+        }).catch(err => {
+          console.debug('No attachments for run:', err.message)
+        }),
+      ])
+
+      // Populate transport instructions from warehouse if not saved
+      if (out.warehouse_id && !out.transport_special_instructions) {
+        const wh = whList.find(w => w.id === out.warehouse_id || w.id.toString() === String(out.warehouse_id))
+        if (wh?.transport_special_instructions) {
+          setTransportSpecialInstructions(wh.transport_special_instructions)
+        }
+      }
+    }
+
+    loadSecondary()
+  }, [run, runId, loadWarehouses, loadPricing])
 
   // Auto-generate Load ID when make/model are available
   useEffect(() => {
@@ -974,6 +984,7 @@ function Review() {
               fields={fields}
               updateField={updateField}
               runId={runId}
+              onDistanceChange={setDistanceMiles}
             />
 
             {/* Weather alerts along route */}
@@ -1016,6 +1027,7 @@ function Review() {
               setBalanceTermsBeginOn={setBalanceTermsBeginOn}
               runId={runId}
               warehouseId={selectedWarehouse ? parseInt(selectedWarehouse) : null}
+              distanceMiles={distanceMiles}
             />
 
             {/* Section 7: Additional Info */}

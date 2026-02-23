@@ -514,6 +514,7 @@ class TestWeatherAPI:
             "alerts", "route_states", "clear_states", "alert_states",
             "waypoints_checked", "cached", "checked_at",
             "ai_summary", "risk_level", "optimal_pickup_suggestion",
+            "recommended_pickup_date", "recommendation_reason", "scenarios",
             "transit",
         }
 

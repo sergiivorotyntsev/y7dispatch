@@ -14,10 +14,16 @@ function PricingPaymentSection({
   balancePaymentTime, setBalancePaymentTime,
   balanceTermsBeginOn, setBalanceTermsBeginOn,
   runId, warehouseId, hasPickupLocation, hasDeliveryLocation,
+  distanceMiles,
 }) {
   const codNum = parseFloat(codAmount) || 0
   const totalNum = parseFloat(finalPrice) || parseFloat(pricing?.suggested_price) || 0
   const balanceAmount = Math.max(0, totalNum - codNum)
+
+  // Live $/mile calculation
+  const ratePerMile = totalNum > 0 && distanceMiles > 0
+    ? (totalNum / distanceMiles).toFixed(2)
+    : null
 
   // CD Market Intelligence state
   const [cdPriceData, setCdPriceData] = useState(null)
@@ -198,9 +204,19 @@ function PricingPaymentSection({
               min="0"
             />
           </div>
-          {pricing?.suggested_price && !finalPrice && (
-            <p className="text-xs text-gray-400 mt-1">Will use recommended: ${pricing.suggested_price.toFixed(0)}</p>
-          )}
+          <div className="flex items-center gap-3 mt-1">
+            {pricing?.suggested_price && !finalPrice && (
+              <p className="text-xs text-gray-400">Will use recommended: ${pricing.suggested_price.toFixed(0)}</p>
+            )}
+            {ratePerMile && (
+              <span className="text-xs font-medium text-primary-700 bg-primary-50 px-1.5 py-0.5 rounded">
+                ${ratePerMile}/mi
+              </span>
+            )}
+            {distanceMiles && (
+              <span className="text-xs text-gray-400">{Math.round(distanceMiles)} mi</span>
+            )}
+          </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Urgency</label>

@@ -46,6 +46,12 @@ class TransitInfo(BaseModel):
     total_hours: Optional[float] = None
 
 
+class ScenarioResponse(BaseModel):
+    label: str = ""
+    risk: str = "low"
+    detail: str = ""
+
+
 class RouteAlertsResponse(BaseModel):
     alerts: list[AlertResponse] = Field(default_factory=list)
     route_states: list[str] = Field(default_factory=list)
@@ -57,6 +63,9 @@ class RouteAlertsResponse(BaseModel):
     ai_summary: Optional[str] = None
     risk_level: str = "low"
     optimal_pickup_suggestion: Optional[str] = None
+    recommended_pickup_date: Optional[str] = None
+    recommendation_reason: Optional[str] = None
+    scenarios: list[ScenarioResponse] = Field(default_factory=list)
     transit: Optional[TransitInfo] = None
 
 

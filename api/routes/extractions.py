@@ -2465,13 +2465,25 @@ async def get_email_context(run_id: int):
     body = None
     email_attachments = []
     with get_connection() as conn:
-        # Try to find email_log entry that references this run
+        # Try to find email_log entry that references this run.
+        # Use exact JSON array element match to avoid LIKE false positives
+        # (e.g., run_id=48 matching "[348]", "[480]", etc.)
         try:
-            row = conn.execute(
-                "SELECT sender, subject, body_preview, attachment_names, received_date "
-                "FROM email_log WHERE extraction_run_ids LIKE ?",
-                (f"%{run_id}%",),
-            ).fetchone()
+            row = None
+            # Try exact JSON match patterns: [48], [48,...], [...,48], [...,48,...]
+            for pattern in [
+                f"[{run_id}]",
+                f"[{run_id},%",
+                f"%, {run_id}]",
+                f"%, {run_id},%",
+            ]:
+                row = conn.execute(
+                    "SELECT sender, subject, body_preview, attachment_names, received_date "
+                    "FROM email_log WHERE extraction_run_ids LIKE ?",
+                    (pattern,),
+                ).fetchone()
+                if row:
+                    break
         except Exception:
             row = None
 
@@ -2505,8 +2517,14 @@ async def get_email_context(run_id: int):
                 pass
 
             def _normalize_filename(name):
-                """Normalize filename for dedup: lowercase, spaces→underscores."""
-                return (name or "").lower().replace(" ", "_")
+                """Normalize filename for dedup: lowercase, spaces→underscores, strip (N) suffixes."""
+                import re
+                n = (name or "").lower().strip().replace(" ", "_")
+                # Strip parenthetical copy suffixes: "file_(1).pdf" → "file.pdf"
+                n = re.sub(r'_?\(\d+\)', '', n)
+                # Strip \r\n from email-mangled filenames
+                n = n.replace('\r', '').replace('\n', '')
+                return n
 
             # Parse attachment names and deduplicate
             att_names_raw = row["attachment_names"]

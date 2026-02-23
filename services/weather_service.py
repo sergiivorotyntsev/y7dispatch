@@ -158,6 +158,9 @@ class RouteAlertsResult:
     ai_summary: Optional[str] = None
     risk_level: str = "low"  # low, medium, high
     optimal_pickup_suggestion: Optional[str] = None
+    recommended_pickup_date: Optional[str] = None
+    recommendation_reason: Optional[str] = None
+    scenarios: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -171,6 +174,9 @@ class RouteAlertsResult:
             "ai_summary": self.ai_summary,
             "risk_level": self.risk_level,
             "optimal_pickup_suggestion": self.optimal_pickup_suggestion,
+            "recommended_pickup_date": self.recommended_pickup_date,
+            "recommendation_reason": self.recommendation_reason,
+            "scenarios": self.scenarios,
         }
 
 
@@ -290,8 +296,11 @@ class WeatherService:
         ai_summary = None
         risk_level = "low"
         optimal_pickup = None
+        recommended_date = None
+        recommendation_reason = None
+        scenarios = []
         if unique_alerts:
-            ai_summary, risk_level, optimal_pickup = self._generate_ai_summary(
+            ai_summary, risk_level, optimal_pickup, recommended_date, recommendation_reason, scenarios = self._generate_ai_summary(
                 unique_alerts, route_states, origin_state, dest_state,
                 distance_miles=getattr(self, '_last_distance_miles', None),
                 duration_minutes=getattr(self, '_last_duration_minutes', None),
@@ -308,6 +317,9 @@ class WeatherService:
             ai_summary=ai_summary,
             risk_level=risk_level,
             optimal_pickup_suggestion=optimal_pickup,
+            recommended_pickup_date=recommended_date,
+            recommendation_reason=recommendation_reason,
+            scenarios=scenarios,
         )
 
         # Cache result
@@ -328,10 +340,11 @@ class WeatherService:
         dest_state: str = "",
         distance_miles: Optional[float] = None,
         duration_minutes: Optional[float] = None,
-    ) -> tuple[Optional[str], str, Optional[str]]:
+    ) -> tuple[Optional[str], str, Optional[str], Optional[str], Optional[str], list]:
         """Generate AI-powered summary of weather alerts for transport route.
 
-        Returns (summary_text, risk_level, optimal_pickup_suggestion).
+        Returns (summary_text, risk_level, optimal_pickup_suggestion,
+                 recommended_pickup_date, recommendation_reason, scenarios).
         """
         # Determine risk level from alert severities
         severities = [a.severity for a in alerts]
@@ -350,6 +363,7 @@ class WeatherService:
         alert_text = "\n".join(alert_lines)
 
         route_desc = " → ".join(route_states) if route_states else f"{origin_state} → {dest_state}"
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         # Transit time context for AI
         transit_context = ""
@@ -362,13 +376,24 @@ class WeatherService:
             )
 
         prompt = (
-            f"You are a vehicle transport dispatcher assistant. Summarize these weather alerts "
-            f"for a car carrier route ({route_desc}) in 2-3 concise sentences.\n\n"
+            f"You are a vehicle transport dispatcher assistant. Analyze these weather alerts "
+            f"for a car carrier route ({route_desc}).\n\n"
+            f"Current time: {now_utc}\n"
             f"Alerts:\n{alert_text}\n{transit_context}\n"
-            f"Include: (1) what conditions to expect, (2) impact on transport timing, "
-            f"(3) if delay is recommended, suggest waiting until alerts expire "
-            f"and note when roads should be clear (add 6-12h after severe weather for road clearing).\n"
-            f"Keep it practical for a truck driver. No markdown."
+            f"Respond ONLY with valid JSON (no markdown, no code fences). Use this exact format:\n"
+            f'{{"summary": "2-3 sentence practical summary for truck driver",'
+            f'"recommended_pickup_date": "YYYY-MM-DD HH:MM UTC",'
+            f'"reason": "1 sentence why this date",'
+            f'"scenarios": ['
+            f'{{"label": "Pick up now", "risk": "high/medium/low", "detail": "what happens"}},'
+            f'{{"label": "Wait until [date]", "risk": "high/medium/low", "detail": "what happens"}},'
+            f'{{"label": "Best window", "risk": "high/medium/low", "detail": "what happens"}}'
+            f']}}\n\n'
+            f"Rules:\n"
+            f"- recommended_pickup_date = earliest SAFE pickup time (add 6-12h after severe weather for road clearing)\n"
+            f"- If safe to pick up now, set recommended_pickup_date to current time\n"
+            f"- scenarios: exactly 3 options (now, delayed, optimal)\n"
+            f"- Keep summary practical, no markdown"
         )
 
         try:
@@ -386,26 +411,46 @@ class WeatherService:
 
             if not api_key:
                 logger.debug("No Anthropic API key available for weather summary")
-                return self._fallback_summary(alerts, risk_level), risk_level, None
+                fallback = self._fallback_summary(alerts, risk_level)
+                optimal = self._suggest_optimal_pickup(alerts)
+                return fallback, risk_level, optimal, optimal, None, []
 
             import anthropic
 
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=200,
+                max_tokens=400,
                 messages=[{"role": "user", "content": prompt}],
             )
-            summary = response.content[0].text.strip()
+            raw = response.content[0].text.strip()
 
-            # Determine optimal pickup suggestion from alert expiry times
+            # Parse structured JSON response
+            try:
+                parsed = json.loads(raw)
+                summary = parsed.get("summary", raw)
+                recommended_date = parsed.get("recommended_pickup_date")
+                reason = parsed.get("reason")
+                scenarios = parsed.get("scenarios", [])
+            except (json.JSONDecodeError, TypeError):
+                # AI didn't return valid JSON — use raw text as summary
+                summary = raw
+                recommended_date = None
+                reason = None
+                scenarios = []
+
+            # Determine optimal pickup suggestion from alert expiry times (fallback)
             optimal_pickup = self._suggest_optimal_pickup(alerts)
+            if not recommended_date:
+                recommended_date = optimal_pickup
 
-            return summary, risk_level, optimal_pickup
+            return summary, risk_level, optimal_pickup, recommended_date, reason, scenarios
 
         except Exception as e:
             logger.warning("AI weather summary failed: %s", e)
-            return self._fallback_summary(alerts, risk_level), risk_level, None
+            fallback = self._fallback_summary(alerts, risk_level)
+            optimal = self._suggest_optimal_pickup(alerts)
+            return fallback, risk_level, optimal, optimal, None, []
 
     def _fallback_summary(self, alerts: list[RouteAlert], risk_level: str) -> str:
         """Generate a simple summary without AI when Anthropic is unavailable."""
