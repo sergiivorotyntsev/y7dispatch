@@ -1246,7 +1246,7 @@ async def release_hold(id: int):
 @router.post("/{id}/archive")
 async def archive_document(id: int):
     """Archive a document (soft-delete for exported docs)."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     from api.database import get_connection
 
