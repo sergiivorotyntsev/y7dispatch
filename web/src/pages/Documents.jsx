@@ -258,6 +258,13 @@ function Documents() {
   const [holdReason, setHoldReason] = useState('awaiting_gate_pass')
   const [holdNote, setHoldNote] = useState('')
 
+  // Batch operations state
+  const [batchOperating, setBatchOperating] = useState(false)
+  const [batchOpResult, setBatchOpResult] = useState(null) // { action, total, succeeded, failed, results }
+  const [showBatchHold, setShowBatchHold] = useState(false)
+  const [batchHoldReason, setBatchHoldReason] = useState('awaiting_gate_pass')
+  const [batchHoldNote, setBatchHoldNote] = useState('')
+
   // Date grouping
   const [collapsedDates, setCollapsedDates] = useState(new Set())
 
@@ -526,6 +533,105 @@ function Documents() {
     setSelectedDocs(new Set())
   }
 
+  // Batch eligibility: compute counts for each action from selected docs
+  function getBatchEligibility() {
+    const approveRunIds = []
+    const exportRunIds = []
+    const holdDocIds = []
+    const archiveDocIds = []
+
+    for (const docId of selectedDocs) {
+      const doc = documents.find(d => d.id === docId)
+      if (!doc) continue
+      const extraction = docExtractions[docId]
+      const extStatus = doc.extraction_status || extraction?.status
+      const isExported = extStatus === 'exported'
+      const isOnHold = !!doc.hold_reason
+      const isArchived = !!doc.archived_at
+      const runId = doc.extraction_run_id || extraction?.id
+
+      // Approve: needs_review status with a run_id
+      if (runId && extStatus === 'needs_review') {
+        approveRunIds.push(runId)
+      }
+      // Export: approved/reviewed status
+      if (runId && (extStatus === 'reviewed' || extStatus === 'approved')) {
+        exportRunIds.push(runId)
+      }
+      // Hold: not exported, not archived
+      if (!isExported && !isArchived && !isOnHold) {
+        holdDocIds.push(docId)
+      }
+      // Archive: exported docs
+      if (isExported && !isArchived) {
+        archiveDocIds.push(docId)
+      }
+    }
+    return { approveRunIds, exportRunIds, holdDocIds, archiveDocIds }
+  }
+
+  // Batch approve
+  async function handleBatchApprove() {
+    const { approveRunIds } = getBatchEligibility()
+    if (approveRunIds.length === 0) return
+
+    setBatchOperating(true)
+    setBatchOpResult(null)
+    try {
+      const result = await api.batchApprove(approveRunIds)
+      setBatchOpResult({ action: 'approve', ...result })
+      fetchDocuments()
+      fetchDocExtractions()
+      setSelectedDocs(new Set())
+    } catch (err) {
+      setError(`Batch approve failed: ${err.message}`)
+    } finally {
+      setBatchOperating(false)
+    }
+  }
+
+  // Batch hold (opens modal first)
+  async function handleBatchHoldConfirm() {
+    const { holdDocIds } = getBatchEligibility()
+    if (holdDocIds.length === 0) return
+
+    setBatchOperating(true)
+    setBatchOpResult(null)
+    try {
+      const result = await api.batchHold(holdDocIds, batchHoldReason, batchHoldNote || null)
+      setBatchOpResult({ action: 'hold', ...result })
+      setShowBatchHold(false)
+      setBatchHoldReason('awaiting_gate_pass')
+      setBatchHoldNote('')
+      fetchDocuments()
+      setSelectedDocs(new Set())
+    } catch (err) {
+      setError(`Batch hold failed: ${err.message}`)
+    } finally {
+      setBatchOperating(false)
+    }
+  }
+
+  // Batch archive
+  async function handleBatchArchive() {
+    const { archiveDocIds } = getBatchEligibility()
+    if (archiveDocIds.length === 0) return
+    if (!confirm(`Archive ${archiveDocIds.length} document(s)? They will be hidden from the main list.`)) return
+
+    setBatchOperating(true)
+    setBatchOpResult(null)
+    try {
+      const result = await api.batchArchive(archiveDocIds)
+      setBatchOpResult({ action: 'archive', ...result })
+      fetchDocuments()
+      setSelectedDocs(new Set())
+    } catch (err) {
+      setError(`Batch archive failed: ${err.message}`)
+    } finally {
+      setBatchOperating(false)
+    }
+  }
+
   // Get source display
   function getSourceDisplay(doc) {
     if (doc.source === 'email') {
@@ -575,15 +681,6 @@ function Documents() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {selectedDocs.size > 0 && (
-            <button
-              onClick={handleBatchPostPreflight}
-              disabled={batchPosting}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-            >
-              {batchPosting ? 'Checking...' : `Post Selected (${selectedDocs.size})`}
-            </button>
-          )}
           <button
             onClick={() => setShowUpload(true)}
             className="btn btn-primary"
@@ -592,6 +689,96 @@ function Documents() {
           </button>
         </div>
       </div>
+
+      {/* Batch Action Toolbar — appears when documents are selected */}
+      {selectedDocs.size > 0 && (() => {
+        const elig = getBatchEligibility()
+        return (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-3 flex-wrap sticky top-0 z-10">
+            <span className="text-sm font-medium text-blue-800">
+              {selectedDocs.size} selected
+            </span>
+            <div className="h-5 w-px bg-blue-300" />
+            {elig.approveRunIds.length > 0 && (
+              <button
+                onClick={handleBatchApprove}
+                disabled={batchOperating}
+                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+              >
+                {batchOperating ? '...' : `Approve (${elig.approveRunIds.length})`}
+              </button>
+            )}
+            {elig.exportRunIds.length > 0 && (
+              <button
+                onClick={handleBatchPostPreflight}
+                disabled={batchPosting}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {batchPosting ? '...' : `Export (${elig.exportRunIds.length})`}
+              </button>
+            )}
+            {elig.holdDocIds.length > 0 && (
+              <button
+                onClick={() => setShowBatchHold(true)}
+                disabled={batchOperating}
+                className="px-3 py-1.5 text-sm bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+              >
+                Hold ({elig.holdDocIds.length})
+              </button>
+            )}
+            {elig.archiveDocIds.length > 0 && (
+              <button
+                onClick={handleBatchArchive}
+                disabled={batchOperating}
+                className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+              >
+                Archive ({elig.archiveDocIds.length})
+              </button>
+            )}
+            <button
+              onClick={() => setSelectedDocs(new Set())}
+              className="ml-auto text-sm text-blue-600 hover:text-blue-800"
+            >
+              Clear Selection
+            </button>
+          </div>
+        )
+      })()}
+
+      {/* Batch Operation Result Banner */}
+      {batchOpResult && (
+        <div className={`mb-4 p-3 rounded-lg border ${
+          batchOpResult.failed === 0
+            ? 'bg-green-50 border-green-200'
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <span className="font-medium">
+                Batch {batchOpResult.action}: {batchOpResult.succeeded}/{batchOpResult.total} succeeded
+              </span>
+              {batchOpResult.failed > 0 && (
+                <span className="text-red-600 ml-2">({batchOpResult.failed} failed)</span>
+              )}
+            </div>
+            <button
+              onClick={() => setBatchOpResult(null)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Dismiss
+            </button>
+          </div>
+          {batchOpResult.results?.some(r => !r.success) && (
+            <div className="mt-2 space-y-1">
+              {batchOpResult.results.filter(r => !r.success).map((r, i) => (
+                <div key={i} className="text-xs text-red-700">
+                  ID {r.id}: {r.error}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
@@ -1270,6 +1457,54 @@ function Documents() {
                 className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
               >
                 Set Hold
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Hold Modal */}
+      {showBatchHold && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-lg font-bold mb-4">Batch Hold — {getBatchEligibility().holdDocIds.length} Document(s)</h2>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+              <select
+                value={batchHoldReason}
+                onChange={(e) => setBatchHoldReason(e.target.value)}
+                className="form-select w-full"
+              >
+                <option value="awaiting_gate_pass">Awaiting Gate Pass</option>
+                <option value="awaiting_payment">Awaiting Payment</option>
+                <option value="awaiting_title">Awaiting Title</option>
+                <option value="awaiting_release">Awaiting Vehicle Release</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+              <input
+                type="text"
+                value={batchHoldNote}
+                onChange={(e) => setBatchHoldNote(e.target.value)}
+                placeholder="Additional details..."
+                className="form-input w-full text-sm"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => { setShowBatchHold(false); setBatchHoldReason('awaiting_gate_pass'); setBatchHoldNote('') }}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBatchHoldConfirm}
+                disabled={batchOperating}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+              >
+                {batchOperating ? 'Processing...' : `Set Hold (${getBatchEligibility().holdDocIds.length})`}
               </button>
             </div>
           </div>

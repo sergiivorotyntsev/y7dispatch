@@ -479,6 +479,20 @@ export const api = {
     body: JSON.stringify({ run_ids: runIds, post_only_ready: postOnlyReady, sandbox }),
   }),
 
+  // Batch Operations (approve, hold, archive)
+  batchApprove: (runIds) => request('/batch/approve', {
+    method: 'POST',
+    body: JSON.stringify({ run_ids: runIds }),
+  }),
+  batchHold: (documentIds, reason, note = null) => request('/batch/hold', {
+    method: 'POST',
+    body: JSON.stringify({ document_ids: documentIds, reason, note }),
+  }),
+  batchArchive: (documentIds) => request('/batch/archive', {
+    method: 'POST',
+    body: JSON.stringify({ document_ids: documentIds }),
+  }),
+
   // Production Corrections → Training
   submitProductionCorrections: (data) => request('/exports/production-corrections', {
     method: 'POST',

@@ -44,6 +44,7 @@ from api.routes import (
     attachments,
     auction_directory,
     auction_types,
+    batch,
     cd_listings,
     credentials,
     dlq,
@@ -245,6 +246,7 @@ app.include_router(attachments.router)  # Attachment download/list for vehicle r
 app.include_router(auction_directory.router)  # Auction phone directory lookup
 app.include_router(email_log.router)  # Email log browsing + management
 app.include_router(weather.router)  # NWS weather alerts along transport routes
+app.include_router(batch.router)  # Batch operations: bulk approve/hold/archive
 
 
 # =============================================================================
