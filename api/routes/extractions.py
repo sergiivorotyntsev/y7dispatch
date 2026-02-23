@@ -2545,11 +2545,15 @@ async def get_email_context(run_id: int):
                         continue
                     seen_normalized.add(norm)
 
+                    import re as _re
+                    safe_name = _re.sub(r"[^\w.-]", "_", att_name)
                     is_main = att_name in (doc.filename or "")
-                    # Also check sanitized version against doc filename
+                    # Also check sanitized versions against doc filename
                     if not is_main:
-                        sanitized = att_name.replace(" ", "_")
-                        is_main = sanitized in (doc.filename or "")
+                        is_main = att_name.replace(" ", "_") in (doc.filename or "")
+                    if not is_main:
+                        # Full sanitization matching email_worker: non-word chars → underscore
+                        is_main = safe_name in (doc.filename or "")
 
                     # Resolve view_url: main doc → document file, others → run attachment
                     # Try both original and sanitized names for lookup
@@ -2559,14 +2563,19 @@ async def get_email_context(run_id: int):
                         view_url = run_att_map[att_name].get("url")
                     elif att_name.replace(" ", "_") in run_att_map:
                         view_url = run_att_map[att_name.replace(" ", "_")].get("url")
+                    elif safe_name in run_att_map:
+                        view_url = run_att_map[safe_name].get("url")
                     else:
-                        # Check if file exists on disk (try both original and sanitized names)
+                        # Check if file exists on disk (try original, spaces→_, and full sanitize)
                         candidate = att_base / str(run_id) / Path(att_name).name
                         candidate_sanitized = att_base / str(run_id) / Path(att_name.replace(" ", "_")).name
+                        candidate_safe = att_base / str(run_id) / Path(safe_name).name
                         if candidate.exists():
                             view_url = f"/api/documents/{run_id}/attachments/{att_name}"
                         elif candidate_sanitized.exists():
                             view_url = f"/api/documents/{run_id}/attachments/{att_name.replace(' ', '_')}"
+                        elif candidate_safe.exists():
+                            view_url = f"/api/documents/{run_id}/attachments/{safe_name}"
                         else:
                             view_url = None
                     # Determine attachment type from run attachment or file extension

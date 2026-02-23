@@ -1432,8 +1432,37 @@ async def export_to_cd(
                 # Update run status
                 ExtractionRunRepository.update(run_id, status="exported")
 
+                # Persist warehouse + delivery + price back to outputs_json
+                # so re-opening the Review page restores the correct state
+                with get_connection() as conn:
+                    out_row = conn.execute(
+                        "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+                    ).fetchone()
+                    saved_outputs = json.loads(out_row["outputs_json"]) if out_row and out_row["outputs_json"] else {}
+                    export_fields = {}
+                    if data.overrides and data.overrides.warehouse_id:
+                        export_fields["warehouse_id"] = data.overrides.warehouse_id
+                    # Extract delivery details from the built payload (stop #2)
+                    stops = payload.get("stops", [])
+                    if len(stops) >= 2:
+                        delivery_stop = stops[1]
+                        export_fields["delivery_name"] = delivery_stop.get("locationName", "")
+                        export_fields["delivery_city"] = delivery_stop.get("city", "")
+                        export_fields["delivery_state"] = delivery_stop.get("state", "")
+                        export_fields["delivery_zip"] = delivery_stop.get("postalCode", "")
+                    if data.overrides and data.overrides.final_price:
+                        export_fields["final_price"] = data.overrides.final_price
+                    elif payload.get("price", {}).get("total"):
+                        export_fields["final_price"] = payload["price"]["total"]
+                    if export_fields:
+                        saved_outputs.update(export_fields)
+                        conn.execute(
+                            "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+                            (json.dumps(saved_outputs), run_id),
+                        )
+                        conn.commit()
+
                 # Sync review_items status to exported
-                from api.database import get_connection
                 with get_connection() as conn:
                     conn.execute(
                         "UPDATE review_items SET status = 'exported' WHERE run_id = ? AND status IN ('pending', 'approved')",

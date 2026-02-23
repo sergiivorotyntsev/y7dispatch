@@ -413,7 +413,8 @@ class WeatherService:
                 logger.debug("No Anthropic API key available for weather summary")
                 fallback = self._fallback_summary(alerts, risk_level)
                 optimal = self._suggest_optimal_pickup(alerts)
-                return fallback, risk_level, optimal, optimal, None, []
+                reason, scenarios = self._fallback_recommendation(alerts, risk_level, optimal)
+                return fallback, risk_level, optimal, optimal, reason, scenarios
 
             import anthropic
 
@@ -450,7 +451,8 @@ class WeatherService:
             logger.warning("AI weather summary failed: %s", e)
             fallback = self._fallback_summary(alerts, risk_level)
             optimal = self._suggest_optimal_pickup(alerts)
-            return fallback, risk_level, optimal, optimal, None, []
+            reason, scenarios = self._fallback_recommendation(alerts, risk_level, optimal)
+            return fallback, risk_level, optimal, optimal, reason, scenarios
 
     def _fallback_summary(self, alerts: list[RouteAlert], risk_level: str) -> str:
         """Generate a simple summary without AI when Anthropic is unavailable."""
@@ -462,6 +464,41 @@ class WeatherService:
             return f"{count} active alert(s): {', '.join(events[:3])}. Monitor conditions before dispatching."
         else:
             return f"{count} advisory alert(s): {', '.join(events[:3])}. Proceed with caution."
+
+    def _fallback_recommendation(
+        self, alerts: list[RouteAlert], risk_level: str, optimal: Optional[str]
+    ) -> tuple[Optional[str], list]:
+        """Generate fallback recommendation reason + scenarios without AI."""
+        events = sorted(set(a.event for a in alerts))[:3]
+        event_str = ", ".join(events)
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        if risk_level == "high":
+            reason = f"Severe weather ({event_str}) — wait for conditions to clear"
+            scenarios = [
+                {"label": "Pick up now", "risk": "high", "detail": f"Active {event_str} — unsafe road conditions likely"},
+                {"label": f"Wait until {optimal}" if optimal else "Wait for alerts to expire", "risk": "low",
+                 "detail": "After alerts expire + 2h buffer for road clearing"},
+                {"label": "Best window", "risk": "low",
+                 "detail": optimal or "After all severe alerts expire"},
+            ]
+        elif risk_level == "medium":
+            reason = f"Weather advisories active ({event_str}) — proceed with caution"
+            scenarios = [
+                {"label": "Pick up now", "risk": "medium", "detail": f"Active advisories: {event_str}"},
+                {"label": f"Wait until {optimal}" if optimal else "Delay pickup", "risk": "low",
+                 "detail": "After advisories expire for clearer conditions"},
+                {"label": "Best window", "risk": "low",
+                 "detail": optimal or "After advisories expire"},
+            ]
+        else:
+            reason = "Minor advisories only — safe to proceed"
+            scenarios = [
+                {"label": "Pick up now", "risk": "low", "detail": "Conditions are manageable"},
+                {"label": "Monitor and go", "risk": "low", "detail": "Check conditions before dispatch"},
+                {"label": "Best window", "risk": "low", "detail": now_str},
+            ]
+        return reason, scenarios
 
     def _suggest_optimal_pickup(self, alerts: list[RouteAlert]) -> Optional[str]:
         """Suggest when to pick up based on alert expiry times."""
