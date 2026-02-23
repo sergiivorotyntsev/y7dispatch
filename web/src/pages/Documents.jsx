@@ -91,9 +91,25 @@ function Documents() {
     return () => clearTimeout(timer)
   }, [search])
 
-  // Fetch documents
+  // Fetch documents with stale-while-revalidate caching
   const fetchDocuments = useCallback(async () => {
-    setLoading(true)
+    const cacheKey = 'y7_documents_cache'
+    // On first load, try showing cached data instantly (no spinner)
+    if (loading && documents.length === 0) {
+      try {
+        const cached = sessionStorage.getItem(cacheKey)
+        if (cached) {
+          const { docs: cachedDocs, total: cachedTotal } = JSON.parse(cached)
+          if (cachedDocs?.length > 0) {
+            setDocuments(cachedDocs)
+            setPagination(p => ({ ...p, total: cachedTotal || cachedDocs.length }))
+            setLoading(false)
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    }
+    // Only show spinner if no documents are currently displayed
+    if (documents.length === 0) setLoading(true)
     setError(null)
     try {
       const params = {
@@ -132,6 +148,13 @@ function Documents() {
 
       setDocuments(sorted)
       setPagination(p => ({ ...p, total: result.total || prodDocs.length }))
+
+      // Save to sessionStorage for instant display on next navigation
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          docs: sorted, total: result.total || prodDocs.length,
+        }))
+      } catch { /* storage full — ignore */ }
 
       // Calculate stats
       setStats({

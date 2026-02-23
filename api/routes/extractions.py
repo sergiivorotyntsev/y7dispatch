@@ -2481,6 +2481,19 @@ async def get_email_context(run_id: int):
             subject = row["subject"] or email_meta.get("subject")
             date = row["received_date"] or email_meta.get("date")
 
+            # Build run-attachment lookup for view URLs
+            run_att_map = {}
+            try:
+                att_row = conn.execute(
+                    "SELECT attachments_json FROM extraction_runs WHERE id = ?",
+                    (run_id,),
+                ).fetchone()
+                if att_row and att_row["attachments_json"]:
+                    for ra in json.loads(att_row["attachments_json"]):
+                        run_att_map[ra.get("filename", "")] = ra
+            except Exception:
+                pass
+
             # Parse attachment names
             att_names_raw = row["attachment_names"]
             if att_names_raw:
@@ -2491,10 +2504,30 @@ async def get_email_context(run_id: int):
 
                 for att_name in att_names:
                     is_main = att_name in (doc.filename or "")
+                    # Resolve view_url: main doc → document file, others → run attachment
+                    if is_main:
+                        view_url = f"/api/documents/{doc.id}/file"
+                    elif att_name in run_att_map:
+                        view_url = run_att_map[att_name].get("url")
+                    else:
+                        view_url = f"/api/documents/{run_id}/attachments/{att_name}"
+                    # Determine attachment type from run attachment or file extension
+                    att_type = None
+                    if att_name in run_att_map:
+                        att_type = run_att_map[att_name].get("type")
+                    if not att_type:
+                        ext = att_name.rsplit(".", 1)[-1].lower() if "." in att_name else ""
+                        if ext == "pdf":
+                            att_type = "pdf"
+                        elif ext in ("png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff"):
+                            att_type = "image"
+                        else:
+                            att_type = "other"
                     email_attachments.append({
                         "filename": att_name,
                         "is_main_document": is_main,
-                        "view_url": f"/api/documents/{doc.id}/file" if is_main else None,
+                        "view_url": view_url,
+                        "type": att_type,
                     })
         else:
             sender = email_meta.get("sender")

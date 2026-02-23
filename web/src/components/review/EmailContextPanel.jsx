@@ -6,13 +6,16 @@ import { parseUTCDate } from '../../utils/date'
  * Email Context Panel
  *
  * Shows the originating email context for email-sourced documents:
- * sender, subject, date, body text, and attachment list.
- * Displayed on the Review page for all email-sourced docs.
+ * sender, subject, date, body text, and unified attachment list.
+ *
+ * Merges email-context attachments with run-level attachments for a
+ * single view. Click an attachment to load it in the PDF viewer.
  */
-export default function EmailContextPanel({ runId, document }) {
+export default function EmailContextPanel({ runId, document, runAttachments, onViewAttachment }) {
   const [emailCtx, setEmailCtx] = useState(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(true)
+  const [previewImage, setPreviewImage] = useState(null)
 
   useEffect(() => {
     if (!runId || document?.source !== 'email') {
@@ -27,14 +30,91 @@ export default function EmailContextPanel({ runId, document }) {
       .finally(() => setLoading(false))
   }, [runId, document?.source])
 
-  if (loading || !emailCtx) return null
+  // If not an email-sourced doc but we have run attachments, still show attachments section
+  const hasRunAttachments = runAttachments && runAttachments.length > 0
 
-  const dateStr = emailCtx.date
+  if (loading || (!emailCtx && !hasRunAttachments)) return null
+
+  const dateStr = emailCtx?.date
     ? parseUTCDate(emailCtx.date)?.toLocaleString('en-US', {
         month: 'short', day: 'numeric', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
       })
     : null
+
+  // Merge email attachments + run attachments into a unified list.
+  // Email attachments have: {filename, is_main_document, view_url, type}
+  // Run attachments have: {filename, original_filename, type, url}
+  const mergedAttachments = []
+  const seenFilenames = new Set()
+
+  // 1. Email attachments first (they have is_main_document flag)
+  if (emailCtx?.attachments) {
+    for (const att of emailCtx.attachments) {
+      seenFilenames.add(att.filename)
+      mergedAttachments.push({
+        filename: att.filename,
+        displayName: att.filename,
+        isMain: att.is_main_document,
+        viewUrl: att.view_url,
+        type: att.type || guessType(att.filename),
+      })
+    }
+  }
+
+  // 2. Run attachments not already in email list
+  if (runAttachments) {
+    for (const att of runAttachments) {
+      if (!seenFilenames.has(att.filename)) {
+        seenFilenames.add(att.filename)
+        mergedAttachments.push({
+          filename: att.filename,
+          displayName: att.original_filename || att.filename,
+          isMain: false,
+          viewUrl: att.url,
+          type: att.type || guessType(att.filename),
+        })
+      }
+    }
+  }
+
+  function guessType(filename) {
+    const ext = (filename || '').split('.').pop().toLowerCase()
+    if (ext === 'pdf') return 'pdf'
+    if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'tiff'].includes(ext)) return 'image'
+    return 'other'
+  }
+
+  function isImage(type) {
+    return type === 'image'
+  }
+
+  function getTypeBadge(att) {
+    if (att.isMain) return { label: 'Main', bg: 'bg-blue-100', text: 'text-blue-700' }
+    switch (att.type) {
+      case 'pdf':
+      case 'listing_page':
+        return { label: 'PDF', bg: 'bg-blue-50', text: 'text-blue-600' }
+      case 'image':
+        return { label: 'Image', bg: 'bg-green-100', text: 'text-green-700' }
+      case 'vehicle_release':
+        return { label: 'Release', bg: 'bg-purple-100', text: 'text-purple-700' }
+      case 'condition_report':
+        return { label: 'Condition', bg: 'bg-yellow-100', text: 'text-yellow-700' }
+      default:
+        return { label: att.type || 'File', bg: 'bg-gray-100', text: 'text-gray-600' }
+    }
+  }
+
+  function handleView(att) {
+    if (isImage(att.type)) {
+      // Toggle inline preview for images
+      setPreviewImage(previewImage === att.viewUrl ? null : att.viewUrl)
+    } else if (onViewAttachment && att.viewUrl) {
+      // Load PDF/doc in the PDF viewer panel
+      onViewAttachment(att.viewUrl)
+    }
+  }
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg mb-4">
@@ -44,7 +124,14 @@ export default function EmailContextPanel({ runId, document }) {
       >
         <div className="flex items-center gap-2">
           <span className="text-blue-600 text-lg">&#9993;</span>
-          <span className="font-medium text-blue-800">Email Context</span>
+          <span className="font-medium text-blue-800">
+            {emailCtx ? 'Email Context' : 'Attachments'}
+          </span>
+          {mergedAttachments.length > 0 && (
+            <span className="text-xs text-blue-500">
+              ({mergedAttachments.length} file{mergedAttachments.length !== 1 ? 's' : ''})
+            </span>
+          )}
         </div>
         <svg
           className={`w-4 h-4 text-blue-600 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -56,13 +143,14 @@ export default function EmailContextPanel({ runId, document }) {
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
-          {emailCtx.sender && (
+          {/* Email metadata */}
+          {emailCtx?.sender && (
             <div className="text-sm">
               <span className="text-blue-700 font-medium">From:</span>{' '}
               <span className="text-gray-800">{emailCtx.sender}</span>
             </div>
           )}
-          {emailCtx.subject && (
+          {emailCtx?.subject && (
             <div className="text-sm">
               <span className="text-blue-700 font-medium">Subject:</span>{' '}
               <span className="text-gray-800">{emailCtx.subject}</span>
@@ -75,7 +163,7 @@ export default function EmailContextPanel({ runId, document }) {
             </div>
           )}
 
-          {emailCtx.body && (
+          {emailCtx?.body && (
             <div className="mt-2">
               <div className="text-xs text-blue-700 font-medium mb-1">Body:</div>
               <div className="bg-white rounded p-3 text-sm text-gray-700 whitespace-pre-wrap border border-blue-100 max-h-48 overflow-auto">
@@ -84,30 +172,61 @@ export default function EmailContextPanel({ runId, document }) {
             </div>
           )}
 
-          {emailCtx.attachments?.length > 0 && (
+          {/* Unified attachment list */}
+          {mergedAttachments.length > 0 && (
             <div className="mt-2">
               <div className="text-xs text-blue-700 font-medium mb-1">Attachments:</div>
               <div className="space-y-1">
-                {emailCtx.attachments.map((att, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-500">&#128196;</span>
-                    <span className="text-gray-800">{att.filename}</span>
-                    {att.is_main_document && (
-                      <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Main</span>
-                    )}
-                    {att.view_url && (
-                      <a
-                        href={att.view_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:text-blue-800 underline"
-                      >
-                        View
-                      </a>
-                    )}
-                  </div>
-                ))}
+                {mergedAttachments.map((att, i) => {
+                  const badge = getTypeBadge(att)
+                  return (
+                    <div key={i} className="flex items-center justify-between bg-white rounded px-3 py-2 text-sm border border-blue-100">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-gray-500 flex-shrink-0">
+                          {isImage(att.type) ? '\u{1F5BC}' : '\u{1F4CE}'}
+                        </span>
+                        <span className="text-gray-800 truncate">{att.displayName}</span>
+                        <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium flex-shrink-0 ${badge.bg} ${badge.text}`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                        {att.viewUrl && (
+                          <button
+                            type="button"
+                            onClick={() => handleView(att)}
+                            className="px-2 py-1 text-xs bg-blue-50 border border-blue-300 text-blue-700 rounded hover:bg-blue-100"
+                          >
+                            {isImage(att.type)
+                              ? (previewImage === att.viewUrl ? 'Hide' : 'View')
+                              : 'Open in viewer'}
+                          </button>
+                        )}
+                        {att.viewUrl && (
+                          <a
+                            href={att.viewUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-100"
+                          >
+                            {isImage(att.type) ? 'Open' : 'New tab'}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
+              {/* Inline image preview */}
+              {previewImage && (
+                <div className="mt-2 border border-gray-200 rounded overflow-hidden bg-gray-100 p-2">
+                  <img
+                    src={previewImage}
+                    alt="Attachment preview"
+                    style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

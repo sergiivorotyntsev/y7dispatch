@@ -5,6 +5,8 @@ Tests:
 - Attachment endpoint serves correct media type for images vs PDFs
 - Price field persists through approval (final_price → price_total in API response)
 - Image attachments tracked in EmailMessage dataclass
+- Price 0 not treated as falsy (explicit None checks)
+- Email context returns view_url + type for all attachments
 """
 
 import json
@@ -314,3 +316,156 @@ class TestEmailImageFilenames:
         worker = EmailWorker()
         parsed = worker._parse_message("000", raw)
         assert len(parsed.image_filenames) == 0
+
+
+# ===========================================================================
+# Test Price Zero Not Treated as Falsy
+# ===========================================================================
+
+class TestPriceZeroNotFalsy:
+    """Verify price_total=0 is returned as 0.0, not replaced by fallback."""
+
+    def test_price_total_zero_not_overridden_by_final_price(self, client):
+        """price_total=0 should be returned as 0.0, not fall through to final_price."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (9910, '99100000-0000-0000-0000-000000009910', 1, 'zero_price.pdf', '/tmp/zero_price.pdf', 'train')"
+            )
+            outputs = json.dumps({
+                "vehicle_vin": "ZEROPRICE12345678",
+                "vehicle_make": "BMW",
+                "vehicle_model": "X3",
+                "price_total": 0,
+                "final_price": 999.0,
+            })
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json) "
+                "VALUES (9910, '99100000-0000-0000-0000-0000000r9910', 1, 9910, 'approved', ?)",
+                (outputs,),
+            )
+            conn.commit()
+
+        resp = client.get("/api/documents?limit=500")
+        docs = resp.json().get("items", [])
+        doc = next((d for d in docs if d.get("id") == 9910), None)
+        assert doc is not None, "Document 9910 not found"
+        assert doc.get("price_total") == 0.0, f"Expected 0.0 but got {doc.get('price_total')}"
+
+    def test_final_price_zero_not_overridden_by_total_amount(self, client):
+        """final_price=0 (no price_total) should be returned as 0.0, not fall through to total_amount."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (9911, '99110000-0000-0000-0000-000000009911', 1, 'zero_final.pdf', '/tmp/zero_final.pdf', 'train')"
+            )
+            outputs = json.dumps({
+                "vehicle_vin": "ZEROFINAL12345678",
+                "vehicle_make": "Audi",
+                "vehicle_model": "A4",
+                "final_price": 0,
+                "total_amount": 500.0,
+            })
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json) "
+                "VALUES (9911, '99110000-0000-0000-0000-0000000r9911', 1, 9911, 'approved', ?)",
+                (outputs,),
+            )
+            conn.commit()
+
+        resp = client.get("/api/documents?limit=500")
+        docs = resp.json().get("items", [])
+        doc = next((d for d in docs if d.get("id") == 9911), None)
+        assert doc is not None
+        assert doc.get("price_total") == 0.0, f"Expected 0.0 but got {doc.get('price_total')}"
+
+
+# ===========================================================================
+# Test Email Context Attachment View URLs
+# ===========================================================================
+
+class TestEmailContextAttachmentUrls:
+    """Verify email-context endpoint returns view_url and type for all attachments."""
+
+    @pytest.fixture(autouse=True)
+    def setup_email_data(self, client):
+        """Set up email-sourced document with multiple attachments."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            # Create email_log table if needed
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_log (
+                    id INTEGER PRIMARY KEY,
+                    message_id TEXT,
+                    sender TEXT,
+                    subject TEXT,
+                    body_preview TEXT,
+                    attachment_names TEXT,
+                    received_date TEXT,
+                    extraction_run_ids TEXT,
+                    status TEXT DEFAULT 'processed'
+                )
+            """)
+            # Create document (email-sourced)
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split, source, email_metadata_json) "
+                "VALUES (9920, '99200000-0000-0000-0000-000000009920', 1, 'invoice.pdf', '/tmp/invoice.pdf', 'train', 'email', ?)",
+                (json.dumps({"sender": "test@auction.com", "subject": "Invoice", "date": "2026-02-22T10:00:00"}),)
+            )
+            # Create extraction run with attachments_json
+            run_attachments = json.dumps([
+                {"filename": "invoice.pdf", "original_filename": "Invoice.pdf", "type": "listing_page", "url": "/api/documents/9920/attachments/invoice.pdf"},
+                {"filename": "photo.png", "original_filename": "Photo.png", "type": "image", "url": "/api/documents/9920/attachments/photo.png"},
+            ])
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json, attachments_json) "
+                "VALUES (9920, '99200000-0000-0000-0000-0000000r9920', 1, 9920, 'completed', '{}', ?)",
+                (run_attachments,),
+            )
+            # Create email_log entry referencing this run
+            conn.execute(
+                "INSERT OR REPLACE INTO email_log (id, message_id, sender, subject, body_preview, attachment_names, received_date, extraction_run_ids) "
+                "VALUES (9920, '<test9920@auction.com>', 'test@auction.com', 'Invoice for vehicle', 'Here is your invoice.', ?, '2026-02-22T10:00:00', ?)",
+                (json.dumps(["invoice.pdf", "photo.png"]), json.dumps([9920])),
+            )
+            conn.commit()
+
+    def test_email_context_returns_view_url_for_all_attachments(self, client):
+        """Non-main attachments should get view_url from run attachments."""
+        resp = client.get("/api/extractions/9920/email-context")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["source"] == "email"
+        atts = data.get("attachments", [])
+        assert len(atts) >= 2, f"Expected 2+ attachments, got {len(atts)}: {atts}"
+
+        # All attachments should have a view_url (not null)
+        for att in atts:
+            assert att.get("view_url") is not None, f"Attachment {att['filename']} has no view_url"
+
+    def test_email_context_returns_type_for_attachments(self, client):
+        """Each attachment should have a type field (pdf, image, etc.)."""
+        resp = client.get("/api/extractions/9920/email-context")
+        data = resp.json()
+        atts = data.get("attachments", [])
+
+        types = {att["filename"]: att.get("type") for att in atts}
+        # photo.png should be 'image', invoice.pdf should be 'listing_page' (from run) or 'pdf'
+        assert types.get("photo.png") == "image", f"Expected 'image' for photo.png, got {types.get('photo.png')}"
+        assert types.get("invoice.pdf") in ("pdf", "listing_page"), f"Expected pdf/listing_page for invoice.pdf, got {types.get('invoice.pdf')}"
+
+    def test_main_document_has_document_file_url(self, client):
+        """Main document attachment should link to /api/documents/{id}/file."""
+        resp = client.get("/api/extractions/9920/email-context")
+        data = resp.json()
+        atts = data.get("attachments", [])
+
+        main_att = next((a for a in atts if a.get("is_main_document")), None)
+        assert main_att is not None, "No main document attachment found"
+        assert "/api/documents/" in main_att["view_url"]
+        assert main_att["view_url"].endswith("/file")

@@ -646,7 +646,12 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
     doc_dict["gate_pass"] = _str(outputs.get("gate_pass"))
 
     # Price — prefer user-set price_total, then final_price (from approve), then extracted total_amount
-    price = outputs.get("price_total") or outputs.get("final_price") or outputs.get("total_amount")
+    # Use explicit None checks to avoid treating 0 as falsy
+    price = outputs.get("price_total")
+    if price is None:
+        price = outputs.get("final_price")
+    if price is None:
+        price = outputs.get("total_amount")
     doc_dict["price_total"] = float(price) if price is not None else None
 
     # Warehouse selection (set during review)

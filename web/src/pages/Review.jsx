@@ -63,7 +63,9 @@ function Review() {
 
   // PDF viewer state
   const [showPdf, setShowPdf] = useState(true)
+  const [pdfCollapsed, setPdfCollapsed] = useState(false)
   const [pdfUrl, setPdfUrl] = useState(null)
+  const [viewingUrl, setViewingUrl] = useState(null) // for attachment switching
 
   // Field values and status
   const [fields, setFields] = useState({})
@@ -785,34 +787,67 @@ function Review() {
       {/* Main Content */}
       <div className="p-6">
         <div className="flex gap-6">
-          {/* PDF Viewer (Left Panel) */}
+          {/* PDF Viewer (Left Panel) — collapsible + attachment switching */}
           {showPdf && pdfUrl && (
-            <div className="w-1/2 flex-shrink-0 sticky top-6" style={{ maxHeight: 'calc(100vh - 4rem)' }}>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
+            <div className={`flex-shrink-0 sticky top-6 ${pdfCollapsed ? '' : 'w-1/2'}`} style={{ maxHeight: pdfCollapsed ? 'auto' : 'calc(100vh - 4rem)' }}>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                  <span className="font-medium text-sm text-gray-700">Original Document</span>
-                  <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-600 hover:text-primary-800">
-                    Open in new tab
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-gray-700">
+                      {pdfCollapsed ? 'Document' : 'Original Document'}
+                    </span>
+                    {viewingUrl && viewingUrl !== pdfUrl && (
+                      <button
+                        onClick={() => setViewingUrl(null)}
+                        className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                      >
+                        Back to main
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPdfCollapsed(!pdfCollapsed)}
+                      className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                      title={pdfCollapsed ? 'Expand viewer' : 'Collapse viewer'}
+                    >
+                      {pdfCollapsed ? '+' : '\u2014'}
+                    </button>
+                    <a
+                      href={viewingUrl || pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary-600 hover:text-primary-800"
+                    >
+                      Open in new tab
+                    </a>
+                  </div>
                 </div>
-                <iframe
-                  src={pdfUrl}
-                  title="Document PDF"
-                  className="w-full border-0"
-                  style={{ height: 'calc(100vh - 8rem)' }}
-                />
+                {!pdfCollapsed && (
+                  <iframe
+                    src={viewingUrl || pdfUrl}
+                    title="Document PDF"
+                    className="w-full border-0"
+                    style={{ height: 'calc(100vh - 8rem)' }}
+                  />
+                )}
               </div>
             </div>
           )}
 
           {/* Fields Panel (Right Panel) — 9 CD-Aligned Sections */}
-          <div className={showPdf && pdfUrl ? 'w-1/2' : 'w-full'}>
+          <div className={showPdf && pdfUrl && !pdfCollapsed ? 'w-1/2' : 'w-full'}>
 
             {/* Section 1: Extraction Info Bar */}
             <ExtractionInfoBar run={run} />
 
-            {/* Email Context (for email-sourced documents) */}
-            <EmailContextPanel runId={runId} document={document} />
+            {/* Email Context + Attachments (unified panel) */}
+            <EmailContextPanel
+              runId={runId}
+              document={document}
+              runAttachments={attachments}
+              onViewAttachment={(url) => setViewingUrl(url)}
+            />
 
             {/* Manual Entry Banner (for scanned/unextractable PDFs) */}
             {run.status === 'manual_required' && (
@@ -902,7 +937,6 @@ function Review() {
                 setTransportSpecialInstructions={setTransportSpecialInstructions}
                 requiresInspection={requiresInspection}
                 setRequiresInspection={setRequiresInspection}
-                attachments={attachments}
               />
             )}
 
