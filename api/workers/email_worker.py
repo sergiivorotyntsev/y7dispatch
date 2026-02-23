@@ -17,7 +17,7 @@ import imaplib
 import json
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.header import decode_header
 from pathlib import Path
@@ -38,6 +38,7 @@ class EmailMessage:
     has_pdf: bool
     pdf_filenames: list[str]
     raw_message: email.message.Message
+    image_filenames: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -940,8 +941,10 @@ class EmailWorker:
         sender = self._decode_header_value(msg.get("From", ""))
         date = msg.get("Date", "")
 
-        # Find PDF attachments (generous detection)
+        # Find PDF and image attachments (generous detection)
         pdf_filenames = []
+        image_filenames = []
+        image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
         for part in msg.walk():
             content_type = part.get_content_type()
             filename = part.get_filename()
@@ -957,8 +960,15 @@ class EmailWorker:
                     and filename and filename.lower().endswith(".pdf"))
             )
 
+            is_image = (
+                content_type.startswith("image/")
+                or (filename and any(filename.lower().endswith(ext) for ext in image_extensions))
+            ) and "attachment" in disposition.lower()
+
             if is_pdf and filename:
                 pdf_filenames.append(filename)
+            elif is_image and filename:
+                image_filenames.append(filename)
 
         return EmailMessage(
             message_id=message_id,
@@ -968,6 +978,7 @@ class EmailWorker:
             date=date,
             has_pdf=len(pdf_filenames) > 0,
             pdf_filenames=pdf_filenames,
+            image_filenames=image_filenames,
             raw_message=msg,
         )
 
@@ -1439,6 +1450,13 @@ class EmailWorker:
                             else:
                                 self._save_attachment(msg, pdf_filename)
 
+                        # 5. Save IMAGE attachments (PNG, JPG, etc.)
+                        for img_filename in msg.image_filenames:
+                            if last_run_id:
+                                self._save_vehicle_release(
+                                    msg, img_filename, last_run_id, att_type="image"
+                                )
+
                         # Guarantee gate_pass in ALL linked runs
                         if gate_pass and run_ids:
                             for rid in run_ids:
@@ -1828,6 +1846,13 @@ class EmailWorker:
                     for pdf_filename in classified.get("vehicle_release", []):
                         if last_run_id:
                             self._save_vehicle_release(msg, pdf_filename, last_run_id)
+
+                    # Save IMAGE attachments (PNG, JPG, etc.)
+                    for img_filename in msg.image_filenames:
+                        if last_run_id:
+                            self._save_vehicle_release(
+                                msg, img_filename, last_run_id, att_type="image"
+                            )
 
                     if gate_pass and run_ids:
                         for rid in run_ids:

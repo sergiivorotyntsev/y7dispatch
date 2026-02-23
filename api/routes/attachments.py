@@ -7,6 +7,7 @@ condition reports, and other attachments linked to extraction runs.
 
 import json
 import logging
+import mimetypes
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -53,9 +54,14 @@ async def download_attachment(run_id: int, filename: str):
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # Detect media type from file extension
+    media_type, _ = mimetypes.guess_type(safe_filename)
+    if not media_type:
+        media_type = "application/octet-stream"
+
     return FileResponse(
         path=str(file_path),
-        media_type="application/pdf",
+        media_type=media_type,
         filename=safe_filename,
     )
 

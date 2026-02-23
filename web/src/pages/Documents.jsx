@@ -357,12 +357,42 @@ function Documents() {
         delete cleared.delivery_zip
         await api.updateExtraction(extraction.id, { outputs_json: cleared })
       }
-      // Refresh both documents and extractions so UI reflects saved warehouse
-      fetchDocuments()
-      fetchDocExtractions()
+      // Optimistic local state update — no full refetch needed
+      const selectedWarehouse = whId ? warehouses.find(w => w.id === whId) : null
+      setDocExtractions(prev => {
+        const ext = prev[docId]
+        if (!ext) return prev
+        const updatedOutputs = whId ? {
+          ...ext.outputs,
+          warehouse_id: whId,
+          delivery_name: selectedWarehouse?.name || '',
+          delivery_address: selectedWarehouse?.address || '',
+          delivery_city: selectedWarehouse?.city || '',
+          delivery_state: selectedWarehouse?.state || '',
+          delivery_zip: selectedWarehouse?.zip_code || '',
+        } : (() => {
+          const c = { ...ext.outputs }
+          delete c.warehouse_id
+          delete c.delivery_name
+          delete c.delivery_address
+          delete c.delivery_city
+          delete c.delivery_state
+          delete c.delivery_zip
+          return c
+        })()
+        return { ...prev, [docId]: { ...ext, outputs: updatedOutputs } }
+      })
+      setDocuments(prev => prev.map(d =>
+        d.id === docId
+          ? { ...d, warehouse_id: whId, warehouse_name: selectedWarehouse?.name || null }
+          : d
+      ))
     } catch (err) {
       console.error('Failed to update warehouse:', err)
       setError(`Failed to update warehouse: ${err.message}`)
+      // Revert on error — refetch to get true state
+      fetchDocuments()
+      fetchDocExtractions()
     }
   }
 
