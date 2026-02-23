@@ -794,12 +794,12 @@ function Review() {
                 <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm text-gray-700">
-                      {pdfCollapsed ? 'Document' : 'Original Document'}
+                      {viewingUrl && viewingUrl !== pdfUrl ? 'Attachment' : 'Original Document'}
                     </span>
                     {viewingUrl && viewingUrl !== pdfUrl && (
                       <button
                         onClick={() => setViewingUrl(null)}
-                        className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                        className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                       >
                         Back to main
                       </button>
@@ -808,29 +808,42 @@ function Review() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setPdfCollapsed(!pdfCollapsed)}
-                      className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
-                      title={pdfCollapsed ? 'Expand viewer' : 'Collapse viewer'}
+                      className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
                     >
-                      {pdfCollapsed ? '+' : '\u2014'}
+                      {pdfCollapsed ? 'Expand' : 'Minimize'}
                     </button>
-                    <a
-                      href={viewingUrl || pdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary-600 hover:text-primary-800"
+                    <button
+                      onClick={() => window.open(viewingUrl || pdfUrl, '_blank')}
+                      className="text-xs px-2 py-1 bg-gray-100 text-primary-600 rounded hover:bg-gray-200 font-medium"
                     >
-                      Open in new tab
-                    </a>
+                      New tab
+                    </button>
                   </div>
                 </div>
-                {!pdfCollapsed && (
-                  <iframe
-                    src={viewingUrl || pdfUrl}
-                    title="Document PDF"
-                    className="w-full border-0"
-                    style={{ height: 'calc(100vh - 8rem)' }}
-                  />
-                )}
+                {!pdfCollapsed && (() => {
+                  const activeUrl = viewingUrl || pdfUrl
+                  const ext = activeUrl.split('.').pop().toLowerCase()
+                  const isImageUrl = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'].includes(ext)
+                  if (isImageUrl) {
+                    return (
+                      <div className="w-full bg-gray-100 flex items-center justify-center" style={{ height: 'calc(100vh - 8rem)', overflow: 'auto' }}>
+                        <img
+                          src={activeUrl}
+                          alt="Attachment"
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        />
+                      </div>
+                    )
+                  }
+                  return (
+                    <iframe
+                      src={activeUrl}
+                      title="Document PDF"
+                      className="w-full border-0"
+                      style={{ height: 'calc(100vh - 8rem)' }}
+                    />
+                  )
+                })()}
               </div>
             </div>
           )}

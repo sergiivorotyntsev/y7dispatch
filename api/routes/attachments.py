@@ -59,10 +59,12 @@ async def download_attachment(run_id: int, filename: str):
     if not media_type:
         media_type = "application/octet-stream"
 
+    # Serve inline (no Content-Disposition: attachment) so browsers can
+    # display PDFs in iframe and images in img tags.
+    # Omitting `filename` prevents Starlette from setting Content-Disposition: attachment.
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
-        filename=safe_filename,
     )
 
 

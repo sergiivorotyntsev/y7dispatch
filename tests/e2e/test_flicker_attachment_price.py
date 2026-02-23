@@ -469,3 +469,78 @@ class TestEmailContextAttachmentUrls:
         assert main_att is not None, "No main document attachment found"
         assert "/api/documents/" in main_att["view_url"]
         assert main_att["view_url"].endswith("/file")
+
+
+# ===========================================================================
+# Test Attachment Serving — Inline (no Content-Disposition: attachment)
+# ===========================================================================
+
+class TestAttachmentInlineServing:
+    """Verify attachments are served inline (not forced download)."""
+
+    def test_pdf_served_without_attachment_disposition(self, client):
+        """PDF should not have Content-Disposition: attachment (allows iframe display)."""
+        from api.database import get_connection
+
+        att_dir = Path("data/attachments/9950")
+        att_dir.mkdir(parents=True, exist_ok=True)
+        # Minimal PDF
+        pdf_bytes = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF"
+        (att_dir / "test_doc.pdf").write_bytes(pdf_bytes)
+
+        try:
+            with get_connection() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json, attachments_json) "
+                    "VALUES (9950, '99500000-0000-0000-0000-0000000r9950', 1, 9901, 'completed', '{}', ?)",
+                    (json.dumps([{"filename": "test_doc.pdf", "original_filename": "Test Doc.pdf", "type": "listing_page", "url": "/api/documents/9950/attachments/test_doc.pdf"}]),),
+                )
+                conn.commit()
+
+            resp = client.get("/api/documents/9950/attachments/test_doc.pdf")
+            assert resp.status_code == 200
+            assert "application/pdf" in resp.headers.get("content-type", "")
+            # Should NOT have Content-Disposition: attachment
+            cd = resp.headers.get("content-disposition", "")
+            assert "attachment" not in cd.lower(), f"Content-Disposition forces download: {cd}"
+        finally:
+            (att_dir / "test_doc.pdf").unlink(missing_ok=True)
+            try:
+                att_dir.rmdir()
+            except OSError:
+                pass
+
+    def test_png_served_without_attachment_disposition(self, client):
+        """PNG should be served inline for img tag display."""
+        att_dir = Path("data/attachments/9951")
+        att_dir.mkdir(parents=True, exist_ok=True)
+        # Minimal PNG
+        png_bytes = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01'
+            b'\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00'
+            b'\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00'
+            b'\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        (att_dir / "photo.png").write_bytes(png_bytes)
+
+        try:
+            from api.database import get_connection
+            with get_connection() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json, attachments_json) "
+                    "VALUES (9951, '99510000-0000-0000-0000-0000000r9951', 1, 9901, 'completed', '{}', ?)",
+                    (json.dumps([{"filename": "photo.png", "original_filename": "Photo.png", "type": "image", "url": "/api/documents/9951/attachments/photo.png"}]),),
+                )
+                conn.commit()
+
+            resp = client.get("/api/documents/9951/attachments/photo.png")
+            assert resp.status_code == 200
+            assert "image/png" in resp.headers.get("content-type", "")
+            cd = resp.headers.get("content-disposition", "")
+            assert "attachment" not in cd.lower(), f"Content-Disposition forces download: {cd}"
+        finally:
+            (att_dir / "photo.png").unlink(missing_ok=True)
+            try:
+                att_dir.rmdir()
+            except OSError:
+                pass

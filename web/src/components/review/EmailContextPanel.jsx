@@ -107,13 +107,15 @@ export default function EmailContextPanel({ runId, document, runAttachments, onV
   }
 
   function handleView(att) {
-    if (isImage(att.type)) {
-      // Toggle inline preview for images
-      setPreviewImage(previewImage === att.viewUrl ? null : att.viewUrl)
-    } else if (onViewAttachment && att.viewUrl) {
-      // Load PDF/doc in the PDF viewer panel
+    if (onViewAttachment && att.viewUrl) {
+      // Load in the main viewer panel (supports both PDF iframe and image rendering)
       onViewAttachment(att.viewUrl)
     }
+  }
+
+  function handlePreview(att) {
+    // Toggle inline preview for images within this panel
+    setPreviewImage(previewImage === att.viewUrl ? null : att.viewUrl)
   }
 
   return (
@@ -191,26 +193,32 @@ export default function EmailContextPanel({ runId, document, runAttachments, onV
                         </span>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                        {att.viewUrl && (
+                        {att.viewUrl && !att.isMain && (
                           <button
                             type="button"
                             onClick={() => handleView(att)}
                             className="px-2 py-1 text-xs bg-blue-50 border border-blue-300 text-blue-700 rounded hover:bg-blue-100"
                           >
-                            {isImage(att.type)
-                              ? (previewImage === att.viewUrl ? 'Hide' : 'View')
-                              : 'Open in viewer'}
+                            Open in viewer
+                          </button>
+                        )}
+                        {att.viewUrl && isImage(att.type) && (
+                          <button
+                            type="button"
+                            onClick={() => handlePreview(att)}
+                            className="px-2 py-1 text-xs bg-green-50 border border-green-300 text-green-700 rounded hover:bg-green-100"
+                          >
+                            {previewImage === att.viewUrl ? 'Hide' : 'Preview'}
                           </button>
                         )}
                         {att.viewUrl && (
-                          <a
-                            href={att.viewUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => window.open(att.viewUrl, '_blank')}
                             className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-100"
                           >
-                            {isImage(att.type) ? 'Open' : 'New tab'}
-                          </a>
+                            New tab
+                          </button>
                         )}
                       </div>
                     </div>

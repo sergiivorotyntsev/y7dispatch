@@ -1172,7 +1172,12 @@ function Documents() {
                 const pickupLocation = pickupCity && pickupState
                   ? `${pickupCity}, ${pickupState}`
                   : pickupName || pickupState || '-'
-                const priceTotal = doc.price_total || outputs.price_total || outputs.final_price || outputs.total_amount || null
+                // Use explicit null/undefined checks — 0 is a valid price
+                const priceTotal = doc.price_total != null ? doc.price_total
+                  : outputs.price_total != null ? outputs.price_total
+                  : outputs.final_price != null ? outputs.final_price
+                  : outputs.total_amount != null ? outputs.total_amount
+                  : null
 
                 // Warehouse/Delivery info — prefer enriched doc.warehouse_name, fall back to lookup
                 const warehouseId = doc.warehouse_id || outputs.warehouse_id
@@ -1278,18 +1283,18 @@ function Documents() {
                         />
                       ) : (
                         <button
-                          className={`text-sm ${priceTotal ? 'font-medium text-gray-900' : 'text-gray-400'} ${
+                          className={`text-sm ${priceTotal != null ? 'font-medium text-gray-900' : 'text-gray-400'} ${
                             !isExported && extraction ? 'hover:text-primary-600 cursor-pointer' : ''
                           }`}
                           onClick={(e) => {
                             if (!isExported && extraction) {
                               e.stopPropagation()
-                              setEditingPrice({ docId: doc.id, value: priceTotal || '' })
+                              setEditingPrice({ docId: doc.id, value: priceTotal != null ? priceTotal : '' })
                             }
                           }}
                           disabled={isExported || !extraction}
                         >
-                          {priceTotal ? `$${parseFloat(priceTotal).toFixed(0)}` : '\u2014'}
+                          {priceTotal != null ? `$${parseFloat(priceTotal).toFixed(0)}` : '\u2014'}
                         </button>
                       )}
                     </td>
