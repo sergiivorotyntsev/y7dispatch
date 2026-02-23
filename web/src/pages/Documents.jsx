@@ -94,8 +94,10 @@ function Documents() {
   // Fetch documents with stale-while-revalidate caching
   const fetchDocuments = useCallback(async () => {
     const cacheKey = 'y7_documents_cache'
-    // On first load, try showing cached data instantly (no spinner)
-    if (loading && documents.length === 0) {
+    // On first load with no active filter, try showing cached data instantly (no spinner)
+    // Only use cache when no filter/search is active to avoid showing wrong data
+    const hasFilter = filter.status || filter.auction_type_id || searchDebounced.trim()
+    if (loading && documents.length === 0 && !hasFilter) {
       try {
         const cached = sessionStorage.getItem(cacheKey)
         if (cached) {
@@ -149,12 +151,15 @@ function Documents() {
       setDocuments(sorted)
       setPagination(p => ({ ...p, total: result.total || prodDocs.length }))
 
-      // Save to sessionStorage for instant display on next navigation
-      try {
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-          docs: sorted, total: result.total || prodDocs.length,
-        }))
-      } catch { /* storage full — ignore */ }
+      // Save to sessionStorage only when showing unfiltered data
+      // so cache always has the full document list
+      if (!hasFilter) {
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({
+            docs: sorted, total: result.total || prodDocs.length,
+          }))
+        } catch { /* storage full — ignore */ }
+      }
 
       // Calculate stats
       setStats({
@@ -1172,11 +1177,11 @@ function Documents() {
                 const pickupLocation = pickupCity && pickupState
                   ? `${pickupCity}, ${pickupState}`
                   : pickupName || pickupState || '-'
+                // Transport price only — NOT auction purchase price (total_amount)
                 // Use explicit null/undefined checks — 0 is a valid price
                 const priceTotal = doc.price_total != null ? doc.price_total
                   : outputs.price_total != null ? outputs.price_total
                   : outputs.final_price != null ? outputs.final_price
-                  : outputs.total_amount != null ? outputs.total_amount
                   : null
 
                 // Warehouse/Delivery info — prefer enriched doc.warehouse_name, fall back to lookup

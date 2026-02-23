@@ -2502,15 +2502,24 @@ async def get_email_context(run_id: int):
                 except (json.JSONDecodeError, TypeError):
                     att_names = []
 
+                from pathlib import Path
+                att_base = Path("data/attachments")
+
                 for att_name in att_names:
                     is_main = att_name in (doc.filename or "")
                     # Resolve view_url: main doc → document file, others → run attachment
+                    # Only generate URL if file actually exists to avoid 404s
                     if is_main:
                         view_url = f"/api/documents/{doc.id}/file"
                     elif att_name in run_att_map:
                         view_url = run_att_map[att_name].get("url")
                     else:
-                        view_url = f"/api/documents/{run_id}/attachments/{att_name}"
+                        # Check if file exists on disk before generating URL
+                        candidate = att_base / str(run_id) / Path(att_name).name
+                        if candidate.exists():
+                            view_url = f"/api/documents/{run_id}/attachments/{att_name}"
+                        else:
+                            view_url = None
                     # Determine attachment type from run attachment or file extension
                     att_type = None
                     if att_name in run_att_map:

@@ -82,8 +82,8 @@ class TestPriceDisplay:
         assert doc is not None
         assert doc.get("price_total") == 1200.0
 
-    def test_total_amount_fallback(self, client):
-        """If only total_amount exists, it should be returned as price_total."""
+    def test_total_amount_not_used_as_transport_price(self, client):
+        """total_amount is auction purchase price — must NOT appear as price_total (transport price)."""
         from api.database import get_connection
 
         with get_connection() as conn:
@@ -106,7 +106,8 @@ class TestPriceDisplay:
         docs = resp.json().get("items", [])
         doc = next((d for d in docs if d.get("id") == 9903), None)
         assert doc is not None
-        assert doc.get("price_total") == 600.0
+        # total_amount is auction cost, not transport price — price_total should be null
+        assert doc.get("price_total") is None
 
     def test_no_price_returns_null(self, client):
         """If no price field at all, price_total should be null."""
@@ -469,6 +470,36 @@ class TestEmailContextAttachmentUrls:
         assert main_att is not None, "No main document attachment found"
         assert "/api/documents/" in main_att["view_url"]
         assert main_att["view_url"].endswith("/file")
+
+    def test_nonexistent_file_gets_null_view_url(self, client):
+        """Attachment filename with no file on disk should get view_url=null (not a 404-generating URL)."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            # Create email_log with a filename that doesn't exist in run attachments or on disk
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split, source, email_metadata_json) "
+                "VALUES (9921, '99210000-0000-0000-0000-000000009921', 1, 'main.pdf', '/tmp/main.pdf', 'train', 'email', ?)",
+                (json.dumps({"sender": "x@x.com", "subject": "test", "date": "2026-02-22"}),)
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_runs (id, uuid, auction_type_id, document_id, status, outputs_json, attachments_json) "
+                "VALUES (9921, '99210000-0000-0000-0000-0000000r9921', 1, 9921, 'completed', '{}', '[]')",
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO email_log (id, message_id, sender, subject, body_preview, attachment_names, received_date, extraction_run_ids) "
+                "VALUES (9921, '<ghost@test.com>', 'x@x.com', 'test', 'body', ?, '2026-02-22', ?)",
+                (json.dumps(["main.pdf", "ghost_image.png"]), json.dumps([9921])),
+            )
+            conn.commit()
+
+        resp = client.get("/api/extractions/9921/email-context")
+        assert resp.status_code == 200
+        atts = resp.json().get("attachments", [])
+        ghost = next((a for a in atts if a["filename"] == "ghost_image.png"), None)
+        assert ghost is not None, "ghost_image.png attachment not found in response"
+        # File doesn't exist on disk and isn't in run attachments → view_url should be null
+        assert ghost.get("view_url") is None, f"Expected null view_url for non-existent file, got: {ghost.get('view_url')}"
 
 
 # ===========================================================================
