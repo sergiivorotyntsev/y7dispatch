@@ -233,3 +233,163 @@ STEP 4 — ARCHITECT VERIFICATION:
 8. ZIP3 coords: `_ZIP3_COORDS` in distance_service.py — add entries when new ZIPs fail lookup
 9. Gate pass: inherited from previous extraction runs AND email_log on re-extraction
 10. Email poll: `since_days=7` default — already-processed emails are skipped via message_id dedup
+
+## MULTI-AGENT COLLABORATIVE DEVELOPMENT PROTOCOL
+
+### Purpose
+Every non-trivial task (bug fix, feature, optimization) is executed using a simulated
+multi-agent team. This ensures issues are analyzed from multiple perspectives BEFORE
+code is written, and findings are shared in real-time to prevent regressions.
+
+### Roles
+
+**ARCHITECT** — System-level thinker
+- Maps component dependencies and data flow BEFORE any code change
+- Identifies blast radius: which other components will be affected
+- Designs solution with explicit contracts between frontend/backend
+- Reviews findings from all other agents, flags contradictions
+- OUTPUT: Solution design document with API contracts and component tree
+
+**BACKEND DEV** — Server, DB, API specialist
+- Traces actual data flow: DB → service → route → API response
+- Verifies field names match across all layers (DB column → JSON key → frontend prop)
+- Tests API endpoints directly with real data, logs exact response shapes
+- Shares API contracts with Frontend Dev BEFORE implementation
+- OUTPUT: Verified API response shapes, field name mappings
+
+**FRONTEND DEV** — UI, state, rendering specialist
+- Maps React component tree: props flow, state dependencies, useEffect chains
+- Identifies rendering gates (what blocks UI from showing)
+- Traces user interaction flow: click → handler → API call → state update → re-render
+- Tests with actual component source, not assumptions
+- OUTPUT: Component dependency map, loading sequence, state flow
+
+**QA TESTER** — Verification and timing specialist
+- Tests ACTUAL behavior (not assumed behavior)
+- Measures API response times to identify bottlenecks
+- Verifies data integrity end-to-end (DB → API → UI display)
+- Checks for regressions in previously-working features
+- OUTPUT: Timing data, regression checklist, pass/fail for each requirement
+
+### Workflow
+
+#### Phase 1: PARALLEL DIAGNOSIS (all agents work simultaneously)
+```
+1. Create /tmp/agent_scratchpad.md
+2. Each agent analyzes the issue from their perspective
+3. Each agent WRITES findings to scratchpad
+4. Findings include: what works, what's broken, exact line numbers, data samples
+```
+
+#### Phase 2: CROSS-POLLINATION (agents read each other's findings)
+```
+1. ARCHITECT reads ALL findings, identifies root causes
+2. ARCHITECT designs solution, writes to scratchpad:
+   - API contract changes (exact JSON shapes)
+   - Component tree changes (which files, which props)
+   - Field name mapping table (DB → API → Frontend)
+   - Blast radius (what else could break)
+3. All agents review design, flag conflicts
+```
+
+#### Phase 3: COORDINATED IMPLEMENTATION
+```
+1. BACKEND DEV implements API changes first
+2. BACKEND DEV writes verified response shapes to scratchpad
+3. FRONTEND DEV reads verified shapes, implements UI
+4. QA TESTER tests each change as it's made, reports failures immediately
+5. If QA finds issue → loop back, all agents see the failure
+```
+
+#### Phase 4: VERIFICATION
+```
+1. QA TESTER runs full regression suite
+2. QA TESTER verifies EVERY original user complaint is resolved
+3. QA TESTER checks 3 previously-working features for regressions
+4. Only commit if ALL checks pass
+```
+
+### Scratchpad Format
+```markdown
+# Agent Scratchpad — [Task Name]
+
+## Issue List
+1. [issue]
+2. [issue]
+
+## ARCHITECT Findings
+- Component tree: ...
+- Blast radius: ...
+- Data flow: ...
+
+## BACKEND DEV Findings
+- API response shape: { exact JSON }
+- DB field: column_name → API: json_key → Frontend: propName
+- Timing: endpoint X takes Yms
+
+## FRONTEND DEV Findings
+- Loading gate at line X blocks rendering until Y
+- State flow: useState(A) → useEffect → fetch → setState(B) → render
+- Missing prop: Component expects X but receives undefined
+
+## QA TESTER Findings
+- API timing: fast=50ms, slow=12000ms
+- Regression check: feature X still works / broke
+- User complaint 1: resolved / still broken
+
+## ARCHITECT Design
+- Solution: ...
+- API contract: { exact shapes }
+- Field mapping: DB.col → API.key → UI.prop
+- Blast radius: files X, Y, Z
+
+## Implementation Log
+- [timestamp] BACKEND: changed X in file Y
+- [timestamp] FRONTEND: updated Z to match new API shape
+- [timestamp] QA: tested, found issue W → BACKEND needs to fix
+
+## Final Verification
+- [ ] All original complaints resolved
+- [ ] No regressions in existing features
+- [ ] Tests pass
+- [ ] Frontend builds clean
+```
+
+### Anti-Patterns (NEVER DO)
+1. Fix a symptom without ARCHITECT mapping the data flow first
+2. Change a field name in backend without FRONTEND DEV updating all consumers
+3. Assume an API returns a field — BACKEND DEV must verify with actual call
+4. Skip QA verification after "simple" changes
+5. Implement frontend before backend API contract is verified
+6. Touch code unrelated to the current fix (reduces blast radius)
+
+### When to Use Full Protocol vs Lightweight
+- **Full protocol (4 agents):** Bug fixes that failed before, features touching 3+ files, data flow issues
+- **Lightweight (2 agents: Dev + QA):** Single-file changes, CSS fixes, copy changes, adding a test
+- **Skip protocol:** README updates, comment fixes, dependency bumps
+
+### Regression Prevention Checklist (from existing protocol)
+Before committing ANY change:
+1. Run: `python -m pytest tests/ -q` (must be 0 failures)
+2. Run: `cd web && npm run build` (must be 0 warnings)
+3. Verify: the specific user complaint is resolved
+4. Verify: 3 adjacent features still work (pick from same page)
+5. If touching shared code (api.js, Review.jsx, Documents.jsx): test ALL dependent features
+
+## CANONICAL FIELD NAME MAPPING
+
+All layers MUST use these exact names. No aliases, no alternatives.
+
+| Concept | DB Column | API JSON Key | Frontend State | UI Label |
+|---------|-----------|-------------|----------------|----------|
+| VIN | vin | vin | vin | VIN |
+| Vehicle year | vehicle_year | vehicle_year | vehicleYear | Year |
+| Auction purchase price | total_amount | auction_cost | auctionCost | Auction Cost |
+| Transport/shipping price | price_total | price_total | transportPrice | Transport |
+| Rate per mile | (computed) | (computed) | ratePerMile | $/mile |
+| Distance to warehouse | distance_miles | distance_miles | distanceMiles | Distance |
+| Drive time | duration_minutes | duration_minutes | durationMinutes | Drive Time |
+| Warehouse ID | warehouse_id | warehouse_id | warehouseId | Warehouse |
+| Gate pass | gate_pass | gate_pass | gatePass | Gate Pass |
+| Load ID | load_id | load_id | loadId | Load ID |
+| Extraction status | status | status | status | Status |
