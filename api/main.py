@@ -38,6 +38,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # Context variable for request ID - accessible throughout the request lifecycle
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
+from api.auth import auth_middleware, router as auth_router
 from api.database import init_db
 from api.models import init_schema, seed_base_auction_types, seed_default_field_mappings
 from api.routes import (
@@ -221,15 +222,27 @@ app = FastAPI(
 # Request ID middleware - add first so it runs for all requests
 app.add_middleware(RequestIDMiddleware)
 
-# CORS for frontend
+# CORS for frontend — locked to configured origins
+import os as _os
+_CORS_ORIGINS = _os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+_CORS_ORIGINS = [o.strip() for o in _CORS_ORIGINS if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to specific origins
-    allow_credentials=True,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,  # Required for httpOnly cookie auth
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],  # Allow frontend to read request ID
 )
+
+# JWT auth middleware — runs after CORS so preflight OPTIONS aren't blocked
+@app.middleware("http")
+async def _auth_middleware(request, call_next):
+    return await auth_middleware(request, call_next)
+
+# Auth endpoints (login, logout, me)
+app.include_router(auth_router)
 
 # Include original routers
 app.include_router(health.router, prefix="/api", tags=["Health"])

@@ -21,6 +21,7 @@ async function request(endpoint, options = {}) {
       'Content-Type': 'application/json',
       ...options.headers,
     },
+    credentials: 'include', // Send httpOnly auth cookie with every request
     ...options,
   }
 
@@ -30,6 +31,12 @@ async function request(endpoint, options = {}) {
   }
 
   const promise = fetch(url, config).then(async (response) => {
+    // Global 401 handler — redirect to login on token expiry
+    if (response.status === 401 && !url.includes('/auth/')) {
+      window.location.reload() // App.jsx auth check will show login
+      throw new Error('Session expired')
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: response.statusText }))
       // Handle Pydantic validation errors (detail is array of objects)
@@ -63,6 +70,14 @@ async function request(endpoint, options = {}) {
 
 // Health & Status
 export const api = {
+  // Auth
+  login: (username, password) => request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  getAuthMe: () => request('/auth/me'),
+
   // Health
   getHealth: () => request('/health'),
   getReady: () => request('/ready'),

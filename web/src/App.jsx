@@ -1,11 +1,61 @@
+import { useState, useEffect } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import Settings from './pages/Settings'
 import TestLab from './pages/TestLab'
 import Documents from './pages/Documents'
 import Review from './pages/Review'
 import EmailLog from './pages/EmailLog'
+import Login from './pages/Login'
 
 function App() {
+  const [authState, setAuthState] = useState('loading') // 'loading' | 'authenticated' | 'unauthenticated'
+  const [username, setUsername] = useState('')
+
+  // Check auth on mount
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json()
+          setUsername(data.username || '')
+          setAuthState('authenticated')
+        } else {
+          setAuthState('unauthenticated')
+        }
+      })
+      .catch(() => {
+        setAuthState('unauthenticated')
+      })
+  }, [])
+
+  function handleLogin(user) {
+    setUsername(user)
+    setAuthState('authenticated')
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    } catch { /* ignore */ }
+    setUsername('')
+    setAuthState('unauthenticated')
+  }
+
+  // Loading state
+  if (authState === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  // Not authenticated — show login
+  if (authState === 'unauthenticated') {
+    return <Login onLogin={handleLogin} />
+  }
+
+  // Authenticated — show app
   const navItems = [
     { path: '/', label: 'Documents', icon: DocumentsIcon },
     { path: '/email-log', label: 'Email Log', icon: EmailLogIcon },
@@ -40,10 +90,24 @@ function App() {
           ))}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 text-xs text-gray-500">
-          <p>API: <a href="/api/docs" target="_blank" className="text-primary-600 hover:underline">Swagger Docs</a></p>
-          <p className="mt-1">v1.0.0</p>
+        {/* Footer with user + logout */}
+        <div className="p-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-600 font-medium">{username}</span>
+            <button
+              onClick={handleLogout}
+              className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+              title="Sign out"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
+          <div className="text-xs text-gray-500">
+            <p>API: <a href="/api/docs" target="_blank" className="text-primary-600 hover:underline">Swagger Docs</a></p>
+            <p className="mt-1">v1.0.0</p>
+          </div>
         </div>
       </div>
 
