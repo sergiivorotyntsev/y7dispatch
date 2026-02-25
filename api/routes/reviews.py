@@ -120,7 +120,8 @@ class ReviewSubmitRequest(BaseModel):
     load_specific_terms: Optional[str] = Field(None, description="Load-specific terms for CD")
     transport_special_instructions: Optional[str] = Field(None, description="Transport special instructions")
     # Operator overrides — persisted for export without React state
-    final_price: Optional[float] = Field(None, description="Carrier transport price")
+    price_total: Optional[float] = Field(None, description="Carrier transport price (canonical)")
+    final_price: Optional[float] = Field(None, description="Carrier transport price (deprecated, use price_total)")
     available_date: Optional[str] = Field(None, description="Available date ISO")
     expiration_date: Optional[str] = Field(None, description="Expiration date ISO")
     desired_delivery_date: Optional[str] = Field(None, description="Desired delivery date ISO")
@@ -451,7 +452,7 @@ async def submit_review(data: ReviewSubmitRequest):
 
     # Persist all operator overrides for export without React state
     override_fields = {
-        "final_price": data.final_price,
+        "price_total": data.price_total if data.price_total is not None else data.final_price,
         "available_date": data.available_date,
         "expiration_date": data.expiration_date,
         "desired_delivery_date": data.desired_delivery_date,

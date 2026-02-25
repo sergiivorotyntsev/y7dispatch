@@ -583,6 +583,43 @@ class ExtractionDebugResponse(BaseModel):
 # =============================================================================
 
 
+def _enrich_location_name(outputs: dict) -> None:
+    """Post-extraction: apply auction-specific location name rules.
+
+    COPART: Always "COPART - {city}" (or "COPART Sub Lot - {city}")
+    IAA:    Keep branch name as-is; flag if it's just the city
+    MANHEIM: Keep facility name; if offsite, use seller name
+    OTHER:  Keep whatever was extracted
+    """
+    source = (outputs.get("auction_source") or outputs.get("auction_type") or "").upper()
+    name = outputs.get("pickup_location_name") or outputs.get("pickup_name") or ""
+    city = outputs.get("pickup_city") or ""
+
+    if source == "COPART":
+        # Copart docs don't have a unique yard name — use "COPART - {city}"
+        if not name or name.upper() == city.upper() or "copart" not in name.lower():
+            sublot = outputs.get("sublot") or ""
+            raw_text_hint = name.lower() if name else ""
+            if sublot or "sub lot" in raw_text_hint or "sublot" in raw_text_hint:
+                outputs["pickup_location_name"] = f"COPART Sub Lot - {city}" if city else name
+            else:
+                outputs["pickup_location_name"] = f"COPART - {city}" if city else name
+            outputs["pickup_name"] = outputs["pickup_location_name"]
+
+    elif source == "IAA":
+        # IAA should have branch name, not just city
+        if name and name.upper() == city.upper():
+            outputs["pickup_location_name_confidence"] = "low"
+
+    elif source == "MANHEIM":
+        # If offsite, prefer seller name as location
+        if outputs.get("manheim_offsite"):
+            seller = outputs.get("seller_name") or ""
+            if seller and (not name or "manheim" in name.lower()):
+                outputs["pickup_location_name"] = seller
+                outputs["pickup_name"] = seller
+
+
 def run_extraction(
     run_id: int,
     document_id: int,
@@ -1059,6 +1096,11 @@ def run_extraction(
 
         # Store extraction method in outputs for UI display
         outputs["extraction_method"] = extraction_method
+
+        # =================================================================
+        # POST-EXTRACTION: Enrich location name with auction-specific rules
+        # =================================================================
+        _enrich_location_name(outputs)
 
         # =================================================================
         # POST-EXTRACTION: Update auction type from Haiku's auction_source
@@ -2516,87 +2558,68 @@ async def get_email_context(run_id: int):
             except Exception:
                 pass
 
-            def _normalize_filename(name):
-                """Normalize filename for dedup: lowercase, spaces→underscores, strip (N) suffixes."""
-                import re
-                n = (name or "").lower().strip().replace(" ", "_")
-                # Strip parenthetical copy suffixes: "file_(1).pdf" → "file.pdf"
-                n = re.sub(r'_?\(\d+\)', '', n)
-                # Strip \r\n from email-mangled filenames
-                n = n.replace('\r', '').replace('\n', '')
+            # =============================================================
+            # ATTACHMENT DEDUP — Simple normalize + set, first wins
+            # =============================================================
+            import re as _re
+            from pathlib import Path
+
+            def _normalize(name):
+                """Normalize for dedup: lowercase, non-alnum(except dot)→underscore, strip copy suffixes."""
+                n = _re.sub(r'[^a-z0-9.]', '_', (name or '').lower().strip())
+                n = _re.sub(r'_?\(\d+\)', '', n)  # file_(1).pdf → file.pdf
                 return n
 
-            # Parse attachment names and deduplicate
-            att_names_raw = row["attachment_names"]
+            def _resolve_url(att_name):
+                """Resolve view URL: run_att_map lookup → disk check → None."""
+                safe = _re.sub(r'[^\w.-]', '_', att_name)
+                for key in (att_name, att_name.replace(' ', '_'), safe):
+                    if key in run_att_map:
+                        return run_att_map[key].get('url')
+                att_base = Path('data/attachments') / str(run_id)
+                for key in (att_name, att_name.replace(' ', '_'), safe):
+                    if (att_base / Path(key).name).exists():
+                        return f'/api/documents/{run_id}/attachments/{key}'
+                return None
+
+            def _detect_type(att_name):
+                """Detect attachment type from run_att_map or file extension."""
+                for key in (att_name, att_name.replace(' ', '_')):
+                    if key in run_att_map and run_att_map[key].get('type'):
+                        return run_att_map[key]['type']
+                ext = att_name.rsplit('.', 1)[-1].lower() if '.' in att_name else ''
+                if ext == 'pdf': return 'pdf'
+                if ext in ('png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'tiff'): return 'image'
+                return 'other'
+
+            def _is_main_doc(att_name):
+                """Check if this attachment is the main extracted document."""
+                doc_fn = doc.filename or ''
+                safe = _re.sub(r'[^\w.-]', '_', att_name)
+                return any(n in doc_fn for n in (att_name, att_name.replace(' ', '_'), safe) if n)
+
+            att_names_raw = row['attachment_names']
             if att_names_raw:
                 try:
                     att_names = json.loads(att_names_raw) if isinstance(att_names_raw, str) else att_names_raw
                 except (json.JSONDecodeError, TypeError):
                     att_names = []
 
-                from pathlib import Path
-                att_base = Path("data/attachments")
-                seen_normalized = set()
-
+                seen = set()
                 for att_name in att_names:
-                    # Deduplicate by normalized filename
-                    norm = _normalize_filename(att_name)
-                    if norm in seen_normalized:
+                    norm = _normalize(att_name)
+                    if norm in seen:
                         continue
-                    seen_normalized.add(norm)
+                    seen.add(norm)
 
-                    import re as _re
-                    safe_name = _re.sub(r"[^\w.-]", "_", att_name)
-                    is_main = att_name in (doc.filename or "")
-                    # Also check sanitized versions against doc filename
-                    if not is_main:
-                        is_main = att_name.replace(" ", "_") in (doc.filename or "")
-                    if not is_main:
-                        # Full sanitization matching email_worker: non-word chars → underscore
-                        is_main = safe_name in (doc.filename or "")
+                    is_main = _is_main_doc(att_name)
+                    view_url = f'/api/documents/{doc.id}/file' if is_main else _resolve_url(att_name)
 
-                    # Resolve view_url: main doc → document file, others → run attachment
-                    # Try both original and sanitized names for lookup
-                    if is_main:
-                        view_url = f"/api/documents/{doc.id}/file"
-                    elif att_name in run_att_map:
-                        view_url = run_att_map[att_name].get("url")
-                    elif att_name.replace(" ", "_") in run_att_map:
-                        view_url = run_att_map[att_name.replace(" ", "_")].get("url")
-                    elif safe_name in run_att_map:
-                        view_url = run_att_map[safe_name].get("url")
-                    else:
-                        # Check if file exists on disk (try original, spaces→_, and full sanitize)
-                        candidate = att_base / str(run_id) / Path(att_name).name
-                        candidate_sanitized = att_base / str(run_id) / Path(att_name.replace(" ", "_")).name
-                        candidate_safe = att_base / str(run_id) / Path(safe_name).name
-                        if candidate.exists():
-                            view_url = f"/api/documents/{run_id}/attachments/{att_name}"
-                        elif candidate_sanitized.exists():
-                            view_url = f"/api/documents/{run_id}/attachments/{att_name.replace(' ', '_')}"
-                        elif candidate_safe.exists():
-                            view_url = f"/api/documents/{run_id}/attachments/{safe_name}"
-                        else:
-                            view_url = None
-                    # Determine attachment type from run attachment or file extension
-                    att_type = None
-                    if att_name in run_att_map:
-                        att_type = run_att_map[att_name].get("type")
-                    elif att_name.replace(" ", "_") in run_att_map:
-                        att_type = run_att_map[att_name.replace(" ", "_")].get("type")
-                    if not att_type:
-                        ext = att_name.rsplit(".", 1)[-1].lower() if "." in att_name else ""
-                        if ext == "pdf":
-                            att_type = "pdf"
-                        elif ext in ("png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff"):
-                            att_type = "image"
-                        else:
-                            att_type = "other"
                     email_attachments.append({
-                        "filename": att_name,
-                        "is_main_document": is_main,
-                        "view_url": view_url,
-                        "type": att_type,
+                        'filename': att_name,
+                        'is_main_document': is_main,
+                        'view_url': view_url,
+                        'type': _detect_type(att_name),
                     })
         else:
             sender = email_meta.get("sender")

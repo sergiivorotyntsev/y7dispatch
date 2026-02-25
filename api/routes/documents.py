@@ -214,8 +214,10 @@ class DocumentResponse(BaseModel):
     warehouse_id: Optional[int] = None
     warehouse_name: Optional[str] = None
     price_total: Optional[float] = None
+    transport_price: Optional[float] = None
     auction_cost: Optional[float] = None
     distance_miles: Optional[float] = None
+    rate_per_mile: Optional[float] = None
     extraction_status: Optional[str] = None
     extraction_run_id: Optional[int] = None
 
@@ -785,13 +787,15 @@ async def list_documents(
             d["gate_pass"] = _str(outputs.get("gate_pass"))
             d["auction_type_code"] = at_code_map.get(d.get("auction_type_id"))
 
-            # Transport price
+            # Transport price (canonical: price_total in DB, transport_price in API)
             price = outputs.get("price_total")
             if price is None:
                 price = outputs.get("final_price")
-            d["price_total"] = float(price) if price is not None else None
+            transport_price = float(price) if price is not None else None
+            d["price_total"] = transport_price
+            d["transport_price"] = transport_price
 
-            # Auction cost
+            # Auction cost (vehicle purchase price)
             auction_cost = outputs.get("total_amount")
             d["auction_cost"] = float(auction_cost) if auction_cost is not None else None
 
@@ -807,7 +811,11 @@ async def list_documents(
                     ).fetchone()
                     if dist_row:
                         distance = dist_row["distance_miles"]
-            d["distance_miles"] = float(distance) if distance is not None else None
+            dist_val = float(distance) if distance is not None else None
+            d["distance_miles"] = dist_val
+
+            # Rate per mile (computed)
+            d["rate_per_mile"] = round(transport_price / dist_val, 2) if transport_price and dist_val and dist_val > 0 else None
 
             # Warehouse
             wh_id = outputs.get("warehouse_id")

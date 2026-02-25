@@ -145,7 +145,11 @@ Fields to extract:
 - vehicle_type: "SEDAN" | "SUV" | "COUPE" | "CONVERTIBLE" | "WAGON" | "TRUCK" | "VAN" | "MOTORCYCLE" | "OTHER"
 - vehicle_lot: Lot/Stock number
 - vehicle_is_inoperable: true if vehicle is inoperable/non-running, false otherwise (default false)
-- pickup_name: Location name (e.g., "Copart Dallas")
+- pickup_name: Location name — AUCTION-SPECIFIC RULES:
+  * COPART: Always "COPART - {{city}}". If sublot mentioned: "COPART Sub Lot - {{city}}"
+  * IAA: Extract FULL branch/yard name (e.g., "LI - Rice Court Yard - 613", "332 - East Bay"). Look for "Branch:", "Yard:", "Sold At Branch" headers. Do NOT use just the city.
+  * MANHEIM: Use the Manheim facility name (e.g., "Manheim Portland", "Manheim Dallas-Fort Worth"). If offsite (seller location), use the seller's business name.
+  * OTHER: Use whatever facility/business name is available. Prefer business name over city.
 - pickup_address: Street address
 - pickup_city: City name
 - pickup_state: 2-letter state code

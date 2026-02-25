@@ -292,19 +292,26 @@ class WeatherService:
 
         now = datetime.now(timezone.utc).isoformat()
 
-        # Generate AI summary if there are alerts
-        ai_summary = None
-        risk_level = "low"
-        optimal_pickup = None
-        recommended_date = None
-        recommendation_reason = None
-        scenarios = []
+        # Generate AI summary — ALWAYS returns structured recommendation
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if unique_alerts:
             ai_summary, risk_level, optimal_pickup, recommended_date, recommendation_reason, scenarios = self._generate_ai_summary(
                 unique_alerts, route_states, origin_state, dest_state,
                 distance_miles=getattr(self, '_last_distance_miles', None),
                 duration_minutes=getattr(self, '_last_duration_minutes', None),
             )
+        else:
+            # Path C: No alerts — clear for transport
+            ai_summary = "No active weather alerts along route. Clear for transport."
+            risk_level = "low"
+            optimal_pickup = now_str
+            recommended_date = now_str
+            recommendation_reason = "No active weather alerts along route. Clear for transport."
+            scenarios = [
+                {"label": "Today", "risk": "low", "detail": "Clear conditions — safe for pickup"},
+                {"label": "Tomorrow", "risk": "low", "detail": "No alerts forecasted"},
+                {"label": "Best window", "risk": "low", "detail": now_str},
+            ]
 
         result = RouteAlertsResult(
             alerts=unique_alerts,

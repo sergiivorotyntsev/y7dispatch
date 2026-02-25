@@ -290,7 +290,8 @@ function Review() {
       // Restore saved operator overrides from outputs_json
       const out = runData.run?.outputs || {}
       if (out.load_id) setLoadId(out.load_id)
-      if (out.final_price != null && out.final_price !== '') setFinalPrice(String(out.final_price))
+      if (out.price_total != null && out.price_total !== '') setFinalPrice(String(out.price_total))
+      else if (out.final_price != null && out.final_price !== '') setFinalPrice(String(out.final_price))
       if (out.trailer_type) setTrailerType(out.trailer_type)
       if (out.requires_inspection != null) setRequiresInspection(out.requires_inspection)
       if (out.cod_amount != null) setCodAmount(String(out.cod_amount))
@@ -608,8 +609,8 @@ function Review() {
         mark_for_export: true,
         load_specific_terms: loadSpecificTerms,
         transport_special_instructions: transportSpecialInstructions,
-        // Persist all operator overrides for export
-        final_price: finalPrice ? parseFloat(finalPrice) : (pricing?.suggested_price || null),
+        // Persist all operator overrides for export (canonical: price_total)
+        price_total: finalPrice ? parseFloat(finalPrice) : (pricing?.suggested_price || null),
         available_date: availableDate || null,
         expiration_date: expirationDate || null,
         desired_delivery_date: desiredDeliveryDate || null,
@@ -716,7 +717,7 @@ function Review() {
         mark_for_export: false,
         load_specific_terms: loadSpecificTerms,
         transport_special_instructions: transportSpecialInstructions,
-        final_price: finalPrice ? parseFloat(finalPrice) : null,
+        price_total: finalPrice ? parseFloat(finalPrice) : null,
         available_date: availableDate || null,
         expiration_date: expirationDate || null,
         desired_delivery_date: desiredDeliveryDate || null,
@@ -1197,7 +1198,7 @@ function Review() {
             available_date: availableDate || null,
             expiration_date: expirationDate || null,
             desired_delivery_date: desiredDeliveryDate || null,
-            final_price: finalPrice ? parseFloat(finalPrice) : (pricing?.suggested_price || null),
+            price_total: finalPrice ? parseFloat(finalPrice) : (pricing?.suggested_price || null),
             cod_amount: parseFloat(codAmount) || 0,
             cod_payment_method: codPaymentMethod,
             cod_payment_location: codPaymentLocation,

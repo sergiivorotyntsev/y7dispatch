@@ -66,7 +66,8 @@ class OperatorOverrides(BaseModel):
     available_date: Optional[str] = None
     expiration_date: Optional[str] = None
     desired_delivery_date: Optional[str] = None
-    final_price: Optional[float] = None
+    price_total: Optional[float] = None
+    final_price: Optional[float] = None  # deprecated, use price_total
     cod_amount: Optional[float] = 0
     cod_payment_method: Optional[str] = "CASH_CERTIFIED_FUNDS"
     cod_payment_location: Optional[str] = "DELIVERY"
@@ -303,7 +304,7 @@ def build_cd_payload(
     if overrides is None and outputs:
         saved_override_keys = [
             "warehouse_id", "load_id", "trailer_type", "available_date",
-            "expiration_date", "desired_delivery_date", "final_price",
+            "expiration_date", "desired_delivery_date", "price_total", "final_price",
             "cod_amount", "cod_payment_method", "cod_payment_location",
             "balance_payment_method", "balance_payment_time", "balance_terms_begin_on",
             "requires_inspection", "load_specific_terms",
@@ -529,13 +530,16 @@ def build_cd_payload(
     price_total = 0.0
     price_source = "none"
 
-    # Priority 1: Operator-set final_price from Review UI
-    if overrides and overrides.final_price and overrides.final_price > 0:
-        price_total = overrides.final_price
+    # Priority 1: Operator-set price from Review UI (price_total canonical, final_price fallback)
+    _operator_price = None
+    if overrides:
+        _operator_price = overrides.price_total or overrides.final_price
+    if _operator_price and _operator_price > 0:
+        price_total = _operator_price
         price_source = "operator_override"
     else:
-        # Priority 2: final_price from review items
-        final_price = get_field("final_price") or get_field("price_final")
+        # Priority 2: price_total/final_price from review items
+        final_price = get_field("price_total") or get_field("final_price") or get_field("price_final")
         if final_price:
             try:
                 price_total = float(final_price)

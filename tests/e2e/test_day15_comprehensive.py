@@ -443,8 +443,8 @@ class TestExportWarehousePersistence:
         outputs = _get_outputs(run_id)
         assert outputs.get("warehouse_id") == 1
 
-    def test_submit_review_saves_final_price(self, client):
-        """Review submit with final_price saves it to outputs_json."""
+    def test_submit_review_saves_price_total(self, client):
+        """Review submit with price_total saves it to outputs_json."""
         doc_id, run_id = _upload(client, "price_persist_1.pdf")
         assert run_id is not None
         _set_run_status(run_id, "needs_review")
@@ -452,13 +452,13 @@ class TestExportWarehousePersistence:
         resp = client.post("/api/review/submit", json={
             "run_id": run_id,
             "items": [],
-            "final_price": 450.00,
+            "price_total": 450.00,
             "mark_as_reviewed": True,
         })
         assert resp.status_code == 200
 
         outputs = _get_outputs(run_id)
-        assert outputs.get("final_price") == 450.00
+        assert outputs.get("price_total") == 450.00
 
     def test_submit_review_saves_load_id(self, client):
         """Review submit with load_id saves it to outputs_json."""
@@ -570,13 +570,13 @@ class TestStatusAwareEditing:
             "run_id": run_id,
             "items": [],
             "mark_as_reviewed": False,
-            "final_price": 500.0,
+            "price_total": 500.0,
         })
         assert resp.status_code == 200
 
         # Price saved but status unchanged
         outputs = _get_outputs(run_id)
-        assert outputs.get("final_price") == 500.0
+        assert outputs.get("price_total") == 500.0
         run = _get_run(run_id)
         assert run["status"] == "needs_review"
 
@@ -591,7 +591,7 @@ class TestStatusAwareEditing:
             "items": [],
             "mark_for_export": True,
             "warehouse_id": 1,
-            "final_price": 600.0,
+            "price_total": 600.0,
         })
         assert resp.status_code == 200
 
@@ -608,7 +608,7 @@ class TestStatusAwareEditing:
         client.post("/api/review/submit", json={
             "run_id": run_id,
             "items": [],
-            "final_price": 700.0,
+            "price_total": 700.0,
             "load_id": "223BMWX5",
         })
 
@@ -621,7 +621,7 @@ class TestStatusAwareEditing:
 
         outputs = _get_outputs(run_id)
         # Earlier fields should still be there
-        assert outputs.get("final_price") == 700.0
+        assert outputs.get("price_total") == 700.0
         assert outputs.get("load_id") == "223BMWX5"
 
 
@@ -772,8 +772,8 @@ class TestDocumentListAPI:
 class TestPriceFieldsPersistence:
     """Verify price fields persist through review/approve flow."""
 
-    def test_final_price_persists_after_review(self, client):
-        """Final price set during review persists in outputs_json."""
+    def test_price_total_persists_after_review(self, client):
+        """price_total set during review persists in outputs_json."""
         doc_id, run_id = _upload(client, "price_review.pdf")
         assert run_id is not None
         _set_run_status(run_id, "needs_review")
@@ -781,11 +781,11 @@ class TestPriceFieldsPersistence:
         client.post("/api/review/submit", json={
             "run_id": run_id,
             "items": [],
-            "final_price": 325.50,
+            "price_total": 325.50,
         })
 
         outputs = _get_outputs(run_id)
-        assert outputs.get("final_price") == 325.50
+        assert outputs.get("price_total") == 325.50
 
     def test_zero_price_not_treated_as_null(self, client):
         """COD amount of 0 should be saved as 0, not null."""
@@ -812,7 +812,7 @@ class TestPriceFieldsPersistence:
         client.post("/api/review/submit", json={
             "run_id": run_id,
             "items": [],
-            "final_price": 800.0,
+            "price_total": 800.0,
         })
 
         # Approve
@@ -820,7 +820,7 @@ class TestPriceFieldsPersistence:
 
         # Price still there
         outputs = _get_outputs(run_id)
-        assert outputs.get("final_price") == 800.0
+        assert outputs.get("price_total") == 800.0
 
     def test_auction_cost_stored_as_total_amount(self):
         """Verify extraction stores auction purchase price in outputs_json."""
@@ -853,7 +853,7 @@ class TestReviewSubmitOverrides:
         _set_run_status(run_id, "needs_review")
 
         overrides = {
-            "final_price": 550.0,
+            "price_total": 550.0,
             "load_id": "223HONDO",
             "trailer_type": "OPEN",
             "requires_inspection": True,
@@ -897,7 +897,7 @@ class TestReviewSubmitOverrides:
         client.post("/api/review/submit", json={
             "run_id": run_id,
             "items": [],
-            "final_price": 400.0,
+            "price_total": 400.0,
             "load_id": "223BMWX3",
         })
 
@@ -910,7 +910,7 @@ class TestReviewSubmitOverrides:
 
         outputs = _get_outputs(run_id)
         # Previous values should still be there
-        assert outputs.get("final_price") == 400.0
+        assert outputs.get("price_total") == 400.0
         assert outputs.get("load_id") == "223BMWX3"
         assert outputs.get("warehouse_id") == 1
 

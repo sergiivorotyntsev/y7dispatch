@@ -1180,11 +1180,10 @@ function Documents() {
                 const pickupLocation = pickupCity && pickupState
                   ? `${pickupCity}, ${pickupState}`
                   : pickupName || pickupState || '-'
-                // Transport price only — NOT auction purchase price (total_amount)
-                // Use explicit null/undefined checks — 0 is a valid price
-                const priceTotal = doc.price_total != null ? doc.price_total
+                // Transport price (canonical: transport_price from API, fallback to outputs)
+                const priceTotal = doc.transport_price != null ? doc.transport_price
+                  : doc.price_total != null ? doc.price_total
                   : outputs.price_total != null ? outputs.price_total
-                  : outputs.final_price != null ? outputs.final_price
                   : null
 
                 // Auction cost (vehicle purchase price) — display only, not editable
@@ -1192,12 +1191,12 @@ function Documents() {
                   : outputs.total_amount != null ? parseFloat(outputs.total_amount)
                   : null
 
-                // Distance for $/mile calculation
+                // Distance and rate per mile (prefer API-computed, fallback to local)
                 const distanceMiles = doc.distance_miles != null ? doc.distance_miles
                   : outputs.distance_miles != null ? parseFloat(outputs.distance_miles)
                   : null
-                const ratePerMile = (priceTotal != null && distanceMiles > 0)
-                  ? (priceTotal / distanceMiles).toFixed(2)
+                const ratePerMile = doc.rate_per_mile != null ? doc.rate_per_mile
+                  : (priceTotal != null && distanceMiles > 0) ? (priceTotal / distanceMiles).toFixed(2)
                   : null
 
                 // Warehouse/Delivery info — prefer enriched doc.warehouse_name, fall back to lookup
