@@ -52,6 +52,16 @@ class ScenarioResponse(BaseModel):
     detail: str = ""
 
 
+class WarehouseUsed(BaseModel):
+    id: int
+    code: str = ""
+    name: str = ""
+    city: str = ""
+    state: str = ""
+    is_default: bool = False
+    selection_reason: str = ""
+
+
 class RouteAlertsResponse(BaseModel):
     alerts: list[AlertResponse] = Field(default_factory=list)
     route_states: list[str] = Field(default_factory=list)
@@ -67,6 +77,7 @@ class RouteAlertsResponse(BaseModel):
     recommendation_reason: Optional[str] = None
     scenarios: list[ScenarioResponse] = Field(default_factory=list)
     transit: Optional[TransitInfo] = None
+    warehouse_used: Optional[WarehouseUsed] = None
 
 
 # =============================================================================
@@ -162,7 +173,17 @@ async def get_route_alerts(
         cache_key=cache_key,
     )
 
-    return result.to_dict()
+    resp = result.to_dict()
+    resp["warehouse_used"] = {
+        "id": wh["id"],
+        "code": wh.get("code", ""),
+        "name": wh.get("name", ""),
+        "city": wh.get("city", ""),
+        "state": wh.get("state", ""),
+        "is_default": False,
+        "selection_reason": "Selected warehouse",
+    }
+    return resp
 
 
 @router.get("/route-alerts-for-run/{run_id}", response_model=RouteAlertsResponse)
@@ -282,6 +303,31 @@ async def get_route_alerts_for_run(
             "drive_hours": drive_hours,
             "total_hours": round(drive_hours + 2, 1) if drive_hours else None,
         }
+
+    # Add warehouse info so frontend knows which warehouse was used
+    is_default = False
+    with get_connection() as conn:
+        def_row = conn.execute(
+            "SELECT id FROM warehouses WHERE is_default = 1 AND is_active = 1 LIMIT 1",
+        ).fetchone()
+        if def_row and def_row[0] == wh["id"]:
+            is_default = True
+
+    selection_reason = (
+        "Default warehouse" if is_default
+        else "First active warehouse (no default set)" if not warehouse_id
+        else "Selected warehouse"
+    )
+
+    resp["warehouse_used"] = {
+        "id": wh["id"],
+        "code": wh.get("code", ""),
+        "name": wh.get("name", ""),
+        "city": wh.get("city", ""),
+        "state": wh.get("state", ""),
+        "is_default": is_default,
+        "selection_reason": selection_reason,
+    }
 
     return resp
 

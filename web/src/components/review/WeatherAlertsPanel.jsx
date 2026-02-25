@@ -10,7 +10,8 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [infoMessage, setInfoMessage] = useState(null)
-  const [collapsed, setCollapsed] = useState(false) // start expanded
+  const [collapsed, setCollapsed] = useState(true) // start collapsed — summary visible in header
+  const [alertsExpanded, setAlertsExpanded] = useState(false) // NWS alert details collapsed
 
   const fetchAlerts = useCallback(async () => {
     if (!runId) return
@@ -223,6 +224,17 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             </div>
           )}
 
+          {/* Warehouse used info */}
+          {data?.warehouse_used && (
+            <div className="p-2 bg-blue-50 border border-blue-200 rounded mb-2 text-xs text-blue-700">
+              <span className="font-medium">Destination:</span>{' '}
+              {data.warehouse_used.name}
+              {data.warehouse_used.city && `, ${data.warehouse_used.city}`}
+              {data.warehouse_used.state && ` ${data.warehouse_used.state}`}
+              <span className="text-blue-500 ml-2">({data.warehouse_used.selection_reason})</span>
+            </div>
+          )}
+
           {/* Transit info */}
           {data?.transit && (
             <div className="p-2 bg-gray-50 border border-gray-200 rounded mb-2 flex items-center gap-4 text-xs text-gray-600">
@@ -239,34 +251,50 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             </div>
           )}
 
-          {/* Alerts */}
+          {/* NWS Alert Details — collapsible */}
           {data && hasAlerts && (
-            <div className="space-y-2">
-              {data.alerts.map((alert, idx) => (
-                <div
-                  key={alert.alert_id || idx}
-                  className={`p-3 rounded border ${severityStyles[alert.severity] || severityStyles.info}`}
-                >
-                  <div className="flex items-start gap-2">
-                    <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${severityDot[alert.severity] || severityDot.info}`}></span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium">{alert.event}</span>
-                        <span className="text-xs opacity-75">{alert.urgency}</span>
-                      </div>
-                      {alert.headline && (
-                        <p className="text-xs mt-1 opacity-90">{alert.headline}</p>
-                      )}
-                      <div className="flex items-center gap-3 mt-1 text-xs opacity-75">
-                        {alert.area && <span>{alert.area}</span>}
-                        {(alert.onset || alert.expires) && (
-                          <span>{formatDateRange(alert.onset, alert.expires)}</span>
-                        )}
+            <div className="border border-gray-200 rounded mb-2">
+              <button
+                type="button"
+                onClick={() => setAlertsExpanded(!alertsExpanded)}
+                className="w-full flex items-center justify-between p-2 text-xs text-gray-600 hover:bg-gray-50"
+              >
+                <span className="font-medium">
+                  NWS Alert Details ({alertCount})
+                </span>
+                <svg className={`w-3 h-3 text-gray-400 transition-transform ${alertsExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {alertsExpanded && (
+                <div className="p-2 pt-0 space-y-2">
+                  {data.alerts.map((alert, idx) => (
+                    <div
+                      key={alert.alert_id || idx}
+                      className={`p-3 rounded border ${severityStyles[alert.severity] || severityStyles.info}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${severityDot[alert.severity] || severityDot.info}`}></span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">{alert.event}</span>
+                            <span className="text-xs opacity-75">{alert.urgency}</span>
+                          </div>
+                          {alert.headline && (
+                            <p className="text-xs mt-1 opacity-90">{alert.headline}</p>
+                          )}
+                          <div className="flex items-center gap-3 mt-1 text-xs opacity-75">
+                            {alert.area && <span>{alert.area}</span>}
+                            {(alert.onset || alert.expires) && (
+                              <span>{formatDateRange(alert.onset, alert.expires)}</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
 

@@ -433,16 +433,28 @@ class WeatherService:
             )
             raw = response.content[0].text.strip()
 
+            # Strip markdown code fences if Haiku wrapped the JSON
+            cleaned = raw
+            if cleaned.startswith("```"):
+                # Remove opening fence (```json or ```)
+                first_newline = cleaned.find("\n")
+                if first_newline != -1:
+                    cleaned = cleaned[first_newline + 1:]
+                # Remove closing fence
+                if cleaned.rstrip().endswith("```"):
+                    cleaned = cleaned.rstrip()[:-3].rstrip()
+
             # Parse structured JSON response
             try:
-                parsed = json.loads(raw)
-                summary = parsed.get("summary", raw)
+                parsed = json.loads(cleaned)
+                summary = parsed.get("summary", cleaned)
                 recommended_date = parsed.get("recommended_pickup_date")
                 reason = parsed.get("reason")
                 scenarios = parsed.get("scenarios", [])
             except (json.JSONDecodeError, TypeError):
                 # AI didn't return valid JSON — use raw text as summary
-                summary = raw
+                # But still clean up any remaining JSON-like artifacts
+                summary = cleaned if cleaned != raw else raw
                 recommended_date = None
                 reason = None
                 scenarios = []

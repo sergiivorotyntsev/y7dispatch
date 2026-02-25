@@ -518,7 +518,7 @@ class TestWeatherAPI:
             "waypoints_checked", "cached", "checked_at",
             "ai_summary", "risk_level", "optimal_pickup_suggestion",
             "recommended_pickup_date", "recommendation_reason", "scenarios",
-            "transit",
+            "transit", "warehouse_used",
         }
 
         # If alerts present, verify alert shape
