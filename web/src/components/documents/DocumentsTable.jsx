@@ -63,7 +63,7 @@ export default function DocumentsTable({
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">$/mile</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
@@ -348,13 +348,19 @@ function DocumentRow({
         </span>
       </td>
       <td className="px-4 py-3 text-sm text-gray-500">
-        {doc.created_at ? (
-          <span title={parseUTCDate(doc.created_at).toLocaleString()}>
-            {parseUTCDate(doc.created_at).toLocaleString('en-US', {
-              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-            })}
-          </span>
-        ) : '-'}
+        {(() => {
+          const dateStr = doc.email_received_date || doc.created_at
+          if (!dateStr) return '-'
+          const d = parseUTCDate(dateStr)
+          if (!d || isNaN(d.getTime())) return '-'
+          return (
+            <span title={d.toLocaleString()}>
+              {d.toLocaleString('en-US', {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+              })}
+            </span>
+          )
+        })()}
       </td>
       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-end items-center space-x-2">

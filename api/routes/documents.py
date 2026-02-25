@@ -191,6 +191,7 @@ class DocumentResponse(BaseModel):
     has_ocr: bool = False
     source: str = "upload"  # upload, email, batch, test_lab
     created_at: Optional[str] = None
+    email_received_date: Optional[str] = None
     uploaded_by: Optional[str] = None
 
     # Pending/hold status
@@ -787,6 +788,17 @@ async def list_documents(
             d["gate_pass"] = _str(outputs.get("gate_pass"))
             d["auction_type_code"] = at_code_map.get(d.get("auction_type_id"))
 
+            # Email received date — extract from email_metadata_json
+            email_received_date = None
+            email_meta_raw = d.get("email_metadata_json")
+            if email_meta_raw:
+                try:
+                    email_meta = json.loads(email_meta_raw)
+                    email_received_date = email_meta.get("date")
+                except Exception:
+                    pass
+            d["email_received_date"] = email_received_date
+
             # Transport price (canonical: price_total in DB, transport_price in API)
             price = outputs.get("price_total")
             if price is None:
@@ -905,9 +917,20 @@ async def get_document(id: int):
         raise HTTPException(status_code=404, detail="Document not found")
 
     at = AuctionTypeRepository.get_by_id(doc.auction_type_id)
+
+    # Extract email received date
+    email_received_date = None
+    if doc.email_metadata_json:
+        try:
+            email_meta = json.loads(doc.email_metadata_json)
+            email_received_date = email_meta.get("date")
+        except Exception:
+            pass
+
     return DocumentResponse(
         **doc.__dict__,
         auction_type_code=at.code if at else None,
+        email_received_date=email_received_date,
     )
 
 

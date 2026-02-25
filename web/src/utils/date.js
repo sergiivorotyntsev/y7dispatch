@@ -2,10 +2,17 @@
  * Parse a UTC timestamp from SQLite (no Z suffix) into a proper Date object.
  * SQLite CURRENT_TIMESTAMP stores UTC but without the Z suffix,
  * so JS `new Date()` misinterprets it as local time.
+ *
+ * Also handles RFC 2822 email dates (e.g. "Wed, 25 Feb 2026 16:06:37 +0100")
+ * which already contain timezone info and should NOT get a Z suffix.
  */
 export function parseUTCDate(dateStr) {
   if (!dateStr) return null
   if (typeof dateStr !== 'string') return new Date(dateStr)
+  // RFC 2822 dates contain day-of-week comma or +/- timezone offset — parse directly
+  if (/[+-]\d{4}\s*$/.test(dateStr) || /^[A-Z][a-z]{2},/.test(dateStr)) {
+    return new Date(dateStr)
+  }
   return new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z')
 }
 

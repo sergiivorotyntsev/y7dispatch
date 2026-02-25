@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import { parseUTCDate } from '../utils/date'
 
-/** Group documents by date (most recent first) */
+/** Group documents by date (most recent first).
+ *  Prefers email_received_date (when email arrived) over created_at (when processed). */
 export function groupByDate(docs) {
   const groups = {}
   docs.forEach(doc => {
-    const date = doc.created_at
-      ? parseUTCDate(doc.created_at).toLocaleDateString('en-US', {
+    const dateStr = doc.email_received_date || doc.created_at
+    const parsed = dateStr ? parseUTCDate(dateStr) : null
+    const date = parsed && !isNaN(parsed.getTime())
+      ? parsed.toLocaleDateString('en-US', {
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
         })
       : 'Unknown Date'

@@ -805,6 +805,34 @@ class EmailWorker:
         is_reply = bool(in_reply_to or references)
         return is_reply and not msg.has_pdf
 
+    # Subjects that indicate non-vehicle emails (case-insensitive substring match)
+    _NON_VEHICLE_SUBJECTS = [
+        "update your profile",
+        "update profile",
+        "update our sistem",
+        "update your account",
+        "verify your account",
+        "payment reminder",
+        "invoice due",
+        "password reset",
+        "welcome to",
+        "subscription",
+    ]
+
+    def _is_non_vehicle_email(self, msg: 'EmailMessage') -> bool:
+        """Check if email subject indicates a non-vehicle administrative email.
+
+        Only skips emails that do NOT contain a VIN in the subject.
+        Emails with a VIN are always processed regardless of other keywords.
+        """
+        if not msg.subject:
+            return False
+        subject_lower = msg.subject.lower()
+        # If subject contains a VIN, always process (it's a vehicle email)
+        if self._extract_vin_from_subject(msg.subject):
+            return False
+        return any(kw in subject_lower for kw in self._NON_VEHICLE_SUBJECTS)
+
     def _acquire_oauth2_token(self, config: dict) -> str | None:
         """Acquire access token via Microsoft client_credentials grant.
 
@@ -1392,6 +1420,23 @@ class EmailWorker:
                             message_id=msg.message_id, status="skipped",
                             rule_matched=None, document_id=None, run_id=None,
                             error="Thread reply without PDF",
+                        ))
+                        continue
+
+                    # Non-vehicle email filter: skip emails that are clearly
+                    # not vehicle pickup requests (profile updates, payments, etc.)
+                    if self._is_non_vehicle_email(msg):
+                        skip_reason = "Non-vehicle email"
+                        self._update_email_log(msg.message_id, status="skipped",
+                                               skip_reason=skip_reason)
+                        self._log_activity(
+                            msg.message_id, msg.subject, "skipped",
+                            sender=msg.sender, error=skip_reason,
+                        )
+                        results.append(ProcessingResult(
+                            message_id=msg.message_id, status="skipped",
+                            rule_matched=None, document_id=None,
+                            run_id=None, error=skip_reason,
                         ))
                         continue
 
