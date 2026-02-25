@@ -858,6 +858,16 @@ def find_listing_by_partner_ref(partner_ref_id: str) -> Optional[str]:
         "Accept": "application/vnd.coxauto.v2+json",
     }
 
+    # Add OAuth2 Bearer token
+    try:
+        from api.cd_client import CDClient
+        cd = CDClient()
+        if cd.client_id and cd.client_secret:
+            token = cd._get_bearer_token()
+            headers["Authorization"] = f"Bearer {token}"
+    except Exception as e:
+        logger.error("find_listing_by_partner_ref: Failed to get OAuth2 token: %s", e)
+
     try:
         logger.info(f"Searching for listing with partnerReferenceId: {partner_ref_id}")
         response = requests.get(

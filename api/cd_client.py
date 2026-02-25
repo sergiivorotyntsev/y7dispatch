@@ -343,7 +343,7 @@ class CDClient:
         while retries <= MAX_RETRIES:
             try:
                 response = requests.put(
-                    f"{self.base_url}/listings/{listing_id}",
+                    f"{self.base_url}/listings/id/{listing_id}",
                     json=payload,
                     headers=self._get_headers(etag=current_etag),
                     timeout=self.timeout,
@@ -396,7 +396,7 @@ class CDClient:
         """Get listing details including current ETag."""
         try:
             response = requests.get(
-                f"{self.base_url}/listings/{listing_id}",
+                f"{self.base_url}/listings/id/{listing_id}",
                 headers=self._get_headers(),
                 timeout=self.timeout,
             )
