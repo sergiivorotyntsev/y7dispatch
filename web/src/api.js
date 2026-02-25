@@ -2,8 +2,19 @@
 
 const API_BASE = '/api'
 
+// In-flight request dedup: if a GET request to the same URL is already in progress,
+// return the same promise instead of making a duplicate network call.
+const _inflight = new Map()
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`
+  const method = (options.method || 'GET').toUpperCase()
+
+  // Dedup only GET requests (safe, idempotent)
+  const dedupKey = method === 'GET' ? url : null
+  if (dedupKey && _inflight.has(dedupKey)) {
+    return _inflight.get(dedupKey)
+  }
 
   const config = {
     headers: {
@@ -18,31 +29,36 @@ async function request(endpoint, options = {}) {
     delete config.headers['Content-Type']
   }
 
-  const response = await fetch(url, config)
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }))
-    // Handle Pydantic validation errors (detail is array of objects)
-    let errorMsg = `HTTP ${response.status}`
-    if (error.detail) {
-      if (Array.isArray(error.detail)) {
-        // Pydantic validation error format
-        errorMsg = error.detail.map(e => {
-          const loc = e.loc ? e.loc.join(' → ') : ''
-          return `${loc}: ${e.msg}`
-        }).join('; ')
-      } else if (typeof error.detail === 'string') {
-        errorMsg = error.detail
-      } else {
-        errorMsg = JSON.stringify(error.detail)
+  const promise = fetch(url, config).then(async (response) => {
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }))
+      // Handle Pydantic validation errors (detail is array of objects)
+      let errorMsg = `HTTP ${response.status}`
+      if (error.detail) {
+        if (Array.isArray(error.detail)) {
+          // Pydantic validation error format
+          errorMsg = error.detail.map(e => {
+            const loc = e.loc ? e.loc.join(' → ') : ''
+            return `${loc}: ${e.msg}`
+          }).join('; ')
+        } else if (typeof error.detail === 'string') {
+          errorMsg = error.detail
+        } else {
+          errorMsg = JSON.stringify(error.detail)
+        }
       }
+      throw new Error(errorMsg)
     }
-    throw new Error(errorMsg)
-  }
 
-  // Handle empty responses
-  const text = await response.text()
-  return text ? JSON.parse(text) : null
+    // Handle empty responses
+    const text = await response.text()
+    return text ? JSON.parse(text) : null
+  }).finally(() => {
+    if (dedupKey) _inflight.delete(dedupKey)
+  })
+
+  if (dedupKey) _inflight.set(dedupKey, promise)
+  return promise
 }
 
 // Health & Status

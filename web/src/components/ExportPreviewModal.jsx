@@ -97,12 +97,15 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
   const [dryRunResult, setDryRunResult] = useState(null)
   const [exportError, setExportError] = useState(null)
 
+  const [retryMode, setRetryMode] = useState(false)
+
   async function handleExport(dryRun = false) {
     setExporting(true)
     setDryRunResult(null)
+    const wasRetry = retryMode || !!exportError
     setExportError(null)
     try {
-      const result = await api.exportToCD([extractionId], dryRun, true, false, overrides || null)
+      const result = await api.exportToCD([extractionId], dryRun, true, wasRetry, overrides || null)
       if (dryRun) {
         // Show dry run results in modal — don't close
         setDryRunResult(result)
@@ -116,11 +119,13 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
           // Export attempted but failed — show error details in modal
           const errors = result.previews?.flatMap(p => p.validation_errors || []) || []
           setExportError({ message: result.message, errors })
+          setRetryMode(true)
         }
       }
     } catch (err) {
       setExportError(`Export failed: ${err.message}`)
       setError(`Export failed: ${err.message}`)
+      setRetryMode(true)
     } finally {
       setExporting(false)
     }
@@ -508,9 +513,11 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
             <button
               onClick={() => handleExport(false)}
               disabled={exporting || !isValid}
-              className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+              className={`px-4 py-2 text-sm text-white rounded disabled:opacity-50 ${
+                retryMode ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+              }`}
             >
-              {exporting ? 'Exporting...' : 'Export to CD'}
+              {exporting ? 'Exporting...' : retryMode ? 'Retry Export' : 'Export to CD'}
             </button>
           </div>
         </div>

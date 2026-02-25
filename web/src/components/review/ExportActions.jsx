@@ -64,16 +64,21 @@ function ExportActions({
               {exportError && (
                 <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                   <p className="font-medium">Export failed</p>
-                  <p>{exportError}</p>
+                  <p>{typeof exportError === 'object' ? exportError.message || JSON.stringify(exportError) : exportError}</p>
                 </div>
               )}
-              <button
-                onClick={() => setShowExportModal(true)}
-                disabled={exporting}
-                className="btn btn-primary bg-green-600 hover:bg-green-700"
-              >
-                {exporting ? 'Exporting...' : 'Export to CD'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  disabled={exporting}
+                  className={exportError
+                    ? "px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md"
+                    : "btn btn-primary bg-green-600 hover:bg-green-700"
+                  }
+                >
+                  {exporting ? 'Exporting...' : exportError ? 'Retry Export' : 'Export to CD'}
+                </button>
+              </div>
             </div>
           )}
         </div>

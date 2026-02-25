@@ -610,6 +610,16 @@ def normalize_haiku_result(haiku_result: ExtractionResult) -> tuple[dict, dict]:
                 "method": f"haiku:{HaikuExtractor.MODEL}",
             }
 
+    # Include auction_type as auction_source (Haiku extracts it but it's not in .fields)
+    if haiku_result.auction_type and haiku_result.auction_type != "UNKNOWN":
+        outputs["auction_source"] = haiku_result.auction_type
+        field_sources["auction_source"] = {
+            "value": haiku_result.auction_type,
+            "source": "HAIKU_EXTRACTED",
+            "confidence": 0.95,
+            "method": f"haiku:{HaikuExtractor.MODEL}",
+        }
+
     return outputs, field_sources
 
 

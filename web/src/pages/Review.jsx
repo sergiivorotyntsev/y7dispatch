@@ -341,9 +341,10 @@ function Review() {
   // === STREAM 2: Warehouses (INDEPENDENT — never blocks page) ===
   useEffect(() => {
     if (!run) return
+    let stale = false
     async function initWarehouses() {
       const whList = await loadWarehouses()
-      // Populate transport instructions from warehouse if not already saved
+      if (stale) return
       const out = run.outputs || {}
       if (out.warehouse_id && !out.transport_special_instructions) {
         const wh = whList.find(w => w.id === out.warehouse_id || w.id.toString() === String(out.warehouse_id))
@@ -353,6 +354,7 @@ function Review() {
       }
     }
     initWarehouses()
+    return () => { stale = true }
   }, [run, loadWarehouses])
 
   // === STREAM 3: Pricing (INDEPENDENT — never blocks page) ===
@@ -366,9 +368,11 @@ function Review() {
   // === STREAM 4: Attachments (INDEPENDENT — never blocks page) ===
   useEffect(() => {
     if (!run || !runId) return
+    let stale = false
     api.listAttachments(runId)
-      .then(data => setAttachments(data.attachments || []))
+      .then(data => { if (!stale) setAttachments(data.attachments || []) })
       .catch(err => console.debug('No attachments for run:', err.message))
+    return () => { stale = true }
   }, [run, runId])
 
   // === STREAM 5: Load ID (INDEPENDENT — auto-generates when make/model available) ===
@@ -376,9 +380,11 @@ function Review() {
     const make = fields.vehicle_make?.corrected
     const model = fields.vehicle_model?.corrected
     if (make && model && !loadId) {
+      let stale = false
       api.generateLoadId(make, model).then(data => {
-        setLoadId(data.load_id)
+        if (!stale) setLoadId(data.load_id)
       }).catch(err => console.error('Load ID generation failed:', err))
+      return () => { stale = true }
     }
   }, [fields.vehicle_make?.corrected, fields.vehicle_model?.corrected, loadId])
 

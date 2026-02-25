@@ -239,7 +239,8 @@ function Documents() {
 
   useEffect(() => {
     fetchDocExtractions()
-  }, [fetchDocExtractions, documents])
+    // documents dep is inside fetchDocExtractions callback — do NOT add here (causes double-call)
+  }, [fetchDocExtractions])
 
   // Handle upload
   async function handleUpload() {
