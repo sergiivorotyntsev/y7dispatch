@@ -296,7 +296,7 @@ def init_extended_schema():
         """)
 
         # -----------------------------------------------------------------
-        # MODEL VERSIONS
+        # MODEL VERSIONS — reserved for fine-tuning pipeline (future feature)
         # -----------------------------------------------------------------
         conn.execute("""
             CREATE TABLE IF NOT EXISTS model_versions (
@@ -325,7 +325,7 @@ def init_extended_schema():
         """)
 
         # -----------------------------------------------------------------
-        # TRAINING JOBS
+        # TRAINING JOBS — reserved for fine-tuning pipeline (future feature)
         # -----------------------------------------------------------------
         conn.execute("""
             CREATE TABLE IF NOT EXISTS training_jobs (

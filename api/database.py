@@ -20,7 +20,8 @@ def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     with get_connection() as conn:
-        # Runs table - main history
+        # Legacy: runs table — superseded by extraction_runs. Kept for backward compat
+        # with /api/runs endpoint. Empty in production.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
@@ -46,7 +47,7 @@ def init_db():
             )
         """)
 
-        # Logs table - detailed logs per run
+        # Legacy: logs table — tied to runs table above. Empty in production.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,7 +60,7 @@ def init_db():
             )
         """)
 
-        # Config snapshots - for versioning
+        # Config snapshots — reserved for future use, CRUD in save_config_snapshot()
         conn.execute("""
             CREATE TABLE IF NOT EXISTS config_snapshots (
                 id TEXT PRIMARY KEY,

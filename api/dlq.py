@@ -169,7 +169,7 @@ class DLQService:
         self._alert_callbacks: list[Callable[[DLQEntry], None]] = []
 
     def _ensure_table(self):
-        """Create DLQ table if not exists."""
+        """Create DLQ table if not exists. Currently empty — populated on email processing failures."""
         with get_connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS dlq_entries (

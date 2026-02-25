@@ -129,7 +129,7 @@ class TemplateResponse(BaseModel):
 def init_template_schema():
     """Initialize template versioning tables."""
     with get_connection() as conn:
-        # Template versions table
+        # Template versions table — reserved, managed via field mapping version endpoints
         conn.execute("""
             CREATE TABLE IF NOT EXISTS template_versions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

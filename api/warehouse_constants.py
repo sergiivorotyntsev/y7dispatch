@@ -119,7 +119,7 @@ class WarehouseConstants:
 
 
 def init_warehouse_constants_schema():
-    """Initialize warehouse constants database schema."""
+    """Initialize warehouse constants database schema. Reserved — populated via Settings UI."""
     with get_connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS warehouse_constants (

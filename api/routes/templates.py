@@ -49,7 +49,7 @@ def init_templates_schema():
             )
         """)
 
-        # Template usage/feedback table
+        # Template usage/feedback table — reserved, populated via POST /templates/{id}/feedback
         conn.execute("""
             CREATE TABLE IF NOT EXISTS template_feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
