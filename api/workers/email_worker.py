@@ -1226,22 +1226,52 @@ class EmailWorker:
     # READ-ONLY mailbox access — no flags, no moves, no deletes.
     # All tracking is internal via email_log table (message_id UNIQUE dedup).
 
+    def _extract_message_id_from_header(self, header_bytes: bytes) -> str | None:
+        """Extract Message-ID from lightweight IMAP header fetch response.
+
+        Used by poll_once to check if an email is already processed
+        without downloading the full RFC822 body + attachments.
+        """
+        if not header_bytes:
+            return None
+        try:
+            text = header_bytes.decode("utf-8", errors="replace")
+            for line in text.split("\n"):
+                line = line.strip()
+                if line.lower().startswith("message-id:"):
+                    return line.split(":", 1)[1].strip()
+        except Exception:
+            pass
+        return None
+
+    def _load_known_message_ids(self) -> set[str]:
+        """Load all known message_ids from email_log table.
+
+        Returns a set for O(1) lookups during poll cycle.
+        """
+        self._init_email_log_table()
+        with get_connection() as conn:
+            rows = conn.execute("SELECT message_id FROM email_log").fetchall()
+        return {row[0] for row in rows if row[0]}
+
     def poll_once(self, since_days: int = 7) -> list[ProcessingResult]:
         """
         Poll inbox once and process emails.
 
-        Uses server-side IMAP SEARCH filtering for allowed senders,
-        logs every email to email_log table, and handles thread dedup.
-        Already-processed emails are skipped via message_id dedup in email_log.
+        Uses 2-phase approach for efficiency:
+        Phase 1: Lightweight Message-ID header scan — skip already-processed
+        Phase 2: Full RFC822 fetch only for genuinely new emails
 
         Args:
             since_days: Look back N days (default 7 = past week).
         """
         import logging
+        import time
         from datetime import datetime
 
         logger = logging.getLogger(__name__)
         results = []
+        poll_start = time.monotonic()
 
         if not self._connect():
             return results
@@ -1249,6 +1279,9 @@ class EmailWorker:
         try:
             rules = self._load_rules()
             allowed_senders = self._load_allowed_senders()
+
+            # Pre-load known message_ids from DB (one query, O(1) lookups)
+            known_ids = self._load_known_message_ids()
 
             # Select inbox
             self.imap.select("INBOX")
@@ -1260,18 +1293,54 @@ class EmailWorker:
             if status != "OK":
                 return results
 
-            msg_ids = messages[0].split() if messages[0] else []
+            msg_nums = messages[0].split() if messages[0] else []
             # Most recent first — IMAP returns oldest first (ascending),
             # reverse so we process newest emails within the per-poll limit
-            msg_ids.reverse()
-            uids = msg_ids[: self.max_emails_per_poll]
-            logger.info("[EmailWorker] Found %d emails matching criteria (processing %d newest)", len(msg_ids), len(uids))
+            msg_nums.reverse()
+            candidates = msg_nums[: self.max_emails_per_poll]
 
-            for uid in uids:
+            # ── Phase 1: Lightweight header scan ──────────────────────
+            # Fetch only Message-ID header (~100 bytes) to skip known emails
+            # instead of downloading full RFC822 (~100-600KB each)
+            new_uids = []
+            skipped_known = 0
+
+            for uid in candidates:
+                uid_str = uid.decode() if isinstance(uid, bytes) else uid
+                try:
+                    hdr_status, hdr_data = self.imap.fetch(
+                        uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"
+                    )
+                    if hdr_status == "OK" and hdr_data and hdr_data[0] and len(hdr_data[0]) > 1:
+                        msg_id = self._extract_message_id_from_header(hdr_data[0][1])
+                        if msg_id and msg_id in known_ids:
+                            skipped_known += 1
+                            continue
+                    # Unknown or couldn't extract — include for full processing
+                    new_uids.append(uid)
+                except Exception:
+                    # IMAP error — include for safety
+                    new_uids.append(uid)
+
+            logger.info(
+                "[EmailWorker] Poll: %d matched, %d already processed, %d new to fetch",
+                len(candidates), skipped_known, len(new_uids),
+            )
+
+            if not new_uids:
+                elapsed = round(time.monotonic() - poll_start, 1)
+                logger.info(
+                    "[EmailWorker] Poll complete: %d checked, 0 new, %d skipped. %.1fs",
+                    len(candidates), skipped_known, elapsed,
+                )
+                return results
+
+            # ── Phase 2: Full fetch only for new emails ───────────────
+            for uid in new_uids:
                 uid_str = uid.decode() if isinstance(uid, bytes) else uid
 
                 try:
-                    # Fetch email
+                    # Fetch full email (only for genuinely new ones)
                     status, data = self.imap.fetch(uid, "(RFC822)")
                     if status != "OK":
                         continue
@@ -1286,12 +1355,8 @@ class EmailWorker:
                     # Insert into email_log (dedup by message_id)
                     log_id = self._insert_email_log(msg, body_preview=body_text, gate_pass=gate_pass)
                     if log_id is None:
-                        # Duplicate message_id — already processed
-                        logger.info("[EmailWorker] Duplicate message_id: %s", msg.message_id)
-                        self._log_activity(
-                            msg.message_id, msg.subject, "skipped",
-                            sender=msg.sender, error="Duplicate (already in email_log)",
-                        )
+                        # Race condition: became known between phase 1 and phase 2
+                        logger.debug("[EmailWorker] Already processed (race): %s", msg.message_id)
                         results.append(ProcessingResult(
                             message_id=msg.message_id, status="skipped",
                             rule_matched=None, document_id=None, run_id=None,
@@ -1542,6 +1607,16 @@ class EmailWorker:
 
         finally:
             self._disconnect()
+
+        # Summary log
+        new_count = sum(1 for r in results if r.status == "processed")
+        fail_count = sum(1 for r in results if r.status == "failed")
+        skip_count = sum(1 for r in results if r.status == "skipped")
+        elapsed = round(time.monotonic() - poll_start, 1)
+        logger.info(
+            "[EmailWorker] Poll complete: %d checked, %d new, %d skipped, %d failed. %.1fs",
+            len(candidates), new_count, skipped_known + skip_count, fail_count, elapsed,
+        )
 
         return results
 
