@@ -1,0 +1,5 @@
+{
+  "auto_poll_enabled": true,
+  "poll_interval_minutes": 10,
+  "poll_since_days": 7
+}
