@@ -850,9 +850,14 @@ function Review() {
                     {saving ? 'Saving...' : 'Save Changes'}
                   </button>
                 )}
-                {/* Approve for Export — only for non-approved, non-exported */}
+                {/* Approve for Export — only for non-approved, non-exported, REQUIRES warehouse */}
                 {!isApproved && !isExported && (
-                  <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
+                  <button
+                    onClick={handleSubmitProduction}
+                    className={`btn btn-primary ${selectedWarehouse ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                    disabled={saving || !selectedWarehouse}
+                    title={!selectedWarehouse ? 'Select a delivery warehouse first' : ''}
+                  >
                     {saving ? 'Approving...' : 'Approve for Export'}
                   </button>
                 )}
@@ -1009,8 +1014,8 @@ function Review() {
               onViewAttachment={(url) => setViewingUrl(url)}
             />
 
-            {/* Manual Entry Banner (for scanned/unextractable PDFs) */}
-            {run.status === 'manual_required' && (
+            {/* Manual Entry Banner — Vision OCR for scanned/failed PDFs */}
+            {(run.status === 'manual_required' || run.status === 'failed') && (
               <ManualEntryBanner runId={runId} onVisionResult={handleVisionResult} />
             )}
 

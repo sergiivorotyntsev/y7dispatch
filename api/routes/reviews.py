@@ -473,6 +473,11 @@ async def submit_review(data: ReviewSubmitRequest):
     # Determine status
     new_status = run.status
     if data.mark_for_export:
+        if not outputs.get("warehouse_id"):
+            raise HTTPException(
+                status_code=400,
+                detail="Warehouse must be selected before approving for export",
+            )
         new_status = "approved"
     elif data.mark_as_reviewed:
         new_status = "reviewed"

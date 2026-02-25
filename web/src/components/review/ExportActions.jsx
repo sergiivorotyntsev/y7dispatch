@@ -115,15 +115,26 @@ function ExportActions({
                     Approved
                   </span>
                 ) : !isExported ? (
-                  <button onClick={handleSubmitProduction} className="btn btn-primary bg-green-600 hover:bg-green-700" disabled={saving}>
+                  <button
+                    onClick={handleSubmitProduction}
+                    className={`btn btn-primary ${selectedWarehouse ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                    disabled={saving || !selectedWarehouse}
+                    title={!selectedWarehouse ? 'Select a delivery warehouse first' : ''}
+                  >
                     {saving ? 'Approving...' : 'Approve for Export'}
                   </button>
                 ) : null}
               </div>
             )}
           </div>
+          {/* Warehouse required warning */}
+          {!isTrainingMode && !isApproved && !selectedWarehouse && (
+            <p className="text-xs text-amber-600 mt-2 font-medium">
+              Select a delivery warehouse before approving for export.
+            </p>
+          )}
           {/* Helper text — hidden when approved */}
-          {!isApproved && (
+          {!isApproved && selectedWarehouse && (
             <p className="text-xs text-gray-500 mt-3">
               {isTrainingMode
                 ? 'Your corrections help train the system to extract similar documents more accurately.'
