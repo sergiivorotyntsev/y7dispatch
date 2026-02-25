@@ -8,6 +8,7 @@ Features:
 5. Export records from Google Sheets with READY_FOR_CD status
 """
 
+import collections
 import logging
 import re
 from dataclasses import dataclass
@@ -211,13 +212,11 @@ class CDFieldMapper:
             overrides.get("location_type_handling", {})
             # Could be extended to detect offsite from record
 
-        # Substitute placeholders
-        try:
-            result = template.format(**subs)
-            return result.strip()
-        except KeyError as e:
-            logger.warning(f"Template placeholder not found: {e}")
-            return template
+        # Substitute placeholders (unknown keys → empty string)
+        result = template.format_map(collections.defaultdict(str, subs))
+        # Remove lines that are just "Label: " with empty value
+        lines = [line for line in result.split("\n") if not re.match(r'^.+:\s*$', line)]
+        return "\n".join(lines).strip()
 
     def get_auction_tags(self, auction_source: str) -> list[dict[str, str]]:
         """Get tags specific to auction source."""
@@ -644,7 +643,7 @@ class CDExporter:
             "pickupStopNumber": 1,
             "dropoffStopNumber": 2,
             "vin": record.vin,
-            "year": int(record.vehicle_year) if record.vehicle_year else 2020,
+            "year": int(record.vehicle_year) if record.vehicle_year else None,
             "make": record.vehicle_make,
             "model": record.vehicle_model,
             "vehicleType": vehicle_type,
@@ -687,7 +686,7 @@ class CDExporter:
         if record.idempotency_key:
             payload["externalId"] = record.idempotency_key
         if record.lot_number:
-            payload["partnerReferenceId"] = record.lot_number
+            payload["partnerReferenceId"] = str(record.lot_number)[:50]
 
         # Generate transportation release notes from template
         transport_notes = mapper.render_template(record.auction_source, record)

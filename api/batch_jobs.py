@@ -450,8 +450,14 @@ class BatchJobProcessor:
                     result.error_message = "Test document"
                     return result
 
-        # Check if already exported (allow update)
-        get_cd_listing_info(run_id)
+        # Check if already exported — skip to prevent duplicate POST
+        existing = get_cd_listing_info(run_id)
+        if existing and existing.get("cd_listing_id"):
+            logger.info(f"Run {run_id} already exported (cd_listing_id={existing['cd_listing_id']}), skipping")
+            result.status = BatchItemStatus.SKIPPED
+            result.cd_listing_id = existing["cd_listing_id"]
+            result.error_message = "Already exported"
+            return result
 
         # Check blocking issues
         registry = get_registry()

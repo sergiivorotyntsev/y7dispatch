@@ -55,30 +55,10 @@ def get_cd_urls(environment: str) -> dict[str, str]:
 # =============================================================================
 
 
-def generate_partner_reference_id(document_id: int, run_id: int) -> str:
-    """
-    Generate stable, unique partner reference ID for a document.
-
-    Format: CD-{doc_id}-{run_id}-{hash[:8]}
-    Limited to 50 characters for CD API compatibility.
-    """
-    # Create deterministic hash from doc_id and run_id
-    hash_input = f"{document_id}-{run_id}"
-    hash_suffix = hashlib.md5(hash_input.encode()).hexdigest()[:8]
-
-    ref_id = f"CD-{document_id}-{run_id}-{hash_suffix}"
-
-    # Ensure max length
-    if len(ref_id) > 50:
-        ref_id = ref_id[:50]
-
-    return ref_id
-
 
 def generate_idempotency_key(ref_id: str, operation: str) -> str:
-    """Generate idempotency key for CD API requests."""
-    timestamp = int(time.time() / 3600)  # Hour-based key
-    return hashlib.sha256(f"{ref_id}-{operation}-{timestamp}".encode()).hexdigest()[:32]
+    """Generate deterministic idempotency key for CD API requests."""
+    return hashlib.sha256(f"{ref_id}-{operation}".encode()).hexdigest()[:32]
 
 
 # =============================================================================

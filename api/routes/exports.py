@@ -1276,6 +1276,46 @@ async def send_to_cd_with_retry(
                 last_error = response
                 continue
 
+            if status_code == 409:
+                # Conflict — listing already exists on CD side
+                # Try to find existing listing by partnerReferenceId
+                logger.warning(
+                    f"CD API 409 Conflict for partnerReferenceId={partner_ref_id}, "
+                    "searching for existing listing"
+                )
+                if partner_ref_id:
+                    existing_id = await loop.run_in_executor(
+                        None,
+                        lambda pref=partner_ref_id: find_listing_by_partner_ref(pref),
+                    )
+                    if existing_id:
+                        logger.info(
+                            f"409 resolved: found existing listing {existing_id}"
+                        )
+                        if run_id:
+                            log_duplicate_detected(
+                                run_id=run_id,
+                                external_id=payload.get("externalId"),
+                                existing_listing_id=existing_id,
+                                request_id=request_id,
+                            )
+                            # Fetch ETag for the found listing
+                            success, found_etag, _ = await loop.run_in_executor(
+                                None, lambda eid=existing_id: get_cd_listing_etag(eid)
+                            )
+                            save_cd_listing_info(
+                                run_id=run_id,
+                                cd_listing_id=existing_id,
+                                etag=found_etag,
+                                external_id=payload.get("externalId"),
+                            )
+                        return True, {"id": existing_id, "resolved_from_409": True}, existing_id
+
+                # Could not find existing listing — fall through to non-retryable error
+                logger.error(
+                    f"409 Conflict but could not find existing listing for {partner_ref_id}"
+                )
+
             # Non-retryable error
             if run_id:
                 log_post_fail(
