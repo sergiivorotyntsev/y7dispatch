@@ -61,6 +61,11 @@ def setup_e2e_environment():
     init_auction_profiles_schema()
     seed_default_auction_profiles()
 
+    # Initialize load_ids table (normally created at listings.py import time,
+    # but module may have been imported before DB path was overridden)
+    from api.routes.listings import init_load_ids_schema
+    init_load_ids_schema()
+
     training_db.init_training_db()
 
     yield
