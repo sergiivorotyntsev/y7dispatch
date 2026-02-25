@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import random
 import time
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -26,7 +27,14 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 CD_SEMAPHORE_LIMIT = 5  # Max concurrent CD API calls
 RETRY_BACKOFF_BASE = 2  # Exponential backoff base (seconds)
+RETRY_MAX_DELAY = 30.0  # Maximum backoff delay (seconds)
 TOKEN_REFRESH_MARGIN = 60  # Refresh token 60s before expiry
+
+
+def _retry_delay(attempt: int, base: float = 2.0, max_delay: float = 30.0) -> float:
+    """Exponential backoff with jitter. Returns seconds to sleep."""
+    delay = min(base ** attempt, max_delay)
+    return delay * (0.7 + random.random() * 0.6)  # jitter ±30%
 
 
 # =============================================================================
@@ -233,12 +241,20 @@ class CDClient:
         return headers
 
     def _handle_rate_limit(self, response: requests.Response) -> float:
-        """Extract Retry-After and return wait time."""
-        retry_after = response.headers.get("Retry-After", "5")
+        """Extract Retry-After and return wait time (capped at 60s)."""
+        raw_retry = response.headers.get("Retry-After", "5")
         try:
-            return float(retry_after)
+            wait_time = float(raw_retry)
         except ValueError:
-            return 5.0
+            # HTTP-date format: try to parse delta
+            try:
+                from email.utils import parsedate_to_datetime
+                import datetime
+                retry_dt = parsedate_to_datetime(raw_retry)
+                wait_time = max(0, (retry_dt - datetime.datetime.now(datetime.timezone.utc)).total_seconds())
+            except Exception:
+                wait_time = 5.0
+        return min(wait_time, 60.0)  # cap: never block longer than 60s
 
     def create_listing(self, payload: dict[str, Any]) -> CDResponse:
         """
@@ -296,7 +312,7 @@ class CDClient:
             except requests.RequestException as e:
                 last_error = str(e)
                 retries += 1
-                time.sleep(RETRY_BACKOFF_BASE**retries)
+                time.sleep(_retry_delay(retries))
 
         return CDResponse(
             success=False,
@@ -364,7 +380,7 @@ class CDClient:
             except requests.RequestException as e:
                 last_error = str(e)
                 retries += 1
-                time.sleep(RETRY_BACKOFF_BASE**retries)
+                time.sleep(_retry_delay(retries))
 
         return CDResponse(
             success=False,

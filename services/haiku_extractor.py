@@ -112,6 +112,7 @@ class ExtractionResult:
     auction_type: str = "UNKNOWN"
     error: Optional[str] = None
     raw_response: Optional[str] = None
+    warnings: list = None  # Non-critical warnings for UI display
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -345,11 +346,12 @@ Vehicle operability detection:
         full_text = "\n\n".join(text_parts)
 
         # Truncate if too long
-        if len(full_text) > self.MAX_TEXT_LENGTH:
-            logger.warning(f"Text truncated from {len(full_text)} to {self.MAX_TEXT_LENGTH} chars")
+        original_length = len(full_text)
+        if original_length > self.MAX_TEXT_LENGTH:
+            logger.warning(f"Text truncated from {original_length} to {self.MAX_TEXT_LENGTH} chars")
             full_text = full_text[:self.MAX_TEXT_LENGTH]
 
-        return full_text, page_count
+        return full_text, page_count, original_length
 
     def extract(
         self,
@@ -370,7 +372,15 @@ Vehicle operability detection:
 
         # Extract text
         if document_type == "pdf":
-            text, page_count = self.extract_text_from_pdf(pdf_path)
+            text, page_count, original_length = self.extract_text_from_pdf(pdf_path)
+            if original_length > self.MAX_TEXT_LENGTH:
+                warning = (
+                    f"PDF text truncated from {original_length} to {self.MAX_TEXT_LENGTH} chars. "
+                    "Data on later pages may be missing."
+                )
+                if result.warnings is None:
+                    result.warnings = []
+                result.warnings.append(warning)
         else:
             # For email, read as text
             text = Path(pdf_path).read_text(encoding="utf-8", errors="ignore")

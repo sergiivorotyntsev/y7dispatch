@@ -12,6 +12,7 @@ Includes:
 import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -1226,7 +1227,7 @@ async def send_to_cd_with_retry(
             error_code = response.get("error_code")
             status_code = response.get("status_code")
 
-            if error_code == "ETAG_MISMATCH":
+            if error_code == "ETAG_MISMATCH" or status_code == 412:
                 # Audit: Log ETag conflict
                 if run_id and cd_listing_id:
                     log_etag_conflict(
@@ -1256,21 +1257,37 @@ async def send_to_cd_with_retry(
                                 request_id=request_id,
                             )
                         continue
+                    else:
+                        logger.warning(
+                            f"ETag refresh failed for listing {cd_listing_id}, cannot retry"
+                        )
+                        if run_id:
+                            log_post_fail(
+                                run_id=run_id,
+                                payload=payload,
+                                response_status=status_code or 412,
+                                error_message="ETag refresh failed",
+                                cd_listing_id=cd_listing_id,
+                                request_id=request_id,
+                            )
+                        break
 
             if status_code in (429, 500, 502, 503, 504):
-                # Retry with exponential backoff
-                backoff = min(CD_BACKOFF_BASE**attempt, CD_BACKOFF_MAX)
+                # Retry with exponential backoff + jitter
+                from api.cd_client import _retry_delay
+
+                backoff = _retry_delay(attempt)
                 if status_code == 429:
-                    # Use Retry-After if provided
+                    # Use Retry-After if provided (with minor jitter)
                     retry_after = response.get("retry_after")
                     if retry_after:
                         try:
-                            backoff = min(float(retry_after), CD_BACKOFF_MAX)
+                            backoff = min(float(retry_after), CD_BACKOFF_MAX) * (0.9 + random.random() * 0.2)
                         except ValueError:
                             pass
 
                 logger.warning(
-                    f"CD API error {status_code}, retrying in {backoff}s (attempt {attempt + 1}/{CD_RETRY_ATTEMPTS})"
+                    f"CD API error {status_code}, retrying in {backoff:.1f}s (attempt {attempt + 1}/{CD_RETRY_ATTEMPTS})"
                 )
                 await asyncio.sleep(backoff)
                 last_error = response

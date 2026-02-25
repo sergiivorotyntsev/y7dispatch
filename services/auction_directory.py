@@ -7,8 +7,11 @@ this directory provides the phone number and address for auto-fill.
 Data sources: publicly available Copart/IAA/Manheim location directories.
 """
 
+import logging
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # ─── Copart Locations ────────────────────────────────────────────────────────
 # Source: Copart public location directory (top 50+ US locations)
@@ -169,4 +172,18 @@ def lookup_auction_location(name: Optional[str]) -> Optional[dict]:
     if not key:
         return None
 
-    return _LOOKUP_INDEX.get(key)
+    result = _LOOKUP_INDEX.get(key)
+    if result is None:
+        # Fallback 1: strip parenthetical like "Copart Clearwater (FL)"
+        stripped = re.sub(r'\s*\([^)]*\)\s*', ' ', key).strip()
+        stripped = re.sub(r'\s+', ' ', stripped)
+        if stripped != key:
+            result = _LOOKUP_INDEX.get(stripped)
+        # Fallback 2: strip trailing 2-letter state code "Copart Clearwater FL"
+        if result is None:
+            stripped2 = re.sub(r'\s+[a-z]{2}$', '', key)
+            if stripped2 != key:
+                result = _LOOKUP_INDEX.get(stripped2)
+    if result is None:
+        logger.info(f"Auction location not found: '{name}' (normalized: '{key}')")
+    return result

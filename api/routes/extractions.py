@@ -790,6 +790,10 @@ def run_extraction(
                     "cache_efficiency": haiku_result.tokens_used.cache_efficiency,
                 }
 
+                # Propagate extraction warnings (e.g., text truncation)
+                if haiku_result.warnings:
+                    haiku_outputs["_warnings"] = haiku_result.warnings
+
                 logger.info(
                     f"Haiku extraction: {len(haiku_outputs)} fields, "
                     f"confidence={haiku_result.confidence:.2f}, "
