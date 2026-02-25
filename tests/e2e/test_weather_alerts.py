@@ -272,18 +272,22 @@ class TestCacheHit:
 
         init_weather_schema()
 
-        # Pre-populate cache
+        # Pre-populate cache (including summary_json so cache is valid)
         alert_data = [{"alert_id": "cached-1", "severity": "warning", "nws_severity": "Severe",
                        "event": "Winter Storm Warning", "headline": "Cached alert",
                        "description": "From cache", "area": "WY", "onset": "", "expires": "",
                        "urgency": "Expected", "waypoint_lat": None, "waypoint_lon": None, "source": "state"}]
+        summary_data = {"ai_summary": "Cached: Winter Storm Warning along route.",
+                        "risk_level": "medium", "optimal_pickup_suggestion": None,
+                        "recommended_pickup_date": None, "recommendation_reason": None, "scenarios": []}
         now_utc = datetime.now(timezone.utc)
         expires = (now_utc + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
         with get_connection() as conn:
             conn.execute(
-                "INSERT INTO weather_cache (cache_key, alerts_json, route_states, checked_at, expires_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO weather_cache (cache_key, alerts_json, route_states, summary_json, checked_at, expires_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 ("route:75201:1", json_mod.dumps(alert_data), json_mod.dumps(["TX", "MA"]),
+                 json_mod.dumps(summary_data),
                  now_utc.strftime("%Y-%m-%d %H:%M:%S"), expires),
             )
             conn.commit()

@@ -158,25 +158,38 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             </div>
           )}
 
-          {/* AI Summary + Recommendation */}
-          {data?.ai_summary && (
+          {/* 1. Warehouse / Destination */}
+          {data?.warehouse_used && (
+            <div className="p-2 bg-blue-50 border border-blue-200 rounded mb-2 text-xs text-blue-700">
+              <span className="font-medium">Destination:</span>{' '}
+              {data.warehouse_used.name}
+              {data.warehouse_used.city && `, ${data.warehouse_used.city}`}
+              {data.warehouse_used.state && ` ${data.warehouse_used.state}`}
+              <span className="text-blue-500 ml-2">({data.warehouse_used.selection_reason})</span>
+            </div>
+          )}
+
+          {/* 2. Risk Level Badge + AI Summary */}
+          {data && (data.ai_summary || data.risk_level) && (
             <div className={`p-3 rounded border mb-2 ${
               data.risk_level === 'high' ? 'bg-red-50 border-red-300' :
               data.risk_level === 'medium' ? 'bg-amber-50 border-amber-200' :
               'bg-green-50 border-green-200'
             }`}>
               <div className="flex items-start gap-2">
-                <span className={`mt-0.5 text-xs font-semibold px-1.5 py-0.5 rounded ${
+                <span className={`mt-0.5 text-xs font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${
                   data.risk_level === 'high' ? 'bg-red-200 text-red-800' :
                   data.risk_level === 'medium' ? 'bg-amber-200 text-amber-800' :
                   'bg-green-200 text-green-800'
-                }`}>{data.risk_level.toUpperCase()} RISK</span>
-                <p className="text-sm text-gray-800">{data.ai_summary}</p>
+                }`}>{(data.risk_level || 'low').toUpperCase()} RISK</span>
+                {data.ai_summary && (
+                  <p className="text-sm text-gray-800">{data.ai_summary}</p>
+                )}
               </div>
 
-              {/* Recommended pickup date */}
+              {/* 3. Recommended pickup date */}
               {data.recommended_pickup_date && (
-                <div className="mt-2 ml-14 p-2 bg-white bg-opacity-60 rounded border border-gray-200">
+                <div className="mt-2 p-2 bg-white bg-opacity-60 rounded border border-gray-200">
                   <div className="flex items-center gap-2">
                     <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -191,16 +204,16 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
                 </div>
               )}
 
-              {/* Fallback: old optimal_pickup_suggestion if no structured recommendation */}
+              {/* Fallback: old optimal_pickup_suggestion */}
               {!data.recommended_pickup_date && data.optimal_pickup_suggestion && (
-                <p className="text-xs mt-2 ml-14 text-gray-600">
+                <p className="text-xs mt-2 text-gray-600">
                   Suggested pickup: after {data.optimal_pickup_suggestion}
                 </p>
               )}
             </div>
           )}
 
-          {/* Pickup Scenarios */}
+          {/* 4. Pickup Scenarios */}
           {data?.scenarios?.length > 0 && (
             <div className="mb-2 space-y-1">
               <p className="text-xs font-medium text-gray-600 mb-1">Pickup Scenarios:</p>
@@ -224,18 +237,7 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             </div>
           )}
 
-          {/* Warehouse used info */}
-          {data?.warehouse_used && (
-            <div className="p-2 bg-blue-50 border border-blue-200 rounded mb-2 text-xs text-blue-700">
-              <span className="font-medium">Destination:</span>{' '}
-              {data.warehouse_used.name}
-              {data.warehouse_used.city && `, ${data.warehouse_used.city}`}
-              {data.warehouse_used.state && ` ${data.warehouse_used.state}`}
-              <span className="text-blue-500 ml-2">({data.warehouse_used.selection_reason})</span>
-            </div>
-          )}
-
-          {/* Transit info */}
+          {/* 5. Transit info */}
           {data?.transit && (
             <div className="p-2 bg-gray-50 border border-gray-200 rounded mb-2 flex items-center gap-4 text-xs text-gray-600">
               <span className="font-medium text-gray-700">Transit:</span>

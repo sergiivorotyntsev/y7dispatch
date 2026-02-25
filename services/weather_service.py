@@ -193,10 +193,16 @@ def init_weather_schema():
                 cache_key TEXT UNIQUE NOT NULL,
                 alerts_json TEXT,
                 route_states TEXT,
+                summary_json TEXT,
                 checked_at TIMESTAMP DEFAULT (datetime('now')),
                 expires_at TIMESTAMP
             )
         """)
+        # Add summary_json column if table already exists without it
+        try:
+            conn.execute("ALTER TABLE weather_cache ADD COLUMN summary_json TEXT")
+        except Exception:
+            pass  # Column already exists
         conn.commit()
 
 
@@ -706,7 +712,8 @@ class WeatherService:
         try:
             with get_connection() as conn:
                 row = conn.execute(
-                    "SELECT alerts_json, route_states, checked_at, expires_at FROM weather_cache "
+                    "SELECT alerts_json, route_states, checked_at, expires_at, summary_json "
+                    "FROM weather_cache "
                     "WHERE cache_key = ? AND expires_at > datetime('now')",
                     (cache_key,),
                 ).fetchone()
@@ -717,6 +724,18 @@ class WeatherService:
             alerts_data = json.loads(row[0]) if row[0] else []
             route_states = json.loads(row[1]) if row[1] else []
             checked_at = row[2] or ""
+
+            # Restore AI summary fields from cache
+            summary = {}
+            try:
+                summary = json.loads(row[4]) if row[4] else {}
+            except (json.JSONDecodeError, IndexError):
+                pass
+
+            # If cached entry is missing summary data, treat as cache miss
+            # so it gets re-fetched with AI summary generation
+            if not summary.get("ai_summary"):
+                return None
 
             alerts = [RouteAlert(**a) for a in alerts_data]
 
@@ -735,6 +754,12 @@ class WeatherService:
                 waypoints_checked=0,
                 cached=True,
                 checked_at=checked_at,
+                ai_summary=summary.get("ai_summary"),
+                risk_level=summary.get("risk_level", "low"),
+                optimal_pickup_suggestion=summary.get("optimal_pickup_suggestion"),
+                recommended_pickup_date=summary.get("recommended_pickup_date"),
+                recommendation_reason=summary.get("recommendation_reason"),
+                scenarios=summary.get("scenarios", []),
             )
         except Exception as e:
             logger.warning("Weather cache read error: %s", e)
@@ -747,17 +772,26 @@ class WeatherService:
                 [asdict(a) for a in result.alerts]
             )
             route_states_json = json.dumps(result.route_states)
+            summary_json = json.dumps({
+                "ai_summary": result.ai_summary,
+                "risk_level": result.risk_level,
+                "optimal_pickup_suggestion": result.optimal_pickup_suggestion,
+                "recommended_pickup_date": result.recommended_pickup_date,
+                "recommendation_reason": result.recommendation_reason,
+                "scenarios": result.scenarios,
+            })
             now = datetime.now(timezone.utc)
             expires = now + timedelta(seconds=WEATHER_CACHE_TTL)
 
             with get_connection() as conn:
                 conn.execute(
-                    "INSERT INTO weather_cache (cache_key, alerts_json, route_states, checked_at, expires_at) "
-                    "VALUES (?, ?, ?, ?, ?) "
+                    "INSERT INTO weather_cache (cache_key, alerts_json, route_states, summary_json, checked_at, expires_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(cache_key) DO UPDATE SET "
                     "alerts_json=excluded.alerts_json, route_states=excluded.route_states, "
+                    "summary_json=excluded.summary_json, "
                     "checked_at=excluded.checked_at, expires_at=excluded.expires_at",
-                    (cache_key, alerts_json, route_states_json,
+                    (cache_key, alerts_json, route_states_json, summary_json,
                      now.strftime("%Y-%m-%d %H:%M:%S"), expires.strftime("%Y-%m-%d %H:%M:%S")),
                 )
                 conn.commit()
