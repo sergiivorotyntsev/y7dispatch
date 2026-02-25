@@ -5,7 +5,6 @@ Run with: uvicorn api.main:app --reload --port 8000
 Endpoints:
 - /api/settings - Configuration management
 - /api/test - Test/Sandbox (upload, preview, dry-run)
-- /api/runs - Run history and logs
 - /api/health - Health check
 - /api/auction-types - Auction type management
 - /api/documents - Document upload and management
@@ -61,7 +60,6 @@ from api.routes import (
     models,
     pricing,
     reviews,
-    runs,
     settings,
     sheets,
     templates,
@@ -248,7 +246,6 @@ app.include_router(auth_router)
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(test.router, prefix="/api/test", tags=["Test/Sandbox"])
-app.include_router(runs.router, prefix="/api/runs", tags=["Runs/History"])
 
 # Include new MVP routers (routes have their own prefix)
 app.include_router(auction_types.router)

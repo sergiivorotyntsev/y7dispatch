@@ -859,6 +859,22 @@ async def get_run_preflight(
             )
         )
 
+    # Warn if VIN check digit (position 9) is invalid
+    vin = outputs.get("vehicle_vin", "")
+    if vin and len(vin) == 17:
+        from services.vin_validator import vin_check_digit
+
+        if not vin_check_digit(vin):
+            warning_count += 1
+            issues.append(
+                PreflightIssue(
+                    field_key="vehicle_vin",
+                    issue="VIN check digit (position 9) does not match — verify VIN is correct.",
+                    severity="warning",
+                    cd_key="vehicles[0].vin",
+                )
+            )
+
     # Also check for low confidence EXTRACTED fields
     review_items = ReviewItemRepository.get_by_run(run_id)
     # Skip confidence warnings for non-extracted source types
