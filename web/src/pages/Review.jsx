@@ -174,9 +174,35 @@ function Review() {
     setExpirationDate(expDate.toISOString().split('T')[0])
   }
 
-  // Stream 1 (FAST): Core data — extraction + review items + document
-  // Sets loading=false as soon as viewer + fields are ready.
-  // Warehouses, pricing, attachments load independently after.
+  // ═══════════════════════════════════════════════════════════════
+  // LOADING ARCHITECTURE — 5 INDEPENDENT STREAMS
+  //
+  // Stream 1 (FAST, <500ms): Core data — ONLY thing that blocks page render
+  //   → extraction + document + review items → setLoading(false) → RENDER
+  //
+  // Stream 2: Warehouses — independent, populates DeliverySection dropdown
+  //   → api.listWarehouses() → setWarehouses (DeliverySection fetches distance internally)
+  //
+  // Stream 3: Pricing — independent, populates PricingPaymentSection
+  //   → api.getFullPricing() → setPricing
+  //
+  // Stream 4: Attachments — independent, populates EmailContextPanel
+  //   → api.listAttachments() → setAttachments
+  //
+  // Stream 5: Load ID — auto-generates when make/model available
+  //
+  // Child components manage their OWN loading internally:
+  //   - DeliverySection: fetches distance options, shows "Calculating distances..."
+  //   - WeatherAlertsPanel: fetches weather alerts, shows "Checking weather..."
+  //   - EmailContextPanel: fetches email context, hides until ready
+  //   - PreflightBanner: fetches preflight, shows skeleton
+  //
+  // RULE: NEVER add slow calls (warehouse/pricing/weather/distance) to Stream 1.
+  // RULE: NEVER check secondary loading states in the main page gate (line ~716).
+  // RULE: Each stream fires independently — no Promise.all bundling across streams.
+  // ═══════════════════════════════════════════════════════════════
+
+  // === STREAM 1: Core data (FAST — the ONLY thing that blocks page render) ===
   const fetchData = useCallback(async () => {
     if (!runId) return
 
@@ -311,25 +337,13 @@ function Review() {
     fetchData()
   }, [fetchData])
 
-  // Stream 2 (MEDIUM): Warehouses + pricing + attachments — load independently
-  // Never blocks the PDF viewer or form fields.
+  // === STREAM 2: Warehouses (INDEPENDENT — never blocks page) ===
   useEffect(() => {
     if (!run) return
-    const out = run.outputs || {}
-
-    async function loadSecondary() {
-      // Load warehouses, pricing, attachments in parallel
-      const [whList] = await Promise.all([
-        loadWarehouses(),
-        loadPricing(),
-        api.listAttachments(runId).then(data => {
-          setAttachments(data.attachments || [])
-        }).catch(err => {
-          console.debug('No attachments for run:', err.message)
-        }),
-      ])
-
-      // Populate transport instructions from warehouse if not saved
+    async function initWarehouses() {
+      const whList = await loadWarehouses()
+      // Populate transport instructions from warehouse if not already saved
+      const out = run.outputs || {}
       if (out.warehouse_id && !out.transport_special_instructions) {
         const wh = whList.find(w => w.id === out.warehouse_id || w.id.toString() === String(out.warehouse_id))
         if (wh?.transport_special_instructions) {
@@ -337,11 +351,26 @@ function Review() {
         }
       }
     }
+    initWarehouses()
+  }, [run, loadWarehouses])
 
-    loadSecondary()
-  }, [run, runId, loadWarehouses, loadPricing])
+  // === STREAM 3: Pricing (INDEPENDENT — never blocks page) ===
+  // Fires once when run loads. Urgency changes handled by handleUrgencyChange directly.
+  useEffect(() => {
+    if (!run) return
+    loadPricing()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run]) // Excludes loadPricing ref — avoids cascade reload when urgency changes
 
-  // Auto-generate Load ID when make/model are available
+  // === STREAM 4: Attachments (INDEPENDENT — never blocks page) ===
+  useEffect(() => {
+    if (!run || !runId) return
+    api.listAttachments(runId)
+      .then(data => setAttachments(data.attachments || []))
+      .catch(err => console.debug('No attachments for run:', err.message))
+  }, [run, runId])
+
+  // === STREAM 5: Load ID (INDEPENDENT — auto-generates when make/model available) ===
   useEffect(() => {
     const make = fields.vehicle_make?.corrected
     const model = fields.vehicle_model?.corrected
@@ -712,13 +741,16 @@ function Review() {
     }
   }
 
-  // Loading state
+  // ═══ PAGE RENDER GATE — Stream 1 ONLY ═══
+  // This checks ONLY the core loading state (extraction + document + review items).
+  // NEVER add checks for warehouse/pricing/weather/distance/attachments here.
+  // Those load independently in Streams 2-5 with their own section-level spinners.
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading extraction data...</p>
+          <p className="mt-4 text-gray-600">Loading document...</p>
         </div>
       </div>
     )
