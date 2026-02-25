@@ -2,6 +2,7 @@ import { Fragment } from 'react'
 import { parseUTCDate } from '../../utils/date'
 import WeatherIndicator from '../WeatherIndicator'
 import { groupByDate } from '../../hooks/useDocuments'
+import CopyableCell from './CopyableCell'
 
 /**
  * DocumentsTable — Table with date groups, document rows, pagination
@@ -220,17 +221,21 @@ function DocumentRow({
           className="form-checkbox h-4 w-4 text-primary-600"
         />
       </td>
-      <td className="px-3 py-3">
-        <span className="font-mono text-xs font-medium text-primary-700">{loadId || '-'}</span>
+      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+        <CopyableCell value={loadId} mono />
       </td>
-      <td className="px-4 py-3">
-        <span className="font-mono text-xs text-gray-900" title={vin}>{vin || '-'}</span>
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        <CopyableCell value={vin} mono />
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col">
           <span className="text-sm font-medium text-gray-900">{vehicleDesc}</span>
           {lotNumber && <span className="text-xs text-gray-500">Lot: {lotNumber}</span>}
-          {gatePass && <span className="text-xs text-gray-500">GP: {gatePass}</span>}
+          {gatePass && (
+            <span className="text-xs text-gray-500" onClick={(e) => e.stopPropagation()}>
+              GP: <CopyableCell value={gatePass} mono />
+            </span>
+          )}
         </div>
       </td>
       <td className="px-4 py-3">
