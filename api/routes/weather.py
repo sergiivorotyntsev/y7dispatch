@@ -206,8 +206,8 @@ async def get_route_alerts_for_run(
     # Fallback: geocode from city + state when ZIP is missing or unresolvable
     if not origin_coords and pickup_city and pickup_state:
         try:
-            from services.warehouse import WarehouseService
-            ws = WarehouseService()
+            from services.warehouse import WarehouseRouter
+            ws = WarehouseRouter()
             origin_coords = ws.geocode(f"{pickup_city}, {pickup_state}")
             if origin_coords:
                 logger.info("Weather: resolved coords from city/state: %s, %s", pickup_city, pickup_state)
