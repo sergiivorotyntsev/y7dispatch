@@ -14,10 +14,11 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
   const [alertsExpanded, setAlertsExpanded] = useState(false) // NWS alert details collapsed
 
   const fetchAlerts = useCallback(async () => {
-    if (!runId) return
+    if (!runId || !warehouseId) return
     setLoading(true)
     setError(null)
     setInfoMessage(null)
+    setData(null) // clear stale data when re-fetching (e.g. warehouse changed)
     try {
       const result = await api.getRouteAlertsForRun(runId, warehouseId)
       setData(result)
@@ -42,6 +43,8 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
 
   // Don't render if no runId
   if (!runId) return null
+
+  const waitingForWarehouse = !warehouseId
 
   // Severity styles
   const severityStyles = {
@@ -108,10 +111,15 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
           </svg>
           Route Weather
-          {loading && (
+          {waitingForWarehouse && (
+            <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium">
+              Waiting...
+            </span>
+          )}
+          {!waitingForWarehouse && loading && (
             <span className="ml-2 animate-spin inline-block w-3 h-3 border-2 border-gray-300 border-t-primary-600 rounded-full"></span>
           )}
-          {!loading && data && (
+          {!waitingForWarehouse && !loading && data && (
             hasAlerts ? (
               <span className="ml-2 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">
                 {alertCount} alert{alertCount !== 1 ? 's' : ''}
@@ -122,7 +130,7 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
               </span>
             )
           )}
-          {!loading && !data && infoMessage && (
+          {!waitingForWarehouse && !loading && !data && infoMessage && (
             <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium">
               N/A
             </span>
@@ -136,8 +144,18 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
       {/* Body */}
       {!isCollapsed && (
         <div className="mt-3">
+          {/* Waiting for warehouse selection */}
+          {waitingForWarehouse && (
+            <div className="p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-500 flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Select a delivery warehouse to check route weather.
+            </div>
+          )}
+
           {/* Loading */}
-          {loading && !data && (
+          {!waitingForWarehouse && loading && !data && (
             <div className="p-4 text-center">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600 mx-auto mb-2"></div>
               <p className="text-xs text-gray-500">Checking weather along route...</p>
