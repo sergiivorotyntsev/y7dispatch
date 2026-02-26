@@ -163,41 +163,9 @@ class GeocodeCache:
 class WarehouseRouter:
     """Routes pickups to nearest warehouse."""
 
-    # Hardcoded warehouses from your Excel (can be overridden by data file)
-    DEFAULT_WAREHOUSES = [
-        {
-            "id": "NJ",
-            "name": "New Jersey Warehouse",
-            "state": "NJ",
-            "address": "123 Industrial Blvd",
-            "city": "Newark",
-            "zip_code": "07102",
-        },
-        {
-            "id": "GA",
-            "name": "Georgia Warehouse",
-            "state": "GA",
-            "address": "456 Logistics Way",
-            "city": "Atlanta",
-            "zip_code": "30301",
-        },
-        {
-            "id": "CA",
-            "name": "California Warehouse",
-            "state": "CA",
-            "address": "789 Transport Dr",
-            "city": "Los Angeles",
-            "zip_code": "90001",
-        },
-        {
-            "id": "TX",
-            "name": "Texas Warehouse",
-            "state": "TX",
-            "address": "321 Freight Ln",
-            "city": "Houston",
-            "zip_code": "77001",
-        },
-    ]
+    # No hardcoded defaults — warehouses are managed via Settings UI.
+    # Override via data_file parameter or add warehouses through the API.
+    DEFAULT_WAREHOUSES = []
 
     def __init__(
         self,

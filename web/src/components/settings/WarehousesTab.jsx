@@ -109,9 +109,9 @@ export default function WarehousesTab() {
         showMessage('success', 'Warehouse created')
       }
       resetForm()
-      loadWarehouses()
+      await loadWarehouses()
     } catch (err) {
-      showMessage('error', err.message)
+      showMessage('error', err.message || 'Failed to save warehouse')
     } finally {
       setSaving(false)
     }
@@ -122,9 +122,9 @@ export default function WarehousesTab() {
     try {
       await api.deleteWarehouseFull(id, true)
       showMessage('success', 'Warehouse deleted')
-      loadWarehouses()
+      await loadWarehouses()
     } catch (err) {
-      showMessage('error', err.message)
+      showMessage('error', err.message || 'Failed to delete warehouse')
     }
   }
 

@@ -189,7 +189,7 @@ STEP 4 — ARCHITECT VERIFICATION:
 
 ## Key Business Rules (from CD_FIELD_CONFIG)
 
-- Load ID format: MDD + first3Make + first2Model + sequence (216TOYPR, 216TOYPR2)
+- Load ID format: MDD + first3Make + first2Model + sequence (216TOYPR1, 216TOYPR2)
 - Trailer Type: default OPEN
 - Inoperable: default false (OPERABLE)
 - Available Date: default today, Manheim exception if release date in document

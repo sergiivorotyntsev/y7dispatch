@@ -123,7 +123,7 @@ class WarehouseListResponse(BaseModel):
 
 
 def init_warehouses_schema():
-    """Initialize warehouses table and sync from YAML if empty."""
+    """Initialize warehouses table schema (no seed data — users add warehouses via UI)."""
     with get_connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS warehouses (
@@ -224,10 +224,8 @@ def init_warehouses_schema():
 
         conn.commit()
 
-        # Auto-sync from YAML if table is empty
-        count = conn.execute("SELECT COUNT(*) FROM warehouses").fetchone()[0]
-        if count == 0:
-            _sync_warehouses_from_yaml(conn)
+        # No auto-sync — warehouses are user-managed via Settings UI.
+        # Use POST /api/warehouses/sync-yaml to manually import from YAML if needed.
 
 
 def _sync_warehouses_from_yaml(conn):
