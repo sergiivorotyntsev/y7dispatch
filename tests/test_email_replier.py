@@ -612,7 +612,8 @@ class TestTemplateFromDB:
                 body_html TEXT NOT NULL,
                 description TEXT,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_by TEXT
+                updated_by TEXT,
+                version INTEGER DEFAULT 1
             )
         """)
         conn.commit()
@@ -679,55 +680,51 @@ def _patch_get_connection_all(monkeypatch, conn):
 
 
 class TestSeedDefaultTemplates:
+    _TEMPLATE_TABLE_SQL = """
+        CREATE TABLE IF NOT EXISTS email_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_key TEXT UNIQUE NOT NULL,
+            subject_template TEXT,
+            body_html TEXT NOT NULL,
+            description TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_by TEXT,
+            version INTEGER DEFAULT 1
+        )
+    """
+
     def test_seed_creates_template(self, test_db, monkeypatch):
         _patch_get_connection_all(monkeypatch, test_db)
 
-        # Create table first
-        test_db.execute("""
-            CREATE TABLE IF NOT EXISTS email_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_key TEXT UNIQUE NOT NULL,
-                subject_template TEXT,
-                body_html TEXT NOT NULL,
-                description TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_by TEXT
-            )
-        """)
+        test_db.execute(self._TEMPLATE_TABLE_SQL)
         test_db.commit()
 
         from api.routes.email_log import seed_default_templates
         seed_default_templates()
 
         row = test_db.execute(
-            "SELECT template_key, body_html, description FROM email_templates WHERE template_key = 'reply_confirmation'"
+            "SELECT template_key, body_html, description, version FROM email_templates WHERE template_key = 'reply_confirmation'"
         ).fetchone()
         assert row is not None
         assert "{{load_id}}" in row["body_html"]
         assert "{{greeting}}" in row["body_html"]
         assert "{{vin}}" in row["body_html"]
         assert "Confirmation email" in row["description"]
+        assert row["version"] == 2
+        # v2 template uses table-based layout
+        assert "<table" in row["body_html"]
+        assert "We will notify" not in row["body_html"]
 
-    def test_seed_migrates_old_placeholders(self, test_db, monkeypatch):
-        """Seed migrates {{cd_listing_id}} → {{load_id}} and fixes signature."""
+    def test_seed_migrates_v1_to_v2(self, test_db, monkeypatch):
+        """Seed upgrades v1 template to v2 redesigned HTML."""
         _patch_get_connection_all(monkeypatch, test_db)
 
-        test_db.execute("""
-            CREATE TABLE IF NOT EXISTS email_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_key TEXT UNIQUE NOT NULL,
-                subject_template TEXT,
-                body_html TEXT NOT NULL,
-                description TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_by TEXT
-            )
-        """)
-        # Insert old-style template
+        test_db.execute(self._TEMPLATE_TABLE_SQL)
+        # Insert v1 template (old style)
         test_db.execute(
-            "INSERT INTO email_templates (template_key, body_html, description) VALUES (?, ?, ?)",
+            "INSERT INTO email_templates (template_key, body_html, description, version) VALUES (?, ?, ?, 1)",
             ("reply_confirmation",
-             "<p>{{greeting}}</p><p>{{cd_listing_id}}</p><p>Y7 Agency / Broadway Motoring Inc</p>",
+             "<p>{{greeting}}</p><p>{{load_id}}</p><p>Y7 Agency</p>",
              "Confirmation email"),
         )
         test_db.commit()
@@ -736,27 +733,39 @@ class TestSeedDefaultTemplates:
         seed_default_templates()
 
         row = test_db.execute(
-            "SELECT body_html FROM email_templates WHERE template_key = 'reply_confirmation'"
+            "SELECT body_html, version FROM email_templates WHERE template_key = 'reply_confirmation'"
         ).fetchone()
-        assert "{{cd_listing_id}}" not in row["body_html"]
+        assert row["version"] == 2
+        assert "<table" in row["body_html"]  # v2 uses table layout
         assert "{{load_id}}" in row["body_html"]
-        assert "Broadway Motoring" not in row["body_html"]
-        assert "Y7 Agency" in row["body_html"]
+        assert "{{vin}}" in row["body_html"]
+        assert "We will notify" not in row["body_html"]
+
+    def test_seed_preserves_user_edited_v2(self, test_db, monkeypatch):
+        """Seed does NOT overwrite template already at version 2."""
+        _patch_get_connection_all(monkeypatch, test_db)
+
+        test_db.execute(self._TEMPLATE_TABLE_SQL)
+        custom_html = "<p>{{greeting}}</p><p>Custom user template {{load_id}}</p>"
+        test_db.execute(
+            "INSERT INTO email_templates (template_key, body_html, description, version) VALUES (?, ?, ?, 2)",
+            ("reply_confirmation", custom_html, "Confirmation email"),
+        )
+        test_db.commit()
+
+        from api.routes.email_log import seed_default_templates
+        seed_default_templates()
+
+        row = test_db.execute(
+            "SELECT body_html, version FROM email_templates WHERE template_key = 'reply_confirmation'"
+        ).fetchone()
+        assert row["body_html"] == custom_html  # NOT overwritten
+        assert row["version"] == 2
 
     def test_seed_is_idempotent(self, test_db, monkeypatch):
         _patch_get_connection_all(monkeypatch, test_db)
 
-        test_db.execute("""
-            CREATE TABLE IF NOT EXISTS email_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_key TEXT UNIQUE NOT NULL,
-                subject_template TEXT,
-                body_html TEXT NOT NULL,
-                description TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_by TEXT
-            )
-        """)
+        test_db.execute(self._TEMPLATE_TABLE_SQL)
         test_db.commit()
 
         from api.routes.email_log import seed_default_templates
@@ -789,7 +798,8 @@ def template_db(tmp_path, monkeypatch):
             body_html TEXT NOT NULL,
             description TEXT,
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_by TEXT
+            updated_by TEXT,
+            version INTEGER DEFAULT 1
         )
     """)
     from api.routes.email_log import _DEFAULT_REPLY_CONFIRMATION_HTML

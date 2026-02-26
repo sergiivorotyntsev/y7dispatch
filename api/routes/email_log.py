@@ -97,83 +97,68 @@ def init_email_templates_table():
                 updated_by TEXT
             )
         """)
+        # Migration: add version column for template upgrades
+        try:
+            conn.execute("ALTER TABLE email_templates ADD COLUMN version INTEGER DEFAULT 1")
+        except Exception:
+            pass  # Column already exists
         conn.commit()
 
 
 _DEFAULT_REPLY_CONFIRMATION_HTML = """\
-<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;">
-<p>{{greeting}}</p>
-<p>We have received your transport request and created a listing.</p>
-<div style="background-color:#e8f5e9;border:2px solid #4caf50;border-radius:8px;padding:16px 20px;margin:16px 0;text-align:center;">
-  <div style="font-size:12px;color:#666;margin-bottom:4px;">Load ID</div>
-  <div style="font-size:24px;font-weight:bold;color:#2e7d32;">{{load_id}}</div>
-  <div style="font-size:13px;color:#555;margin-top:8px;">VIN: {{vin}}</div>
-</div>
-<div style="background-color:#f8f9fa;border-left:4px solid #1976d2;border-radius:4px;padding:12px 16px;margin:16px 0;">
-  <div style="font-size:12px;color:#666;margin-bottom:4px;">Delivery Warehouse</div>
-  <div style="font-weight:bold;">{{warehouse_name}}</div>
-  <div>{{warehouse_full_address}}</div>
-</div>
-<p><strong>Status:</strong> Listed &mdash; Searching for carriers</p>
-<p>We will notify you once a carrier is assigned.</p>
-<p style="margin-top:24px;">Best regards,<br/>Y7 Agency</p>
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;max-width:520px;">
+  <p>{{greeting}}</p>
+  <p>We have received your transport request and created a listing.</p>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:480px;margin:16px 0;">
+    <tr>
+      <td style="background-color:#f0faf0;border:1px solid #4caf50;border-radius:8px;padding:16px 20px;text-align:center;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px;">Load ID</div>
+        <div style="font-size:22px;font-weight:bold;color:#2e7d32;">{{load_id}}</div>
+        <div style="font-size:13px;color:#555;margin-top:6px;">VIN: {{vin}}</div>
+      </td>
+    </tr>
+  </table>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:480px;margin:16px 0;">
+    <tr>
+      <td style="background-color:#f5f8fc;border:1px solid #bbdefb;border-left:4px solid #1976d2;border-radius:4px;padding:12px 16px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px;">Delivery Warehouse</div>
+        <div style="font-weight:bold;color:#333;">{{warehouse_name}}</div>
+        <div style="color:#555;">{{warehouse_full_address}}</div>
+      </td>
+    </tr>
+  </table>
+  <p><strong>Status:</strong> Listed &mdash; Searching for carriers</p>
+  <p style="margin-top:24px;color:#555;">Best regards,<br/><strong>Y7 Agency</strong></p>
 </div>"""
 
 
 def seed_default_templates():
     """Insert default email templates if they don't exist (INSERT OR IGNORE).
 
-    Also migrates existing templates:
-    - {{cd_listing_id}} → {{load_id}}
-    - Old signature → new signature
-    - Ensures {{vin}} placeholder is present
+    Also migrates existing templates via version column:
+    - version 1 → 2: redesigned HTML (table-based layout, max-width, no notify text)
+    - Legacy fixes: {{cd_listing_id}} → {{load_id}}, signature cleanup
     """
     with get_connection() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO email_templates
-               (template_key, body_html, description)
-               VALUES (?, ?, ?)""",
+               (template_key, body_html, description, version)
+               VALUES (?, ?, ?, 2)""",
             (
                 "reply_confirmation",
                 _DEFAULT_REPLY_CONFIRMATION_HTML,
                 "Confirmation email sent to sender after CD listing is created",
             ),
         )
-        # Migrate: rename {{cd_listing_id}} → {{load_id}} in existing templates
+        # Migrate v1 → v2: full template redesign (only if not user-edited)
         conn.execute(
             """UPDATE email_templates
-               SET body_html = REPLACE(body_html, '{{cd_listing_id}}', '{{load_id}}'),
-                   updated_at = datetime('now'), updated_by = 'migration'
+               SET body_html = ?, version = 2,
+                   updated_at = datetime('now'), updated_by = 'migration_v2'
                WHERE template_key = 'reply_confirmation'
-                 AND body_html LIKE '%{{cd_listing_id}}%'""",
+                 AND (version IS NULL OR version < 2)""",
+            (_DEFAULT_REPLY_CONFIRMATION_HTML,),
         )
-        # Migrate: update signature
-        conn.execute(
-            """UPDATE email_templates
-               SET body_html = REPLACE(body_html, 'Y7 Agency / Broadway Motoring Inc', 'Y7 Agency'),
-                   updated_at = datetime('now'), updated_by = 'migration'
-               WHERE template_key = 'reply_confirmation'
-                 AND body_html LIKE '%Y7 Agency / Broadway Motoring Inc%'""",
-        )
-        # Migrate: ensure {{vin}} is in template (add after {{load_id}} line if missing)
-        row = conn.execute(
-            """SELECT body_html FROM email_templates
-               WHERE template_key = 'reply_confirmation'
-                 AND body_html NOT LIKE '%{{vin}}%'""",
-        ).fetchone()
-        if row:
-            # Insert VIN line after the load_id div
-            updated = row["body_html"].replace(
-                "{{load_id}}</div>\n</div>",
-                '{{load_id}}</div>\n  <div style="font-size:13px;color:#555;margin-top:8px;">VIN: {{vin}}</div>\n</div>',
-            )
-            if updated != row["body_html"]:
-                conn.execute(
-                    """UPDATE email_templates
-                       SET body_html = ?, updated_at = datetime('now'), updated_by = 'migration'
-                       WHERE template_key = 'reply_confirmation'""",
-                    (updated,),
-                )
         conn.commit()
 
 
