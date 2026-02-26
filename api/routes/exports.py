@@ -436,6 +436,11 @@ def build_cd_payload(
             av_dt = datetime.now()
         expiration_date = (av_dt + timedelta(days=30)).strftime("%Y-%m-%d")
 
+    # CD API constraint: expiration cannot be more than 30 days from today
+    max_expiration = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+    if expiration_date > max_expiration:
+        expiration_date = max_expiration
+
     # =================================================================
     # VEHICLE: inoperable, trailer type, color
     # =================================================================
