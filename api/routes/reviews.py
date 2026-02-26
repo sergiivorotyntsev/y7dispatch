@@ -471,6 +471,14 @@ async def submit_review(data: ReviewSubmitRequest):
         if value is not None:
             outputs[key] = value
 
+    # Persist user-corrected field values to outputs_json.
+    # This ensures corrections survive when exporting from Documents page
+    # (which reads outputs_json directly, not Review UI React state).
+    updated_items = ReviewItemRepository.get_by_run(data.run_id)
+    for item in updated_items:
+        if item.corrected_value and item.corrected_value != item.predicted_value:
+            outputs[item.source_key] = item.corrected_value
+
     # Determine status
     new_status = run.status
     if data.mark_for_export:

@@ -176,6 +176,8 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
 
     // Reference info
     buyer_id: { label: 'Buyer ID', category: 'cd_optional', group: 'Reference' },
+    buyer_reference_number: { label: 'Buyer Reference # (Pickup)', category: 'cd_optional', group: 'Pickup' },
+    delivery_buyer_reference: { label: 'Buyer Reference # (Delivery)', category: 'cd_optional', group: 'Delivery/Warehouse' },
     buyer_name: { label: 'Buyer Name', category: 'cd_optional', group: 'Reference' },
     // F2 fix: Unified lot/stock number field
     vehicle_lot: { label: 'Lot/Stock Number', category: 'cd_optional', group: 'Reference' },
@@ -220,6 +222,9 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
       fields.push({ key: 'pickup_phone', value: pickupStop.phone, category: 'cd_optional', group: 'Pickup' })
       fields.push({ key: 'pickup_contact', value: pickupStop.contactName, category: 'cd_optional', group: 'Pickup' })
       fields.push({ key: 'pickup_location_type', value: pickupStop.locationType, category: 'cd_optional', group: 'Pickup' })
+      if (pickupStop.buyerReferenceNumber) {
+        fields.push({ key: 'buyer_reference_number', value: pickupStop.buyerReferenceNumber, category: 'cd_optional', group: 'Pickup' })
+      }
     }
 
     // Delivery/Warehouse (from stops[1] or destination)
@@ -231,6 +236,9 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
       fields.push({ key: 'delivery_zip', value: deliveryStop.postalCode, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_phone', value: deliveryStop.phone, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_contact', value: deliveryStop.contactName, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      if (deliveryStop.buyerReferenceNumber) {
+        fields.push({ key: 'delivery_buyer_reference', value: deliveryStop.buyerReferenceNumber, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      }
     }
 
     // Pricing

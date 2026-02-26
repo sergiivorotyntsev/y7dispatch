@@ -572,3 +572,112 @@ class TestFullV2PayloadStructure:
         payload, _ = self._build_full_payload()
         assert "loadSpecificTerms" in payload
         assert "transportationReleaseNotes" in payload
+
+
+# ── Test Class 6: User Corrections Override Extraction Data ──────────────────
+
+
+class TestUserCorrectionsInExport:
+    """Export must use user-corrected values from review_items over extracted values."""
+
+    def test_corrected_pickup_address_in_payload(self):
+        """When user corrects pickup_address, export uses corrected value."""
+        from api.database import get_connection
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+
+        # Simulate user correction: change pickup_address
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE review_items SET corrected_value = ? WHERE run_id = ? AND source_key = 'pickup_address'",
+                ("10 INDUSTRIAL DRIVE", run_id),
+            )
+            conn.commit()
+
+        with get_connection() as conn:
+            wh = conn.execute("SELECT id FROM warehouses LIMIT 1").fetchone()
+            wh_id = wh[0] if wh else None
+
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        pickup = payload["stops"][0]
+        assert pickup["address"] == "10 INDUSTRIAL DRIVE", (
+            f"Expected corrected address '10 INDUSTRIAL DRIVE', got '{pickup['address']}'"
+        )
+
+    def test_corrected_city_in_payload(self):
+        """When user corrects pickup_city, export uses corrected value."""
+        from api.database import get_connection
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE review_items SET corrected_value = ? WHERE run_id = ? AND source_key = 'pickup_city'",
+                ("NORTH SMITHFIELD", run_id),
+            )
+            conn.commit()
+
+        with get_connection() as conn:
+            wh = conn.execute("SELECT id FROM warehouses LIMIT 1").fetchone()
+            wh_id = wh[0] if wh else None
+
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        pickup = payload["stops"][0]
+        assert pickup["city"] == "NORTH SMITHFIELD"
+
+    def test_uncorrected_fields_use_predicted_value(self):
+        """Fields without corrections still use predicted (extracted) values."""
+        from api.database import get_connection
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+
+        with get_connection() as conn:
+            wh = conn.execute("SELECT id FROM warehouses LIMIT 1").fetchone()
+            wh_id = wh[0] if wh else None
+
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        pickup = payload["stops"][0]
+        # Original predicted values should be used when no correction
+        assert pickup["state"] == "FL"
+        assert pickup["postalCode"] == "33637"
+
+
+# ── Test Class 7: Copart Extraction Prompt ───────────────────────────────────
+
+
+class TestCopartExtractionPrompt:
+    """HaikuExtractor prompt must include Copart-specific address guidance."""
+
+    def test_prompt_mentions_physical_address_of_lot(self):
+        """Extraction prompt includes PHYSICAL ADDRESS OF LOT guidance for Copart."""
+        from services.haiku_extractor import EXTRACTION_PROMPT
+
+        assert "PHYSICAL ADDRESS OF LOT" in EXTRACTION_PROMPT, (
+            "Extraction prompt must mention 'PHYSICAL ADDRESS OF LOT' for Copart documents"
+        )
+
+    def test_prompt_warns_against_member_address(self):
+        """Extraction prompt warns not to use MEMBER/buyer mailing address."""
+        from services.haiku_extractor import EXTRACTION_PROMPT
+
+        assert "MEMBER" in EXTRACTION_PROMPT and "mailing" in EXTRACTION_PROMPT.lower(), (
+            "Extraction prompt must warn against using MEMBER/buyer mailing address"
+        )

@@ -421,7 +421,7 @@ LISTING_FIELDS: list[ListingField] = [
         key="pickup_buyer_number",
         label="Buyer Reference Number",
         section=FieldSection.PICKUP,
-        cd_api_key="stops[0].buyerNumber",
+        cd_api_key="stops[0].buyerReferenceNumber",
         field_type=FieldType.TEXT,
         required=False,
         display_order=9,
@@ -616,7 +616,7 @@ LISTING_FIELDS: list[ListingField] = [
         key="delivery_buyer_number",
         label="Buyer Reference Number",
         section=FieldSection.DELIVERY,
-        cd_api_key="stops[1].buyerNumber",
+        cd_api_key="stops[1].buyerReferenceNumber",
         field_type=FieldType.TEXT,
         required=False,
         display_order=10,
@@ -1847,7 +1847,7 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     if data.get("pickup_email"):
         pickup_stop["email"] = data["pickup_email"]
     if data.get("pickup_buyer_number"):
-        pickup_stop["buyerNumber"] = data["pickup_buyer_number"]
+        pickup_stop["buyerReferenceNumber"] = data["pickup_buyer_number"]
     # Notes include operating hours as special instructions per V2 spec
     pickup_notes = data.get("pickup_notes", "")
     if data.get("pickup_hours") and pickup_notes:
@@ -1886,7 +1886,7 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     if data.get("delivery_email"):
         delivery_stop["email"] = data["delivery_email"]
     if data.get("delivery_buyer_number"):
-        delivery_stop["buyerNumber"] = data["delivery_buyer_number"]
+        delivery_stop["buyerReferenceNumber"] = data["delivery_buyer_number"]
     # Notes include operating hours as special instructions
     delivery_notes = data.get("delivery_notes", "")
     if data.get("delivery_hours") and delivery_notes:

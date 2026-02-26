@@ -162,10 +162,13 @@ Fields to extract:
     - Do NOT use insurance company names (GEICO, Progressive, State Farm, Allstate, USAA, Liberty Mutual, Farmers, Nationwide, Travelers, Hartford, etc.) as pickup_name — these are sellers, not physical locations.
     - Extract seller_name separately in its own field.
   * OTHER: Use whatever facility/business name is available. Prefer business name over city.
-- pickup_address: Street address
-- pickup_city: City name
-- pickup_state: 2-letter state code
-- pickup_zip: 5-digit ZIP
+- pickup_address: Street address — AUCTION-SPECIFIC RULES:
+  * COPART: Extract ONLY from the "PHYSICAL ADDRESS OF LOT:" section (typically centered in the document header). DO NOT use the MEMBER/buyer mailing address or any other address. Copart documents have a 3-column header layout: left=MEMBER (buyer info with mailing address), center=PHYSICAL ADDRESS OF LOT (this is the correct pickup address), right=SELLER info. Only use the center column address.
+  * IAA: Use the "Pick-Up Location" address from the branch/yard info.
+  * MANHEIM: Use the facility address or offsite release address as applicable.
+- pickup_city: City name (same source rules as pickup_address)
+- pickup_state: 2-letter state code (same source rules as pickup_address)
+- pickup_zip: 5-digit ZIP (same source rules as pickup_address)
 - pickup_phone: Phone number if available, else null
 - buyer_id: Buyer/Member ID number
 - buyer_name: Buyer name/company
