@@ -15,13 +15,14 @@ from api.database import get_connection
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/templates", tags=["Email Templates"])
+router = APIRouter(prefix="/api/email-templates", tags=["Email Templates"])
 
 # Available placeholder variables with descriptions
 AVAILABLE_VARIABLES = [
     {"key": "greeting", "description": "\"Hello {name},\" or \"Hello,\""},
     {"key": "sender_name", "description": "Sender's name (empty if unknown)"},
     {"key": "cd_listing_id", "description": "Central Dispatch Load ID"},
+    {"key": "vin", "description": "Vehicle VIN number(s)"},
     {"key": "warehouse_name", "description": "Warehouse name"},
     {"key": "warehouse_address", "description": "Warehouse street address"},
     {"key": "warehouse_city", "description": "Warehouse city"},
@@ -37,6 +38,7 @@ SAMPLE_DATA = {
     "greeting": "Hello John,",
     "sender_name": "John",
     "cd_listing_id": "CD-12345678",
+    "vin": "4T1BF1FK5EU123456",
     "warehouse_name": "NJ Warehouse",
     "warehouse_address": "123 Main Street",
     "warehouse_city": "Newark",

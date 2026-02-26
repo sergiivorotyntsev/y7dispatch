@@ -651,19 +651,22 @@ export const api = {
   sendConfirmationReply: (runId) => request(`/runs/${runId}/reply`, {
     method: 'POST',
   }),
+  previewConfirmationReply: (runId) => request(`/runs/${runId}/reply/preview`, {
+    method: 'POST',
+  }),
   getReplyStatus: (runId) => request(`/runs/${runId}/reply/status`),
 
   // Email templates
-  getReplyTemplate: () => request('/templates/reply_confirmation'),
-  updateReplyTemplate: (bodyHtml) => request('/templates/reply_confirmation', {
+  getReplyTemplate: () => request('/email-templates/reply_confirmation'),
+  updateReplyTemplate: (bodyHtml) => request('/email-templates/reply_confirmation', {
     method: 'PUT',
     body: JSON.stringify({ body_html: bodyHtml }),
   }),
-  previewReplyTemplate: (bodyHtml) => request('/templates/reply_confirmation/preview', {
+  previewReplyTemplate: (bodyHtml) => request('/email-templates/reply_confirmation/preview', {
     method: 'POST',
     body: JSON.stringify({ body_html: bodyHtml }),
   }),
-  resetReplyTemplate: () => request('/templates/reply_confirmation/reset', {
+  resetReplyTemplate: () => request('/email-templates/reply_confirmation/reset', {
     method: 'POST',
   }),
 }

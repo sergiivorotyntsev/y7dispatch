@@ -32,6 +32,7 @@ class ReplyBodyBuilder:
         {{warehouse_phone}}        - phone number
         {{warehouse_full_address}} - "address, city, state zip"
         {{warehouse_phone_line}}   - phone HTML div (empty if no phone)
+        {{vin}}                    - Vehicle VIN number(s), comma-separated
     """
 
     @staticmethod
@@ -47,7 +48,7 @@ class ReplyBodyBuilder:
             return None
 
     @staticmethod
-    def _build_variables(cd_listing_id: str, warehouse: dict, sender_name: str = None) -> dict:
+    def _build_variables(cd_listing_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> dict:
         """Build the variable dict for template substitution."""
         greeting = f"Hello {sender_name}," if sender_name else "Hello,"
 
@@ -72,6 +73,7 @@ class ReplyBodyBuilder:
             "greeting": greeting,
             "sender_name": sender_name or "",
             "cd_listing_id": cd_listing_id,
+            "vin": vin or "",
             "warehouse_name": wh_name,
             "warehouse_address": wh_address,
             "warehouse_city": wh_city,
@@ -91,12 +93,12 @@ class ReplyBodyBuilder:
         return result
 
     @classmethod
-    def build(cls, cd_listing_id: str, warehouse: dict, sender_name: str = None) -> str:
+    def build(cls, cd_listing_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> str:
         """Build HTML reply body with Load ID and warehouse address.
 
         Loads template from DB; falls back to hardcoded default.
         """
-        variables = cls._build_variables(cd_listing_id, warehouse, sender_name)
+        variables = cls._build_variables(cd_listing_id, warehouse, sender_name, vin=vin)
 
         template = cls._load_template()
         if template:
@@ -133,6 +135,79 @@ class EmailReplier:
             logger.error("EmailReplier.send_confirmation(%d) failed: %s", run_id, e)
             return {"success": False, "error": str(e)}
 
+    def preview_confirmation(self, run_id: int) -> dict:
+        """Build preview of confirmation email with real data, without sending.
+
+        Returns:
+            dict with preview_html, recipient metadata, or error
+        """
+        try:
+            return self._preview_confirmation_impl(run_id)
+        except Exception as e:
+            logger.error("EmailReplier.preview_confirmation(%d) failed: %s", run_id, e)
+            return {"success": False, "error": str(e)}
+
+    def _gather_reply_data(self, run_id: int) -> dict:
+        """Gather all data needed to build a confirmation reply.
+
+        Returns dict with keys: cd_listing_id, warehouse, vin, email_log, sender,
+        sender_name, subject, graph_message_id.
+        On failure returns dict with success=False and error message.
+        """
+        # Get CD listing
+        with get_connection() as conn:
+            listing = conn.execute(
+                "SELECT cd_listing_id, external_id FROM cd_listings WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        if not listing:
+            return {"success": False, "error": "No CD listing found for this run"}
+
+        cd_listing_id = listing["cd_listing_id"]
+
+        # Get warehouse data and VIN
+        warehouse, vin = self._get_warehouse_and_vin_for_run(run_id)
+        if not warehouse:
+            return {"success": False, "error": "No warehouse found for this run"}
+
+        # Find email_log entry for this run
+        email_log = self._find_email_log_for_run(run_id)
+        if not email_log:
+            return {"success": False, "error": "No email_log entry found for this run"}
+
+        return {
+            "success": True,
+            "cd_listing_id": cd_listing_id,
+            "warehouse": warehouse,
+            "vin": vin,
+            "email_log": email_log,
+            "sender": email_log["sender"],
+            "sender_name": email_log["sender_name"],
+            "subject": email_log.get("subject", ""),
+            "graph_message_id": email_log["graph_message_id"],
+        }
+
+    def _preview_confirmation_impl(self, run_id: int) -> dict:
+        data = self._gather_reply_data(run_id)
+        if not data.get("success"):
+            return data
+
+        html_body = self.body_builder.build(
+            data["cd_listing_id"], data["warehouse"], data["sender_name"], vin=data["vin"],
+        )
+
+        return {
+            "success": True,
+            "preview_html": html_body,
+            "recipient_email": data["sender"],
+            "recipient_name": data["sender_name"] or "",
+            "subject": data["subject"],
+            "cd_listing_id": data["cd_listing_id"],
+            "vin": data["vin"],
+            "warehouse_name": data["warehouse"].get("name", ""),
+            "has_graph_id": bool(data["graph_message_id"]),
+        }
+
     def _send_confirmation_impl(self, run_id: int) -> dict:
         now = datetime.now(timezone.utc).isoformat() + "Z"
 
@@ -145,55 +220,42 @@ class EmailReplier:
             if existing:
                 return {"success": True, "already_sent": True}
 
-        # 2. Get CD listing
-        with get_connection() as conn:
-            listing = conn.execute(
-                "SELECT cd_listing_id, external_id FROM cd_listings WHERE run_id = ?",
-                (run_id,),
-            ).fetchone()
-        if not listing:
-            return {"success": False, "error": "No CD listing found for this run"}
+        # 2. Gather all reply data
+        data = self._gather_reply_data(run_id)
+        if not data.get("success"):
+            return data
 
-        cd_listing_id = listing["cd_listing_id"]
-
-        # 3. Get warehouse data
-        warehouse = self._get_warehouse_for_run(run_id)
-        if not warehouse:
-            return {"success": False, "error": "No warehouse found for this run"}
-
-        # 4. Find email_log entry for this run
-        email_log = self._find_email_log_for_run(run_id)
-        if not email_log:
-            return {"success": False, "error": "No email_log entry found for this run"}
-
-        graph_message_id = email_log["graph_message_id"]
+        cd_listing_id = data["cd_listing_id"]
+        graph_message_id = data["graph_message_id"]
         if not graph_message_id:
             return {
                 "success": False,
                 "error": "Graph message ID not available (old email before migration)",
             }
 
-        sender = email_log["sender"]
-        sender_name = email_log["sender_name"]
+        sender = data["sender"]
+        sender_name = data["sender_name"]
 
-        # 5. Create pending reply record
+        # 3. Create pending reply record
         with get_connection() as conn:
             cursor = conn.execute(
                 """INSERT INTO email_replies
                    (email_log_id, run_id, cd_listing_id, status, attempts, created_at)
                    VALUES (?, ?, ?, 'pending', 0, ?)""",
-                (email_log["id"], run_id, cd_listing_id, now),
+                (data["email_log"]["id"], run_id, cd_listing_id, now),
             )
             conn.commit()
             reply_id = cursor.lastrowid
 
-        # 6. Build HTML body
-        html_body = self.body_builder.build(cd_listing_id, warehouse, sender_name)
+        # 4. Build HTML body
+        html_body = self.body_builder.build(
+            cd_listing_id, data["warehouse"], sender_name, vin=data["vin"],
+        )
 
-        # 7. Send via Graph API
+        # 5. Send via Graph API
         result = self.graph.reply_to_message(graph_message_id, html_body)
 
-        # 8. Update reply record
+        # 6. Update reply record
         with get_connection() as conn:
             if result.get("success"):
                 conn.execute(
@@ -224,28 +286,39 @@ class EmailReplier:
         else:
             return {"success": False, "error": result.get("error", "Reply failed")}
 
-    def _get_warehouse_for_run(self, run_id: int) -> Optional[dict]:
-        """Get warehouse data for a run via extraction_runs.outputs_json."""
+    def _get_warehouse_and_vin_for_run(self, run_id: int) -> tuple[Optional[dict], str]:
+        """Get warehouse data and VIN for a run via extraction_runs.outputs_json.
+
+        Returns:
+            (warehouse_dict or None, vin_string)
+        """
         with get_connection() as conn:
             run = conn.execute(
                 "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
             ).fetchone()
         if not run or not run["outputs_json"]:
-            return None
+            return None, ""
 
         outputs = run["outputs_json"]
         if isinstance(outputs, str):
             outputs = json.loads(outputs)
 
+        # Extract VIN — single string or list
+        vin_raw = outputs.get("vin", "")
+        if isinstance(vin_raw, list):
+            vin = ", ".join(str(v) for v in vin_raw if v)
+        else:
+            vin = str(vin_raw) if vin_raw else ""
+
         warehouse_id = outputs.get("warehouse_id")
         if not warehouse_id:
-            return None
+            return None, vin
 
         with get_connection() as conn:
             wh = conn.execute(
                 "SELECT * FROM warehouses WHERE id = ?", (warehouse_id,)
             ).fetchone()
-        return dict(wh) if wh else None
+        return (dict(wh) if wh else None), vin
 
     def _find_email_log_for_run(self, run_id: int) -> Optional[dict]:
         """Find email_log entry that contains this run_id in extraction_run_ids."""

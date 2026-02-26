@@ -91,6 +91,25 @@ async def send_reply(run_id: int):
     return result
 
 
+@router.post("/{run_id}/reply/preview")
+async def preview_reply(run_id: int):
+    """Preview confirmation email with real data for a run (does not send)."""
+    with get_connection() as conn:
+        run = conn.execute(
+            "SELECT id FROM extraction_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    from api.services.email_replier import EmailReplier
+
+    replier = EmailReplier(graph_reader=None)
+    result = replier.preview_confirmation(run_id)
+    if not result.get("success"):
+        return result
+    return result
+
+
 @router.get("/{run_id}/reply/status")
 async def get_reply_status(run_id: int):
     """Get the status of a confirmation email reply for a run."""

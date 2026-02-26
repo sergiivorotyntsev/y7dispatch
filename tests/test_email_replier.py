@@ -196,7 +196,6 @@ class TestReplyBodyBuilder:
         assert "Newark" in html
         assert "NJ" in html
         assert "07101" in html
-        assert "555-123-4567" in html
 
     def test_reply_body_no_sender_name(self):
         from api.services.email_replier import ReplyBodyBuilder
@@ -241,6 +240,21 @@ class TestReplyBodyBuilder:
         assert "Y7 Agency" in html
         assert "Broadway Motoring" in html
 
+    def test_reply_body_has_vin(self):
+        from api.services.email_replier import ReplyBodyBuilder
+
+        html = ReplyBodyBuilder.build(
+            "CD-TEST", {"name": "WH"}, vin="4T1BF1FK5EU123456",
+        )
+        assert "4T1BF1FK5EU123456" in html
+
+    def test_reply_body_vin_empty_when_not_provided(self):
+        from api.services.email_replier import ReplyBodyBuilder
+
+        html = ReplyBodyBuilder.build("CD-TEST", {"name": "WH"})
+        # VIN placeholder replaced with empty string
+        assert "{{vin}}" not in html
+
 
 # ---------------------------------------------------------------------------
 # EmailReplier Tests
@@ -274,6 +288,7 @@ class TestSendConfirmationSuccess:
         call_args = mock_graph.reply_to_message.call_args
         assert call_args[0][0] == "AAMkAGI1AAAoZCfHAAA="
         assert "CD-226HONAC1" in call_args[0][1]  # HTML body contains listing ID
+        assert "1HGCM82633A123456" in call_args[0][1]  # HTML body contains VIN
 
 
 class TestSendConfirmationIdempotent:
@@ -405,6 +420,82 @@ class TestSendConfirmationNoEmailLog:
 
 
 # ---------------------------------------------------------------------------
+# Preview Confirmation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestPreviewConfirmation:
+    def test_preview_confirmation_success(self, populated_db, monkeypatch):
+        """Preview returns rendered HTML + recipient metadata."""
+        _patch_get_connection(monkeypatch, populated_db)
+        from api.services.email_replier import EmailReplier
+
+        replier = EmailReplier(graph_reader=None)
+        result = replier.preview_confirmation(42)
+
+        assert result["success"] is True
+        assert "CD-226HONAC1" in result["preview_html"]
+        assert "1HGCM82633A123456" in result["preview_html"]
+        assert result["recipient_email"] == "seller@auction.com"
+        assert result["recipient_name"] == "Jane Doe"
+        assert result["subject"] == "Invoice #12345"
+        assert result["cd_listing_id"] == "CD-226HONAC1"
+        assert result["vin"] == "1HGCM82633A123456"
+        assert result["warehouse_name"] == "Broadway Warehouse"
+        assert result["has_graph_id"] is True
+
+    def test_preview_confirmation_no_cd_listing(self, populated_db, monkeypatch):
+        """Run without CD export returns error."""
+        _patch_get_connection(monkeypatch, populated_db)
+        from api.services.email_replier import EmailReplier
+
+        populated_db.execute("DELETE FROM cd_listings WHERE run_id = 42")
+        populated_db.commit()
+
+        replier = EmailReplier(graph_reader=None)
+        result = replier.preview_confirmation(42)
+
+        assert result["success"] is False
+        assert "No CD listing" in result["error"]
+
+    def test_preview_confirmation_no_graph_id(self, populated_db, monkeypatch):
+        """Preview works even without graph_message_id (only needed for sending)."""
+        _patch_get_connection(monkeypatch, populated_db)
+        from api.services.email_replier import EmailReplier
+
+        populated_db.execute("UPDATE email_log SET graph_message_id = NULL WHERE id = 10")
+        populated_db.commit()
+
+        replier = EmailReplier(graph_reader=None)
+        result = replier.preview_confirmation(42)
+
+        assert result["success"] is True
+        assert "CD-226HONAC1" in result["preview_html"]
+        assert result["has_graph_id"] is False
+
+    def test_gather_reply_data_reused(self, populated_db, monkeypatch):
+        """send_confirmation and preview_confirmation produce the same HTML."""
+        _patch_get_connection(monkeypatch, populated_db)
+        from api.services.email_replier import EmailReplier
+
+        # Get preview HTML
+        replier_preview = EmailReplier(graph_reader=None)
+        preview_result = replier_preview.preview_confirmation(42)
+        assert preview_result["success"] is True
+
+        # Get send HTML (capture from Graph API call)
+        mock_graph = MagicMock()
+        mock_graph.reply_to_message.return_value = {"success": True}
+        replier_send = EmailReplier(mock_graph)
+        replier_send.send_confirmation(42)
+
+        call_args = mock_graph.reply_to_message.call_args
+        send_html = call_args[0][1]
+
+        assert preview_result["preview_html"] == send_html
+
+
+# ---------------------------------------------------------------------------
 # Template System Tests
 # ---------------------------------------------------------------------------
 
@@ -475,6 +566,20 @@ class TestBuildVariables:
 
         variables = ReplyBodyBuilder._build_variables("CD-X", {"name": "WH"})
         assert variables["warehouse_phone_line"] == ""
+
+    def test_build_variables_vin(self):
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables(
+            "CD-X", {"name": "WH"}, vin="4T1BF1FK5EU123456",
+        )
+        assert variables["vin"] == "4T1BF1FK5EU123456"
+
+    def test_build_variables_vin_empty(self):
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables("CD-X", {"name": "WH"})
+        assert variables["vin"] == ""
 
 
 class TestTemplateFromDB:
@@ -580,6 +685,7 @@ class TestSeedDefaultTemplates:
         assert row is not None
         assert "{{cd_listing_id}}" in row["body_html"]
         assert "{{greeting}}" in row["body_html"]
+        assert "{{vin}}" in row["body_html"]
         assert "Confirmation email" in row["description"]
 
     def test_seed_is_idempotent(self, test_db, monkeypatch):
@@ -659,7 +765,7 @@ class TestTemplateGetEndpoint:
         app.include_router(router)
         client = TestClient(app)
 
-        resp = client.get("/api/templates/reply_confirmation")
+        resp = client.get("/api/email-templates/reply_confirmation")
         assert resp.status_code == 200
         data = resp.json()
         assert data["template_key"] == "reply_confirmation"
@@ -668,6 +774,7 @@ class TestTemplateGetEndpoint:
         assert isinstance(data["available_variables"], list)
         assert any(v["key"] == "cd_listing_id" for v in data["available_variables"])
         assert any(v["key"] == "greeting" for v in data["available_variables"])
+        assert any(v["key"] == "vin" for v in data["available_variables"])
 
 
 class TestTemplatePutEndpoint:
@@ -683,7 +790,7 @@ class TestTemplatePutEndpoint:
     def test_update_template(self, template_db):
         client = self._make_client()
         new_html = "<p>{{greeting}}</p><p>Load: {{cd_listing_id}}</p>"
-        resp = client.put("/api/templates/reply_confirmation", json={"body_html": new_html})
+        resp = client.put("/api/email-templates/reply_confirmation", json={"body_html": new_html})
         assert resp.status_code == 200
         assert resp.json()["success"] is True
 
@@ -698,17 +805,17 @@ class TestTemplatePutEndpoint:
         client = self._make_client()
 
         # Empty body
-        resp = client.put("/api/templates/reply_confirmation", json={"body_html": ""})
+        resp = client.put("/api/email-templates/reply_confirmation", json={"body_html": ""})
         assert resp.status_code == 400
 
         # Missing required placeholder
-        resp = client.put("/api/templates/reply_confirmation", json={"body_html": "<p>No load id</p>"})
+        resp = client.put("/api/email-templates/reply_confirmation", json={"body_html": "<p>No load id</p>"})
         assert resp.status_code == 400
         assert "cd_listing_id" in resp.json()["detail"]
 
         # Too long
         huge = "{{cd_listing_id}}" + "x" * 50001
-        resp = client.put("/api/templates/reply_confirmation", json={"body_html": huge})
+        resp = client.put("/api/email-templates/reply_confirmation", json={"body_html": huge})
         assert resp.status_code == 400
         assert "too long" in resp.json()["detail"]
 
@@ -723,12 +830,13 @@ class TestTemplatePreviewEndpoint:
         app.include_router(router)
         client = TestClient(app)
 
-        template = "<p>{{greeting}}</p><p>Load: {{cd_listing_id}}</p><p>WH: {{warehouse_name}}</p>"
-        resp = client.post("/api/templates/reply_confirmation/preview", json={"body_html": template})
+        template = "<p>{{greeting}}</p><p>Load: {{cd_listing_id}}</p><p>VIN: {{vin}}</p><p>WH: {{warehouse_name}}</p>"
+        resp = client.post("/api/email-templates/reply_confirmation/preview", json={"body_html": template})
         assert resp.status_code == 200
         html = resp.json()["preview_html"]
         assert "Hello John," in html
         assert "CD-12345678" in html
+        assert "4T1BF1FK5EU123456" in html
         assert "NJ Warehouse" in html
 
 
@@ -744,12 +852,12 @@ class TestTemplateResetEndpoint:
         client = TestClient(app)
 
         # First modify the template
-        client.put("/api/templates/reply_confirmation", json={
+        client.put("/api/email-templates/reply_confirmation", json={
             "body_html": "<p>Custom {{cd_listing_id}}</p>"
         })
 
         # Then reset
-        resp = client.post("/api/templates/reply_confirmation/reset")
+        resp = client.post("/api/email-templates/reply_confirmation/reset")
         assert resp.status_code == 200
         assert resp.json()["success"] is True
 

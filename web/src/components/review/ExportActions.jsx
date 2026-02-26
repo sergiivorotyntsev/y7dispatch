@@ -11,6 +11,158 @@ import { useState, useEffect } from 'react'
 import PreflightBanner from '../PreflightBanner'
 import api from '../../api'
 
+function ReplyPreviewModal({ runId, onClose, onSent }) {
+  const [state, setState] = useState('loading') // loading | error | ready | sending
+  const [preview, setPreview] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    api.previewConfirmationReply(runId).then(data => {
+      if (cancelled) return
+      if (data.success) {
+        setPreview(data)
+        setState('ready')
+      } else {
+        setError(data.error || 'Failed to load preview')
+        setState('error')
+      }
+    }).catch(err => {
+      if (cancelled) return
+      setError(err.message || 'Network error')
+      setState('error')
+    })
+    return () => { cancelled = true }
+  }, [runId])
+
+  const handleSend = async () => {
+    setState('sending')
+    setError(null)
+    try {
+      const result = await api.sendConfirmationReply(runId)
+      if (result.success) {
+        onSent(result)
+      } else if (result.already_sent) {
+        onSent(result)
+      } else {
+        setError(result.error || 'Failed to send reply')
+        setState('ready')
+      }
+    } catch (err) {
+      setError(err.message || 'Network error')
+      setState('ready')
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
+    }}>
+      <div style={{
+        backgroundColor: '#fff', borderRadius: '12px', width: '100%', maxWidth: '680px',
+        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 25px 50px rgba(0,0,0,0.15)',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#111827' }}>
+              Preview Confirmation Email
+            </h3>
+            <button
+              onClick={onClose}
+              disabled={state === 'sending'}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: '20px', color: '#6b7280', lineHeight: 1, padding: '4px',
+              }}
+            >
+              &times;
+            </button>
+          </div>
+          {/* Metadata */}
+          {preview && (
+            <div style={{ marginTop: '12px', fontSize: '13px', color: '#4b5563', lineHeight: '1.7' }}>
+              <div><span style={{ color: '#9ca3af', fontWeight: 500 }}>To:</span> {preview.recipient_name ? `${preview.recipient_name} <${preview.recipient_email}>` : preview.recipient_email}</div>
+              {preview.subject && <div><span style={{ color: '#9ca3af', fontWeight: 500 }}>Subject:</span> Re: {preview.subject}</div>}
+              <div><span style={{ color: '#9ca3af', fontWeight: 500 }}>Load ID:</span> <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{preview.cd_listing_id}</span></div>
+            </div>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+          {state === 'loading' && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" style={{ marginRight: '12px' }}></div>
+              <span style={{ color: '#6b7280', fontSize: '14px' }}>Loading preview...</span>
+            </div>
+          )}
+          {state === 'error' && !preview && (
+            <div style={{
+              padding: '16px', backgroundColor: '#fef2f2', border: '1px solid #fecaca',
+              borderRadius: '8px', color: '#991b1b', fontSize: '14px',
+            }}>
+              {error}
+            </div>
+          )}
+          {preview && (
+            <div style={{
+              border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#fff',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '24px',
+            }}>
+              <div dangerouslySetInnerHTML={{ __html: preview.preview_html }} />
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '16px 24px', borderTop: '1px solid #e5e7eb',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div style={{ fontSize: '13px', color: '#dc2626', minHeight: '20px' }}>
+            {error && state !== 'loading' && preview && error}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={onClose}
+              disabled={state === 'sending'}
+              style={{
+                padding: '8px 16px', fontSize: '14px', fontWeight: 500, borderRadius: '6px',
+                border: '1px solid #d1d5db', backgroundColor: '#fff', color: '#374151',
+                cursor: state === 'sending' ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={state !== 'ready'}
+              style={{
+                padding: '8px 16px', fontSize: '14px', fontWeight: 500, borderRadius: '6px',
+                border: 'none', color: '#fff', cursor: state === 'ready' ? 'pointer' : 'not-allowed',
+                backgroundColor: state === 'ready' ? '#2563eb' : '#9ca3af',
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}
+            >
+              {state === 'sending' ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Sending...
+                </>
+              ) : (
+                'Send'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ExportActions({
   runId, isTrainingMode, saving,
   handleSubmitTraining, handleSubmitProduction, handleSaveChanges,
@@ -20,9 +172,10 @@ function ExportActions({
   correctCount, totalCount, correctedCount, needsReviewCount,
 }) {
   // Reply button state
-  const [replyStatus, setReplyStatus] = useState(null) // null | 'loading' | 'sending' | 'sent' | 'failed' | 'unavailable'
+  const [replyStatus, setReplyStatus] = useState(null) // null | 'loading' | 'sent' | 'failed' | 'unavailable'
   const [replyError, setReplyError] = useState(null)
   const [repliedTo, setRepliedTo] = useState(null)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
 
   // Load reply status when exported
   useEffect(() => {
@@ -43,28 +196,27 @@ function ExportActions({
     }
   }, [isExported, runId])
 
-  const handleSendReply = async () => {
-    setReplyStatus('sending')
-    setReplyError(null)
-    try {
-      const result = await api.sendConfirmationReply(runId)
-      if (result.success) {
-        setReplyStatus('sent')
-        setRepliedTo(result.replied_to)
-      } else if (result.already_sent) {
-        setReplyStatus('sent')
-      } else {
-        setReplyStatus('failed')
-        setReplyError(result.error || 'Failed to send reply')
-      }
-    } catch (err) {
-      setReplyStatus('failed')
-      setReplyError(err.message || 'Network error')
-    }
+  const handleReplyClick = () => {
+    setShowPreviewModal(true)
+  }
+
+  const handleReplySent = (result) => {
+    setShowPreviewModal(false)
+    setReplyStatus('sent')
+    setRepliedTo(result.replied_to || null)
   }
 
   return (
     <div className="space-y-4">
+      {/* Preview modal */}
+      {showPreviewModal && (
+        <ReplyPreviewModal
+          runId={runId}
+          onClose={() => setShowPreviewModal(false)}
+          onSent={handleReplySent}
+        />
+      )}
+
       {/* Preflight Banner — hide after export, show "Exported" instead */}
       {isExported ? (
         <div className="mb-4 border rounded-lg bg-green-50 border-green-200">
@@ -91,14 +243,14 @@ function ExportActions({
                 Confirmation Sent
                 {repliedTo && <span className="text-green-600 font-normal ml-1">to {repliedTo}</span>}
               </span>
-            ) : replyStatus === 'sending' || replyStatus === 'loading' ? (
+            ) : replyStatus === 'loading' ? (
               <button disabled className="px-3 py-1.5 text-sm font-medium text-gray-500 bg-gray-100 border border-gray-300 rounded-md cursor-not-allowed">
-                {replyStatus === 'sending' ? 'Sending...' : 'Loading...'}
+                Loading...
               </button>
             ) : replyStatus === 'failed' ? (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleSendReply}
+                  onClick={handleReplyClick}
                   className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-md hover:bg-red-100"
                 >
                   Retry Send Email
@@ -107,7 +259,7 @@ function ExportActions({
               </div>
             ) : (
               <button
-                onClick={handleSendReply}
+                onClick={handleReplyClick}
                 className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-md hover:bg-blue-100"
               >
                 Send Confirmation Email
