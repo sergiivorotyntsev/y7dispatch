@@ -691,6 +691,51 @@ def _enrich_location_name(outputs: dict) -> None:
                     f"Pickup name matches seller name '{seller_n}' - verify this is the actual pickup location."
                 ]
 
+    # Detect Manheim corporate/virtual addresses — not physical yards
+    if source == "MANHEIM":
+        pickup_name_lower = (outputs.get("pickup_name") or "").lower()
+        pickup_addr_lower = (outputs.get("pickup_address") or "").lower()
+
+        _MANHEIM_CORPORATE = [
+            "6305 peachtree dunwoody",  # Cox/Manheim HQ Atlanta
+            "mycentral",                 # Virtual platform, not physical
+            "manheim express",           # Online-only
+            "manheim.com",
+        ]
+
+        is_corporate = any(corp in pickup_addr_lower or corp in pickup_name_lower for corp in _MANHEIM_CORPORATE)
+
+        if is_corporate:
+            # Corporate address detected — try to find real auction by offsite fields
+            real_city = outputs.get("offsite_pickup_city") or ""
+            real_state = outputs.get("offsite_pickup_state") or ""
+            real_addr = outputs.get("offsite_pickup_address") or ""
+
+            if real_city and real_state:
+                from services.auction_directory import find_by_city_state
+                match = find_by_city_state(real_city, real_state)
+                if match:
+                    outputs["pickup_name"] = match["name"]
+                    outputs["pickup_location_name"] = match["name"]
+                    outputs["pickup_address"] = match.get("address", "")
+                    outputs["pickup_city"] = match["city"]
+                    outputs["pickup_state"] = match["state"]
+                    outputs["pickup_zip"] = match.get("zip", "")
+                    if match.get("phone"):
+                        outputs["pickup_phone"] = match["phone"]
+                    logger.info(f"Manheim: replaced corporate address with {match['name']}")
+                else:
+                    outputs["pickup_name"] = f"Pickup - {real_city}, {real_state}"
+                    outputs["pickup_location_name"] = f"Pickup - {real_city}, {real_state}"
+                    outputs["pickup_address"] = real_addr
+                    outputs["pickup_city"] = real_city
+                    outputs["pickup_state"] = real_state
+            else:
+                outputs["_warnings"] = (outputs.get("_warnings") or []) + [
+                    f"Manheim corporate/virtual address detected ('{outputs.get('pickup_name')}'). "
+                    f"This is NOT a physical pickup location. Verify actual pickup address from the document."
+                ]
+
 
 def run_extraction(
     run_id: int,

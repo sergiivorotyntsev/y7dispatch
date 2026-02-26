@@ -150,6 +150,11 @@ Fields to extract:
   * COPART: Always "COPART - {{city}}". If sublot mentioned: "COPART Sub Lot - {{city}}"
   * IAA: Extract FULL branch/yard name (e.g., "LI - Rice Court Yard - 613", "332 - East Bay"). Look for "Branch:", "Yard:", "Sold At Branch" headers. Do NOT use just the city.
   * MANHEIM: Use the Manheim facility name (e.g., "Manheim Portland", "Manheim Dallas-Fort Worth").
+    CRITICAL for MANHEIM:
+    - NEVER use Manheim's corporate/HQ address (6305 Peachtree Dunwoody Rd, Atlanta GA).
+    - NEVER use "myCentral", "Manheim Express" or any virtual/online platform as pickup_name.
+    - The pickup address MUST be the PHYSICAL location where the vehicle is stored — extract it from the document.
+    - If the document shows "OFFSITE VEHICLE RELEASE" with a specific street address — THAT is the pickup address.
     If OFFSITE VEHICLE RELEASE: the vehicle is NOT at Manheim.
     - Look for the actual business/facility name at the pickup address (e.g., "ADESA Des Moines", "AutoNation Toyota").
     - If the document names a specific dealership, auction, or facility at the pickup address — use THAT name.
