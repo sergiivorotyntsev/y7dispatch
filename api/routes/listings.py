@@ -120,8 +120,8 @@ def create_load_id(make: str, model: str) -> tuple[str, int] | None:
     Generate a unique Load ID for today and persist it.
 
     Format: M(no leading zero) + DD + first3Make(upper) + first2Model(upper) + sequence
-    Example: 216TOYPR (Feb 16, Toyota Prius, first of day)
-    Duplicates: 216TOYPR2, 216TOYPR3, etc.
+    Example: 216TOYPR1 (Feb 16, Toyota Prius, first of day)
+    Subsequent: 216TOYPR2, 216TOYPR3, etc.
 
     Returns (load_id, sequence) tuple, or None if make/model are empty.
     """
@@ -144,12 +144,11 @@ def create_load_id(make: str, model: str) -> tuple[str, int] | None:
         ).fetchall()
 
         if not rows:
-            load_id = base_id
             sequence = 1
         else:
             max_seq = max(r["sequence"] if isinstance(r, dict) else r[1] for r in rows)
             sequence = max_seq + 1
-            load_id = f"{base_id}{sequence}"
+        load_id = f"{base_id}{sequence}"
 
         try:
             conn.execute(
@@ -193,8 +192,8 @@ async def generate_load_id(
     Generate a unique Load ID for today.
 
     Format: M(no leading zero) + DD + first3Make(upper) + first2Model(upper) + sequence
-    Example: 216TOYPR (Feb 16, Toyota Prius, first of day)
-    Duplicates: 216TOYPR2, 216TOYPR3, etc.
+    Example: 216TOYPR1 (Feb 16, Toyota Prius, first of day)
+    Subsequent: 216TOYPR2, 216TOYPR3, etc.
     """
     result = create_load_id(make, model)
     if not result:

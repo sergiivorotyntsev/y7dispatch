@@ -421,10 +421,13 @@ def build_cd_payload(
         return item_map.get(key, default)
 
     # =================================================================
-    # EXTERNAL ID: Use Load ID from operator overrides, fallback to generated
+    # EXTERNAL ID: Use Load ID from operator overrides, then resolved fields,
+    # then fallback to generated format.
     # =================================================================
     if overrides and overrides.load_id:
         dispatch_id = overrides.load_id
+    elif get_field("load_id"):
+        dispatch_id = str(get_field("load_id"))
     else:
         dispatch_id = f"DC-{datetime.now().strftime('%Y%m%d')}-{at.code}-{run.uuid[:8].upper()}"
     if len(dispatch_id) > 50:
@@ -771,10 +774,11 @@ def build_cd_payload(
     if desired_delivery:
         payload["desiredDeliveryDate"] = f"{desired_delivery}T00:00:00Z"
 
-    # Reference IDs
-    order_id = get_field("order_id")
-    if order_id:
-        payload["shipperOrderId"] = str(order_id)[:50]
+    # Reference IDs — use the same load_id for shipperOrderId so CD shows
+    # the same ID the user sees in the Y7 app (eliminates order_id mismatch).
+    shipper_oid = dispatch_id  # Already resolved above from overrides/load_id/fallback
+    if shipper_oid:
+        payload["shipperOrderId"] = str(shipper_oid)[:50]
 
     reference_id = get_field("reference_id")
     if reference_id:

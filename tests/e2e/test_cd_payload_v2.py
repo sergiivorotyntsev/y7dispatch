@@ -681,3 +681,136 @@ class TestCopartExtractionPrompt:
         assert "MEMBER" in EXTRACTION_PROMPT and "mailing" in EXTRACTION_PROMPT.lower(), (
             "Extraction prompt must warn against using MEMBER/buyer mailing address"
         )
+
+
+# ── Test Class 8: Load ID Suffix ─────────────────────────────────────────────
+
+
+class TestLoadIdSuffix:
+    """Load ID must always include sequence suffix (1, 2, 3...)."""
+
+    @pytest.fixture(autouse=True)
+    def isolated_load_ids_db(self, tmp_path):
+        """Use a completely isolated DB for load_id tests via DATABASE_PATH."""
+        import importlib
+
+        db_path = str(tmp_path / "test_load_ids.db")
+        old_db_path = os.environ.get("DATABASE_PATH")
+        os.environ["DATABASE_PATH"] = db_path
+
+        import api.database
+        importlib.reload(api.database)
+
+        import api.routes.listings
+        importlib.reload(api.routes.listings)
+        api.routes.listings.init_load_ids_schema()
+
+        yield db_path
+
+        # Restore
+        if old_db_path:
+            os.environ["DATABASE_PATH"] = old_db_path
+        else:
+            os.environ.pop("DATABASE_PATH", None)
+        importlib.reload(api.database)
+
+    def test_first_load_id_has_suffix_1(self):
+        """First load ID for a make/model/date must end with '1'."""
+        from api.routes.listings import create_load_id
+
+        result = create_load_id("Toyota", "Prius")
+        assert result is not None
+        load_id, seq = result
+        assert seq == 1
+        assert load_id.endswith("1"), f"First load_id should end with '1', got '{load_id}'"
+
+    def test_second_load_id_has_suffix_2(self):
+        """Second load ID for same make/model/date must end with '2'."""
+        from api.routes.listings import create_load_id
+
+        create_load_id("Toyota", "Prius")
+        result2 = create_load_id("Toyota", "Prius")
+        assert result2 is not None
+        load_id2, seq2 = result2
+        assert seq2 == 2
+        assert load_id2.endswith("2"), f"Second load_id should end with '2', got '{load_id2}'"
+
+    def test_consecutive_load_ids_share_base(self):
+        """Consecutive load IDs for same make/model share the same base prefix."""
+        from api.routes.listings import create_load_id
+
+        load_id1, _ = create_load_id("Volvo", "XC90")
+        load_id2, _ = create_load_id("Volvo", "XC90")
+        # Both should share the base (everything except the trailing digit)
+        base1 = load_id1[:-1]
+        base2 = load_id2[:-1]
+        assert base1 == base2, f"Base should match: '{base1}' vs '{base2}'"
+        assert load_id1[-1] == "1" and load_id2[-1] == "2"
+
+
+# ── Test Class 9: ExternalId Uses Load ID ────────────────────────────────────
+
+
+class TestExternalIdUsesLoadId:
+    """CD export externalId must use resolved load_id, not DC-{date} fallback."""
+
+    def test_external_id_from_overrides(self):
+        """externalId should use overrides.load_id when provided."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+        overrides = OperatorOverrides(load_id="226VOLXC1")
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        assert payload.get("externalId") == "226VOLXC1"
+
+    def test_external_id_from_resolved_load_id(self):
+        """externalId should use resolved load_id from review_items when no overrides."""
+        from api.database import get_connection
+        from api.routes.exports import build_cd_payload
+
+        run_id = _create_test_run()
+        # Add load_id to review_items (simulating extraction output)
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO review_items (run_id, source_key, predicted_value, export_field) VALUES (?, 'load_id', '226VOLXC1', 1)",
+                (run_id,),
+            )
+            conn.commit()
+        payload, _ = build_cd_payload(run_id)
+        assert payload.get("externalId") == "226VOLXC1", (
+            f"externalId should be resolved load_id '226VOLXC1', got '{payload.get('externalId')}'"
+        )
+
+    def test_external_id_from_outputs_json_load_id(self):
+        """externalId should use load_id from outputs_json via auto-load when no overrides."""
+        import json
+
+        from api.database import get_connection
+        from api.routes.exports import build_cd_payload
+
+        run_id = _create_test_run()
+        # Set load_id in outputs_json (simulating saved Review state)
+        with get_connection() as conn:
+            current = conn.execute(
+                "SELECT outputs_json FROM extraction_runs WHERE id=?", (run_id,)
+            ).fetchone()[0]
+            outputs = json.loads(current)
+            outputs["load_id"] = "226TOYCI1"
+            conn.execute(
+                "UPDATE extraction_runs SET outputs_json=? WHERE id=?",
+                (json.dumps(outputs), run_id),
+            )
+            conn.commit()
+        payload, _ = build_cd_payload(run_id)
+        assert payload.get("externalId") == "226TOYCI1"
+
+    def test_shipper_order_id_matches_external_id(self):
+        """shipperOrderId must be the same as externalId (both use load_id)."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+        overrides = OperatorOverrides(load_id="226HONCI1")
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        assert payload.get("shipperOrderId") == payload.get("externalId"), (
+            f"shipperOrderId '{payload.get('shipperOrderId')}' should match externalId '{payload.get('externalId')}'"
+        )

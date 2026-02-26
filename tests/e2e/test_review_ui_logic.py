@@ -56,7 +56,7 @@ class TestLoadIdGeneration:
     """Load ID format: M(no leading zero) + DD + first3Make(upper) + first2Model(upper)"""
 
     def test_basic_format(self, client):
-        """216TOYPR for Toyota Prius on Feb 16."""
+        """216TOYPR1 for Toyota Prius on Feb 16 (first of day)."""
         now = datetime.now()
         resp = client.get("/api/listings/generate-load-id?make=Toyota&model=Prius")
         assert resp.status_code == 200
@@ -64,7 +64,7 @@ class TestLoadIdGeneration:
 
         month = str(now.month)
         day = now.strftime("%d")
-        expected = f"{month}{day}TOYPR"
+        expected = f"{month}{day}TOYPR1"
         assert data["load_id"] == expected
         assert data["make"] == "Toyota"
         assert data["model"] == "Prius"
@@ -84,10 +84,10 @@ class TestLoadIdGeneration:
         resp = client.get("/api/listings/generate-load-id?make=toyota&model=prius")
         assert resp.status_code == 200
         load_id = resp.json()["load_id"]
-        # Extract the make/model portion (after month+day)
+        # Extract the make/model portion (after month+day, before sequence digit)
         now = datetime.now()
         prefix_len = len(str(now.month)) + 2  # month (no leading 0) + 2-digit day
-        suffix = load_id[prefix_len:]
+        suffix = load_id[prefix_len:-1]  # exclude trailing sequence digit
         assert suffix == "TOYPR"
 
     def test_short_model_name(self, client):
@@ -96,7 +96,7 @@ class TestLoadIdGeneration:
         assert resp.status_code == 200
         data = resp.json()
         now = datetime.now()
-        expected = f"{now.month}{now.strftime('%d')}BMWX5"
+        expected = f"{now.month}{now.strftime('%d')}BMWX51"
         assert data["load_id"] == expected
 
     def test_make_truncated_to_3(self, client):
@@ -105,7 +105,7 @@ class TestLoadIdGeneration:
         assert resp.status_code == 200
         load_id = resp.json()["load_id"]
         now = datetime.now()
-        expected = f"{now.month}{now.strftime('%d')}MERSP"
+        expected = f"{now.month}{now.strftime('%d')}MERSP1"
         assert load_id == expected
 
     def test_model_truncated_to_2(self, client):
@@ -114,7 +114,7 @@ class TestLoadIdGeneration:
         assert resp.status_code == 200
         load_id = resp.json()["load_id"]
         now = datetime.now()
-        expected = f"{now.month}{now.strftime('%d')}FORMU"
+        expected = f"{now.month}{now.strftime('%d')}FORMU1"
         assert load_id == expected
 
     def test_missing_make_returns_422(self, client):
@@ -132,7 +132,7 @@ class TestLoadIdSequence:
     """Duplicate Load ID handling: second same vehicle gets suffix '2'."""
 
     def test_second_same_vehicle_gets_suffix_2(self, client):
-        """Second Toyota Prius on same day appends '2'."""
+        """Second Toyota Prius on same day gets suffix '2' (first gets '1')."""
         resp1 = client.get("/api/listings/generate-load-id?make=Toyota&model=Prius")
         resp2 = client.get("/api/listings/generate-load-id?make=Toyota&model=Prius")
 
@@ -144,7 +144,10 @@ class TestLoadIdSequence:
 
         assert data1["sequence"] == 1
         assert data2["sequence"] == 2
-        assert data2["load_id"] == data1["load_id"] + "2"
+        # Both share the same base, differ only in trailing sequence digit
+        assert data1["load_id"][-1] == "1"
+        assert data2["load_id"][-1] == "2"
+        assert data1["load_id"][:-1] == data2["load_id"][:-1]
 
     def test_third_same_vehicle_gets_suffix_3(self, client):
         """Third same vehicle gets suffix '3'."""
