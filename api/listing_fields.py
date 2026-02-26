@@ -718,12 +718,12 @@ LISTING_FIELDS: list[ListingField] = [
         source_type=FieldSourceType.CONSTANT,
         options=[
             "IMMEDIATELY",
-            "2_BUSINESS_DAYS_QUICK_PAY",
+            "2_BUSINESS_DAYS",
             "5_BUSINESS_DAYS",
             "15_BUSINESS_DAYS",
             "30_BUSINESS_DAYS",
         ],
-        default_value="2_BUSINESS_DAYS_QUICK_PAY",
+        default_value="2_BUSINESS_DAYS",
         help_text="When balance payment is due",
     ),
     ListingField(
@@ -1006,12 +1006,12 @@ LISTING_FIELDS: list[ListingField] = [
         source_type=FieldSourceType.CONSTANT,
         options=[
             "IMMEDIATELY",
-            "2_BUSINESS_DAYS_QUICK_PAY",
+            "2_BUSINESS_DAYS",
             "5_BUSINESS_DAYS",
             "15_BUSINESS_DAYS",
             "30_BUSINESS_DAYS",
         ],
-        default_value="2_BUSINESS_DAYS_QUICK_PAY",
+        default_value="2_BUSINESS_DAYS",
         help_text="When balance is paid (Quick Pay = 2 Business Days)",
     ),
     ListingField(

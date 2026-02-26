@@ -448,14 +448,20 @@ def build_cd_payload(
 
     trailer_type = (overrides.trailer_type if overrides and overrides.trailer_type else "OPEN")
 
+    # Sanitize text fields — strip non-breaking spaces and other invisible chars
+    def _sanitize(val: str) -> str:
+        if not val:
+            return val
+        return val.replace("\u00a0", " ").strip()
+
     # Build pickup stop
     pickup_stop = {
         "stopNumber": 1,
-        "locationName": get_field("pickup_name") or f"{at.name} Pickup",
-        "address": get_field("pickup_address", ""),
-        "city": get_field("pickup_city", ""),
-        "state": get_field("pickup_state", ""),
-        "postalCode": get_field("pickup_zip", ""),
+        "locationName": _sanitize(get_field("pickup_name") or f"{at.name} Pickup"),
+        "address": _sanitize(get_field("pickup_address", "")),
+        "city": _sanitize(get_field("pickup_city", "")),
+        "state": _sanitize(get_field("pickup_state", "")),
+        "postalCode": _sanitize(get_field("pickup_zip", "")),
         "country": "US",
         "locationType": get_field("pickup_location_type", "AUCTION"),
     }
@@ -475,18 +481,22 @@ def build_cd_payload(
     # Build delivery stop
     dropoff_stop = {
         "stopNumber": 2,
-        "locationName": delivery_name,
-        "address": delivery_address,
-        "city": delivery_city,
-        "state": delivery_state,
-        "postalCode": delivery_zip,
+        "locationName": _sanitize(delivery_name),
+        "address": _sanitize(delivery_address),
+        "city": _sanitize(delivery_city),
+        "state": _sanitize(delivery_state),
+        "postalCode": _sanitize(delivery_zip),
         "country": "US",
         "locationType": delivery_location_type,
     }
     if delivery_phone:
         dropoff_stop["phone"] = delivery_phone
     if delivery_contact:
-        dropoff_stop["contactName"] = delivery_contact
+        # If contact looks like email, use email field instead of contactName
+        if "@" in delivery_contact and "." in delivery_contact:
+            dropoff_stop["email"] = delivery_contact
+        else:
+            dropoff_stop["contactName"] = delivery_contact
     # Buyer reference from warehouse (dropoff location)
     dropoff_buyer_ref = warehouse_data.get("buyer_reference") if warehouse_data else None
     if dropoff_buyer_ref:
@@ -522,8 +532,18 @@ def build_cd_payload(
         (overrides.vehicle_additional_info if overrides and overrides.vehicle_additional_info else None)
         or get_field("vehicle_additional_info")
     )
+
+    # Append gate pass to additionalInfo so it's visible in CD listing
+    gate_pass_value = get_field("gate_pass")
+    if gate_pass_value:
+        gate_pass_text = f"GATE PASS: {gate_pass_value}"
+        if vehicle_additional_info:
+            vehicle_additional_info = f"{vehicle_additional_info}. {gate_pass_text}"
+        else:
+            vehicle_additional_info = gate_pass_text
+
     if vehicle_additional_info:
-        vehicle["additionalInfo"] = vehicle_additional_info
+        vehicle["additionalInfo"] = vehicle_additional_info[:500]
 
     # =================================================================
     # PRICING: operator override > suggested > MI > fallback
@@ -586,7 +606,10 @@ def build_cd_payload(
     cod_payment_location = (overrides.cod_payment_location if overrides and overrides.cod_payment_location else "DELIVERY")
     balance_amount = max(0, price_total - cod_amount)
     balance_payment_method = (overrides.balance_payment_method if overrides and overrides.balance_payment_method else "CERTIFIED_FUNDS")
-    balance_payment_time = (overrides.balance_payment_time if overrides and overrides.balance_payment_time else "2_BUSINESS_DAYS_QUICK_PAY")
+    balance_payment_time = (overrides.balance_payment_time if overrides and overrides.balance_payment_time else "2_BUSINESS_DAYS")
+    # Normalize legacy enum value — CD API V2 does not accept _QUICK_PAY suffix
+    if balance_payment_time == "2_BUSINESS_DAYS_QUICK_PAY":
+        balance_payment_time = "2_BUSINESS_DAYS"
     balance_terms_begin_on = (overrides.balance_terms_begin_on if overrides and overrides.balance_terms_begin_on else "RECEIVING_SIGNED_BOL")
 
     price = {
@@ -598,7 +621,7 @@ def build_cd_payload(
         },
         "balance": {
             "amount": balance_amount,
-            "paymentMethod": balance_payment_method,
+            "balancePaymentMethod": balance_payment_method,
             "paymentTime": balance_payment_time,
             "balancePaymentTermsBeginOn": balance_terms_begin_on,
         },

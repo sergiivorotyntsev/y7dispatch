@@ -311,10 +311,10 @@ class TestDefaultPaymentFields:
         assert field.default_value == "CERTIFIED_FUNDS"
 
     def test_balance_payment_time_default(self):
-        """Balance payment time should default to 2 Business Days (Quick Pay)."""
+        """Balance payment time should default to 2 Business Days."""
         from api.listing_fields import LISTING_FIELDS
         field = next(f for f in LISTING_FIELDS if f.key == "balance_payment_time")
-        assert field.default_value == "2_BUSINESS_DAYS_QUICK_PAY"
+        assert field.default_value == "2_BUSINESS_DAYS"
 
     def test_balance_terms_begin_on_default(self):
         """Balance terms begin on should default to RECEIVING_SIGNED_BOL."""

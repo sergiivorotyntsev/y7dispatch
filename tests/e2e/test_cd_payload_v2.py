@@ -389,7 +389,6 @@ class TestPaymentMethodValidation:
     VALID_PAYMENT_TIMES = {
         "IMMEDIATELY",
         "2_BUSINESS_DAYS",
-        "2_BUSINESS_DAYS_QUICK_PAY",
         "5_BUSINESS_DAYS",
         "10_BUSINESS_DAYS",
         "15_BUSINESS_DAYS",
@@ -435,7 +434,7 @@ class TestPaymentMethodValidation:
             available_date=datetime.now().strftime("%Y-%m-%d"),
         )
         payload, _ = build_cd_payload(run_id, overrides=overrides)
-        balance_method = payload["price"]["balance"]["paymentMethod"]
+        balance_method = payload["price"]["balance"]["balancePaymentMethod"]
         assert balance_method in self.VALID_PAYMENT_METHODS, \
             f"Balance payment method '{balance_method}' not in valid enums"
 
