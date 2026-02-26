@@ -583,12 +583,23 @@ class ExtractionDebugResponse(BaseModel):
 # =============================================================================
 
 
+_INSURANCE_KEYWORDS = {
+    "geico", "progressive", "state farm", "allstate", "usaa",
+    "liberty mutual", "farmers", "nationwide", "travelers",
+    "hartford", "erie", "american family", "auto-owners",
+    "safeco", "mercury", "kemper", "metlife", "aig", "chubb",
+    "zurich", "markel", "iai", "mapfre",
+}
+
+_ONLINE_DEALERS = {"carvana", "vroom", "carmax", "shift", "driveway", "autotrader"}
+
+
 def _enrich_location_name(outputs: dict) -> None:
     """Post-extraction: apply auction-specific location name rules.
 
     COPART: Always "COPART - {city}" (or "COPART Sub Lot - {city}")
     IAA:    Keep branch name as-is; flag if it's just the city
-    MANHEIM: Keep facility name; if offsite, use seller name
+    MANHEIM: Keep facility name; if offsite or seller=pickup, resolve real name
     OTHER:  Keep whatever was extracted
     """
     source = (outputs.get("auction_source") or outputs.get("auction_type") or "").upper()
@@ -614,13 +625,6 @@ def _enrich_location_name(outputs: dict) -> None:
     elif source == "MANHEIM":
         # If offsite, resolve pickup name — but never use insurance company names
         if outputs.get("manheim_offsite"):
-            _INSURANCE_KEYWORDS = {
-                "geico", "progressive", "state farm", "allstate", "usaa",
-                "liberty mutual", "farmers", "nationwide", "travelers",
-                "hartford", "erie", "american family", "auto-owners",
-                "safeco", "mercury", "kemper", "metlife", "aig", "chubb",
-                "zurich", "markel", "iai", "mapfre",
-            }
             seller = outputs.get("seller_name") or ""
             seller_lower = seller.lower().strip()
             is_insurance = any(kw in seller_lower for kw in _INSURANCE_KEYWORDS)
@@ -647,6 +651,45 @@ def _enrich_location_name(outputs: dict) -> None:
                             f"Verify actual business name at pickup address."
                         )
                         outputs["_warnings"] = warnings
+
+    # Safety net: if Manheim (non-offsite) and pickup_name == seller_name,
+    # the seller is probably NOT the physical pickup location.
+    # Skip for offsite — the offsite block already handles seller-as-pickup correctly.
+    if source == "MANHEIM" and not outputs.get("manheim_offsite"):
+        import logging as _log
+        _logger = _log.getLogger(__name__)
+        pickup_n = outputs.get("pickup_name", "")
+        seller_n = outputs.get("seller_name", "")
+        p_city = outputs.get("pickup_city", "")
+        p_state = outputs.get("pickup_state", "")
+
+        if (pickup_n and seller_n
+                and pickup_n.strip().lower() == seller_n.strip().lower()
+                and p_city):
+            seller_clean = seller_n.lower().strip().replace(",", "").replace(" llc", "").replace(" inc", "").strip()
+
+            # Try to find actual auction/business at this address
+            from services.auction_directory import find_by_city_state
+            match = find_by_city_state(p_city, p_state)
+
+            if match:
+                outputs["pickup_name"] = match["name"]
+                outputs["pickup_location_name"] = match["name"]
+                if match.get("phone") and not outputs.get("pickup_phone"):
+                    outputs["pickup_phone"] = match["phone"]
+                _logger.info(f"Manheim: replaced seller '{seller_n}' with '{match['name']}' as pickup (city/state match)")
+            elif any(d in seller_clean for d in _ONLINE_DEALERS) or any(kw in seller_clean for kw in _INSURANCE_KEYWORDS):
+                outputs["pickup_name"] = f"Pickup - {p_city}, {p_state}"
+                outputs["pickup_location_name"] = f"Pickup - {p_city}, {p_state}"
+                outputs["_warnings"] = (outputs.get("_warnings") or []) + [
+                    f"Pickup name '{seller_n}' matches seller - verify actual business at pickup address."
+                ]
+                _logger.info(f"Manheim: seller '{seller_n}' is online dealer/insurance, set generic pickup name")
+            else:
+                # Unknown seller = pickup — add warning but keep name
+                outputs["_warnings"] = (outputs.get("_warnings") or []) + [
+                    f"Pickup name matches seller name '{seller_n}' - verify this is the actual pickup location."
+                ]
 
 
 def run_extraction(

@@ -126,6 +126,35 @@ MANHEIM_LOCATIONS = {
     "Manheim Charlotte": {"phone": "(704) 529-5100", "address": "7601 Statesville Rd", "city": "Charlotte", "state": "NC", "zip": "28269"},
 }
 
+# ─── ADESA / OPENLANE Locations ─────────────────────────────────────────────
+# Source: ADESA (Manheim/OPENLANE brand) public location directory
+
+ADESA_LOCATIONS = {
+    "ADESA Des Moines": {"phone": "(833) 289-3533", "address": "1600 SE Gateway Dr", "city": "Grimes", "state": "IA", "zip": "50111"},
+    "ADESA Atlanta": {"phone": "(833) 289-3533", "address": "5055 Oakley Industrial Blvd", "city": "Fairburn", "state": "GA", "zip": "30213"},
+    "ADESA Birmingham": {"phone": "(833) 289-3533", "address": "700 Sunbelt Pkwy", "city": "Moody", "state": "AL", "zip": "35004"},
+    "ADESA Boston": {"phone": "(833) 289-3533", "address": "63 Western Ave", "city": "Framingham", "state": "MA", "zip": "01702"},
+    "ADESA Buffalo": {"phone": "(833) 289-3533", "address": "7300 Southwestern Blvd", "city": "West Seneca", "state": "NY", "zip": "14224"},
+    "ADESA Charlotte": {"phone": "(833) 289-3533", "address": "6115 Wilkinson Blvd", "city": "Belmont", "state": "NC", "zip": "28012"},
+    "ADESA Chicago": {"phone": "(833) 289-3533", "address": "2200 S Ashland Ave", "city": "Chicago Heights", "state": "IL", "zip": "60411"},
+    "ADESA Cleveland": {"phone": "(833) 289-3533", "address": "9200 Brookpark Rd", "city": "Parma", "state": "OH", "zip": "44129"},
+    "ADESA Colorado Springs": {"phone": "(833) 289-3533", "address": "2575 Aerotech Dr", "city": "Colorado Springs", "state": "CO", "zip": "80916"},
+    "ADESA Dallas": {"phone": "(833) 289-3533", "address": "3501 Lancaster-Hutchins Rd", "city": "Hutchins", "state": "TX", "zip": "75141"},
+    "ADESA Indianapolis": {"phone": "(833) 289-3533", "address": "3085 N 1000 E", "city": "Plainfield", "state": "IN", "zip": "46168"},
+    "ADESA Kansas City": {"phone": "(833) 289-3533", "address": "1500 E 103rd St", "city": "Kansas City", "state": "MO", "zip": "64131"},
+    "ADESA Lexington": {"phone": "(833) 289-3533", "address": "151 Burt Rd", "city": "Lexington", "state": "KY", "zip": "40503"},
+    "ADESA Memphis": {"phone": "(833) 289-3533", "address": "5400 Getwell Rd", "city": "Memphis", "state": "TN", "zip": "38118"},
+    "ADESA Milwaukee": {"phone": "(833) 289-3533", "address": "N9394 US Highway 45", "city": "New London", "state": "WI", "zip": "54961"},
+    "ADESA Minneapolis": {"phone": "(833) 289-3533", "address": "8000 Lakeland Ave N", "city": "Brooklyn Park", "state": "MN", "zip": "55445"},
+    "ADESA New Jersey": {"phone": "(833) 289-3533", "address": "635 Hwy 1 S", "city": "Edison", "state": "NJ", "zip": "08817"},
+    "ADESA Phoenix": {"phone": "(833) 289-3533", "address": "2701 W Durango St", "city": "Phoenix", "state": "AZ", "zip": "85009"},
+    "ADESA Portland": {"phone": "(833) 289-3533", "address": "9555 NE Alderwood Rd", "city": "Portland", "state": "OR", "zip": "97220"},
+    "ADESA Sacramento": {"phone": "(833) 289-3533", "address": "3837 Florin Perkins Rd", "city": "Sacramento", "state": "CA", "zip": "95826"},
+    "ADESA San Diego": {"phone": "(833) 289-3533", "address": "8555 Miramar Pl", "city": "San Diego", "state": "CA", "zip": "92121"},
+    "ADESA Tampa": {"phone": "(833) 289-3533", "address": "6712 E Broadway", "city": "Tampa", "state": "FL", "zip": "33619"},
+    "ADESA Washington DC": {"phone": "(833) 289-3533", "address": "3701 Ironwood Pl", "city": "Landover", "state": "MD", "zip": "20785"},
+}
+
 
 def _normalize_name(name: str) -> str:
     """Normalize auction location name for matching.
@@ -146,7 +175,7 @@ def _normalize_name(name: str) -> str:
 def _build_lookup_index() -> dict:
     """Build a normalized name → location data index from all directories."""
     index = {}
-    for locations in [COPART_LOCATIONS, IAA_LOCATIONS, MANHEIM_LOCATIONS]:
+    for locations in [COPART_LOCATIONS, IAA_LOCATIONS, MANHEIM_LOCATIONS, ADESA_LOCATIONS]:
         for name, data in locations.items():
             key = _normalize_name(name)
             index[key] = {**data, "name": name}
