@@ -512,6 +512,52 @@ class GraphEmailReader(BaseEmailReader):
             logger.error("Reply request error: %s", e)
             return {"success": False, "error": str(e)}
 
+    def resolve_graph_message_id(self, rfc822_message_id: str) -> Optional[str]:
+        """Find Graph internal message ID by RFC822 Message-ID.
+
+        Used for emails received before graph_message_id migration.
+        Searches via Graph API $filter on internetMessageId.
+
+        Returns:
+            Graph message ID (AAMkAG... format) or None if not found.
+        """
+        import requests
+
+        if not self._access_token:
+            try:
+                self.connect()
+            except Exception as e:
+                logger.error("Auth failed during resolve_graph_message_id: %s", e)
+                return None
+
+        # Strip angle brackets if present: <msg-id@domain> → msg-id@domain
+        clean_id = rfc822_message_id.strip("<>")
+
+        url = f"https://graph.microsoft.com/v1.0/users/{self.config.address}/messages"
+        params = {
+            "$filter": f"internetMessageId eq '{clean_id}'",
+            "$select": "id",
+            "$top": 1,
+        }
+
+        try:
+            response = requests.get(url, headers=self._get_headers(), params=params, timeout=30)
+            if response.status_code != 200:
+                logger.warning("Graph search failed (%d): %s", response.status_code, response.text[:200])
+                return None
+
+            messages = response.json().get("value", [])
+            if messages:
+                graph_id = messages[0]["id"]
+                logger.info("Resolved RFC822 %s → Graph %s", clean_id[:40], graph_id[:30])
+                return graph_id
+            else:
+                logger.info("No Graph message found for RFC822 ID: %s", clean_id[:40])
+                return None
+        except Exception as e:
+            logger.error("resolve_graph_message_id request error: %s", e)
+            return None
+
     def mark_seen(self, msg_id: str) -> bool:
         """Mark a message as read."""
         import requests

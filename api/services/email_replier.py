@@ -7,7 +7,6 @@ Uses Microsoft Graph API to reply in the original email thread.
 
 import json
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -25,13 +24,6 @@ _CORPORATE_WORDS = {
     "company", "automotive",
 }
 
-# Generic email prefixes that aren't person names
-_GENERIC_EMAIL_PREFIXES = {
-    "info", "sales", "admin", "office", "support", "dispatch", "shipping",
-    "orders", "contact", "hello", "team", "noreply", "no-reply", "billing",
-    "accounts", "help", "service", "mail", "general", "ops", "operations",
-}
-
 
 def _looks_like_person_name(name: str) -> bool:
     """Check if a string looks like a person's name (not a company)."""
@@ -45,30 +37,6 @@ def _looks_like_person_name(name: str) -> bool:
         return False
     # At least one word should start with uppercase and be alpha
     return any(w[0].isupper() and w.isalpha() for w in words)
-
-
-def _extract_name_from_email(email: str) -> Optional[str]:
-    """Try to extract a person's first name from email address.
-
-    E.g. maciej@importusa.com → "Maciej"
-         john.doe@example.com → "John"
-    """
-    if not email or "@" not in email:
-        return None
-    local = email.split("@")[0]
-    # Split by common separators
-    parts = re.split(r"[._\-+]", local)
-    if not parts:
-        return None
-    candidate = parts[0].strip()
-    # Must be 3+ letters, all alpha, not a generic prefix
-    if (
-        len(candidate) >= 3
-        and candidate.isalpha()
-        and candidate.lower() not in _GENERIC_EMAIL_PREFIXES
-    ):
-        return candidate.capitalize()
-    return None
 
 
 class ReplyBodyBuilder:
@@ -105,14 +73,13 @@ class ReplyBodyBuilder:
 
     @staticmethod
     def _build_variables(load_id: str, warehouse: dict, sender_name: str = None,
-                         vin: str = None, sender_email: str = None) -> dict:
+                         vin: str = None) -> dict:
         """Build the variable dict for template substitution."""
-        # Smart greeting: prefer person name, fall back to email extraction
+        # Smart greeting: use first name if sender_name looks like a person,
+        # otherwise plain "Hello," (don't try to extract from email — unreliable)
         display_name = None
         if sender_name and _looks_like_person_name(sender_name):
             display_name = sender_name.split()[0]  # first name only
-        if not display_name and sender_email:
-            display_name = _extract_name_from_email(sender_email)
         greeting = f"Hello {display_name}," if display_name else "Hello,"
 
         wh_name = warehouse.get("name", "")
@@ -157,14 +124,12 @@ class ReplyBodyBuilder:
 
     @classmethod
     def build(cls, load_id: str, warehouse: dict, sender_name: str = None,
-              vin: str = None, sender_email: str = None) -> str:
+              vin: str = None) -> str:
         """Build HTML reply body with Load ID and warehouse address.
 
         Loads template from DB; falls back to hardcoded default.
         """
-        variables = cls._build_variables(
-            load_id, warehouse, sender_name, vin=vin, sender_email=sender_email,
-        )
+        variables = cls._build_variables(load_id, warehouse, sender_name, vin=vin)
 
         template = cls._load_template()
         if template:
@@ -264,8 +229,7 @@ class EmailReplier:
             return data
 
         html_body = self.body_builder.build(
-            data["load_id"], data["warehouse"], data["sender_name"],
-            vin=data["vin"], sender_email=data["sender"],
+            data["load_id"], data["warehouse"], data["sender_name"], vin=data["vin"],
         )
 
         return {
@@ -301,11 +265,19 @@ class EmailReplier:
         load_id = data["load_id"]
         cd_listing_id = data["cd_listing_id"]
         graph_message_id = data["graph_message_id"]
+
+        # Resolve Graph message ID if missing (pre-migration emails)
         if not graph_message_id:
-            return {
-                "success": False,
-                "error": "Graph message ID not available (old email before migration)",
-            }
+            rfc822_id = data["email_log"].get("message_id")
+            if rfc822_id and self.graph:
+                graph_message_id = self._resolve_and_cache_graph_id(
+                    rfc822_id, data["email_log"]["id"],
+                )
+            if not graph_message_id:
+                return {
+                    "success": False,
+                    "error": "Original email not found in mailbox",
+                }
 
         sender = data["sender"]
         sender_name = data["sender_name"]
@@ -323,8 +295,7 @@ class EmailReplier:
 
         # 4. Build HTML body (uses load_id, our internal ID, for display)
         html_body = self.body_builder.build(
-            load_id, data["warehouse"], sender_name,
-            vin=data["vin"], sender_email=sender,
+            load_id, data["warehouse"], sender_name, vin=data["vin"],
         )
 
         # 5. Send via Graph API
@@ -402,8 +373,8 @@ class EmailReplier:
         with get_connection() as conn:
             # extraction_run_ids is JSON array stored as TEXT, e.g. "[42, 43]"
             rows = conn.execute(
-                """SELECT id, sender, sender_name, subject, graph_message_id,
-                          extraction_run_ids
+                """SELECT id, message_id, sender, sender_name, subject,
+                          graph_message_id, extraction_run_ids
                    FROM email_log
                    WHERE extraction_run_ids IS NOT NULL
                    AND extraction_run_ids LIKE ?""",
@@ -420,3 +391,25 @@ class EmailReplier:
                 continue
 
         return None
+
+    def _resolve_and_cache_graph_id(self, rfc822_message_id: str, email_log_id: int) -> Optional[str]:
+        """Resolve Graph message ID from RFC822 Message-ID via Graph API.
+
+        Caches the result in email_log.graph_message_id for future use.
+        Returns Graph message ID or None if not found.
+        """
+        try:
+            graph_id = self.graph.resolve_graph_message_id(rfc822_message_id)
+        except Exception as e:
+            logger.warning("Failed to resolve graph_message_id for %s: %s", rfc822_message_id, e)
+            return None
+
+        if graph_id:
+            logger.info("Resolved graph_message_id for email_log %d: %s", email_log_id, graph_id[:30])
+            with get_connection() as conn:
+                conn.execute(
+                    "UPDATE email_log SET graph_message_id = ? WHERE id = ?",
+                    (graph_id, email_log_id),
+                )
+                conn.commit()
+        return graph_id

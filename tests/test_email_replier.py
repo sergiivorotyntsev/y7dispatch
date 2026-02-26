@@ -350,11 +350,12 @@ class TestSendConfirmationNoGraphId:
         populated_db.commit()
 
         mock_graph = MagicMock()
+        mock_graph.resolve_graph_message_id.return_value = None  # resolve fails
         replier = EmailReplier(mock_graph)
         result = replier.send_confirmation(42)
 
         assert result["success"] is False
-        assert "Graph message ID not available" in result["error"]
+        assert "not found in mailbox" in result["error"]
         mock_graph.reply_to_message.assert_not_called()
 
 
@@ -582,23 +583,12 @@ class TestBuildVariables:
         variables = ReplyBodyBuilder._build_variables("CD-X", {"name": "WH"})
         assert variables["vin"] == ""
 
-    def test_build_variables_company_name_uses_email(self):
-        """Company sender_name → extract first name from email."""
+    def test_build_variables_company_name_fallback(self):
+        """Company sender_name → plain Hello (no email extraction)."""
         from api.services.email_replier import ReplyBodyBuilder
 
         variables = ReplyBodyBuilder._build_variables(
-            "CD-X", {"name": "WH"},
-            sender_name="Import USA", sender_email="maciej@importusa.com",
-        )
-        assert variables["greeting"] == "Hello Maciej,"
-
-    def test_build_variables_company_name_no_email_fallback(self):
-        """Company sender_name + no usable email → plain Hello."""
-        from api.services.email_replier import ReplyBodyBuilder
-
-        variables = ReplyBodyBuilder._build_variables(
-            "CD-X", {"name": "WH"},
-            sender_name="Auto Transport LLC", sender_email="info@autotransport.com",
+            "CD-X", {"name": "WH"}, sender_name="Import USA",
         )
         assert variables["greeting"] == "Hello,"
 
@@ -610,16 +600,6 @@ class TestBuildVariables:
             "CD-X", {"name": "WH"}, sender_name="Jane Doe",
         )
         assert variables["greeting"] == "Hello Jane,"
-
-    def test_build_variables_no_name_email_extraction(self):
-        """No sender_name → try email extraction."""
-        from api.services.email_replier import ReplyBodyBuilder
-
-        variables = ReplyBodyBuilder._build_variables(
-            "CD-X", {"name": "WH"},
-            sender_name=None, sender_email="john.smith@example.com",
-        )
-        assert variables["greeting"] == "Hello John,"
 
 
 class TestTemplateFromDB:
@@ -941,3 +921,124 @@ class TestTemplateResetEndpoint:
             "SELECT body_html FROM email_templates WHERE template_key = 'reply_confirmation'"
         ).fetchone()
         assert row["body_html"] == _DEFAULT_REPLY_CONFIRMATION_HTML
+
+
+# ---------------------------------------------------------------------------
+# Graph Message ID Resolution Tests
+# ---------------------------------------------------------------------------
+
+
+class TestResolveGraphMessageId:
+    def test_resolve_graph_message_id_success(self):
+        """GraphEmailReader.resolve_graph_message_id returns Graph ID from API."""
+        from unittest.mock import patch, MagicMock
+        from ingest.email_reader import GraphEmailReader, EmailConfig
+
+        config = MagicMock(spec=EmailConfig)
+        config.address = "test@example.com"
+        reader = GraphEmailReader(config)
+        reader._access_token = "fake-token"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "value": [{"id": "AAMkAGI1RESOLVED"}]
+        }
+
+        with patch("requests.get", return_value=mock_response) as mock_get:
+            result = reader.resolve_graph_message_id("<test-msg@example.com>")
+
+        assert result == "AAMkAGI1RESOLVED"
+        # Verify angle brackets stripped
+        call_params = mock_get.call_args[1]["params"]
+        assert "test-msg@example.com" in call_params["$filter"]
+        assert "<" not in call_params["$filter"]
+
+    def test_resolve_graph_message_id_not_found(self):
+        """resolve_graph_message_id returns None when email not in mailbox."""
+        from unittest.mock import patch, MagicMock
+        from ingest.email_reader import GraphEmailReader, EmailConfig
+
+        config = MagicMock(spec=EmailConfig)
+        config.address = "test@example.com"
+        reader = GraphEmailReader(config)
+        reader._access_token = "fake-token"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"value": []}
+
+        with patch("requests.get", return_value=mock_response):
+            result = reader.resolve_graph_message_id("<gone@example.com>")
+
+        assert result is None
+
+
+class TestSendWithGraphResolve:
+    def test_send_confirmation_resolves_null_graph_id(self, populated_db, monkeypatch):
+        """send_confirmation resolves graph_message_id when NULL in email_log."""
+        _patch_get_connection(monkeypatch, populated_db)
+
+        # Set graph_message_id to NULL (pre-migration email)
+        populated_db.execute("UPDATE email_log SET graph_message_id = NULL WHERE id = 10")
+        populated_db.commit()
+
+        from api.services.email_replier import EmailReplier
+
+        mock_graph = MagicMock()
+        mock_graph.resolve_graph_message_id.return_value = "AAMkRESOLVED123"
+        mock_graph.reply_to_message.return_value = {"success": True}
+
+        replier = EmailReplier(mock_graph)
+        result = replier.send_confirmation(42)
+
+        assert result["success"] is True
+        assert result["load_id"] == "226HONAC1"
+
+        # Verify resolve was called with RFC822 message_id
+        mock_graph.resolve_graph_message_id.assert_called_once_with("<test@example.com>")
+
+        # Verify reply was called with resolved Graph ID
+        mock_graph.reply_to_message.assert_called_once()
+        assert mock_graph.reply_to_message.call_args[0][0] == "AAMkRESOLVED123"
+
+        # Verify graph_message_id was cached in email_log
+        row = populated_db.execute(
+            "SELECT graph_message_id FROM email_log WHERE id = 10"
+        ).fetchone()
+        assert row["graph_message_id"] == "AAMkRESOLVED123"
+
+    def test_send_confirmation_resolve_fails(self, populated_db, monkeypatch):
+        """send_confirmation fails gracefully when Graph resolve returns None."""
+        _patch_get_connection(monkeypatch, populated_db)
+
+        populated_db.execute("UPDATE email_log SET graph_message_id = NULL WHERE id = 10")
+        populated_db.commit()
+
+        from api.services.email_replier import EmailReplier
+
+        mock_graph = MagicMock()
+        mock_graph.resolve_graph_message_id.return_value = None
+
+        replier = EmailReplier(mock_graph)
+        result = replier.send_confirmation(42)
+
+        assert result["success"] is False
+        assert "not found in mailbox" in result["error"]
+        mock_graph.reply_to_message.assert_not_called()
+
+    def test_preview_works_without_graph_id(self, populated_db, monkeypatch):
+        """preview_confirmation works even when graph_message_id is NULL."""
+        _patch_get_connection(monkeypatch, populated_db)
+
+        populated_db.execute("UPDATE email_log SET graph_message_id = NULL WHERE id = 10")
+        populated_db.commit()
+
+        from api.services.email_replier import EmailReplier
+
+        replier = EmailReplier(graph_reader=None)
+        result = replier.preview_confirmation(42)
+
+        assert result["success"] is True
+        assert "226HONAC1" in result["preview_html"]
+        assert result["has_graph_id"] is False
