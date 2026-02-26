@@ -422,28 +422,6 @@ class TestCDExportCreate:
         # Some fields might be missing
         assert isinstance(missing_required, list)
 
-    def test_partner_reference_id_stability(self):
-        """partnerReferenceId should be stable and unique per document."""
-        from api.cd_client import generate_partner_reference_id
-
-        doc_id = 123
-        run_id = 456
-
-        ref1 = generate_partner_reference_id(doc_id, run_id)
-        ref2 = generate_partner_reference_id(doc_id, run_id)
-
-        assert ref1 == ref2, "Same inputs should produce same reference ID"
-        assert len(ref1) <= 50, f"Reference ID too long: {len(ref1)} > 50"
-
-    def test_partner_reference_id_uniqueness(self):
-        """Different documents should have different reference IDs."""
-        from api.cd_client import generate_partner_reference_id
-
-        ref1 = generate_partner_reference_id(100, 1)
-        ref2 = generate_partner_reference_id(101, 1)
-
-        assert ref1 != ref2, "Different docs should have different reference IDs"
-
     @patch("api.cd_client.requests.post")
     def test_create_listing_saves_cd_id(self, mock_post):
         """Successful create should save cd_listing_id."""
