@@ -58,6 +58,9 @@ class EmailMessage:
     raw_headers: dict = field(default_factory=dict)
     uid: Optional[str] = None
 
+    # Graph API internal message ID (for reply support)
+    graph_message_id: Optional[str] = None
+
     @property
     def thread_root_id(self) -> str:
         """Get the root message ID of the email thread."""
@@ -460,7 +463,54 @@ class GraphEmailReader(BaseEmailReader):
             in_reply_to=data.get("inReplyTo"),
             references=None,  # Graph doesn't expose References header directly
             uid=msg_id,
+            graph_message_id=msg_id,  # Graph API internal ID (AAMkAG... format)
         )
+
+    def reply_to_message(self, graph_message_id: str, comment_html: str) -> dict:
+        """Reply to a message using Graph API.
+
+        Args:
+            graph_message_id: Graph-internal message ID (AAMkAG... format),
+                              NOT RFC822 Message-ID
+            comment_html: HTML body of the reply
+
+        Returns:
+            dict with 'success' and optional 'error'
+        """
+        import requests
+
+        if not self._access_token:
+            try:
+                self.connect()
+            except Exception as e:
+                return {"success": False, "error": f"Auth failed: {e}"}
+
+        url = (
+            f"https://graph.microsoft.com/v1.0/users/{self.config.address}"
+            f"/messages/{graph_message_id}/reply"
+        )
+        body = {"comment": comment_html}
+
+        try:
+            response = requests.post(
+                url, headers=self._get_headers(), json=body, timeout=60
+            )
+            if response.status_code == 202:
+                logger.info("Reply sent for message %s", graph_message_id[:20])
+                return {"success": True}
+            else:
+                error_detail = ""
+                try:
+                    error_detail = response.json().get("error", {}).get("message", response.text[:300])
+                except Exception:
+                    error_detail = response.text[:300]
+                logger.error(
+                    "Reply failed (%d): %s", response.status_code, error_detail
+                )
+                return {"success": False, "error": f"HTTP {response.status_code}: {error_detail}"}
+        except Exception as e:
+            logger.error("Reply request error: %s", e)
+            return {"success": False, "error": str(e)}
 
     def mark_seen(self, msg_id: str) -> bool:
         """Mark a message as read."""

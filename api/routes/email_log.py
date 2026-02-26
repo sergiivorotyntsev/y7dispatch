@@ -52,6 +52,93 @@ def init_email_log_table():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_status ON email_log(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_sender ON email_log(sender)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_date ON email_log(received_date)")
+        # Migration: add graph_message_id for Graph API reply support
+        try:
+            conn.execute("ALTER TABLE email_log ADD COLUMN graph_message_id TEXT")
+        except Exception:
+            pass  # Column already exists
+        conn.commit()
+
+
+def init_email_replies_table():
+    """Create email_replies table for tracking confirmation email replies."""
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS email_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email_log_id INTEGER NOT NULL,
+                run_id INTEGER NOT NULL,
+                cd_listing_id TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_attempt_at TEXT,
+                sent_at TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (email_log_id) REFERENCES email_log(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_email_replies_run_id ON email_replies(run_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_email_replies_status ON email_replies(status)")
+        conn.commit()
+
+
+def init_email_templates_table():
+    """Create email_templates table for customizable email reply templates."""
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS email_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_key TEXT UNIQUE NOT NULL,
+                subject_template TEXT,
+                body_html TEXT NOT NULL,
+                description TEXT,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_by TEXT
+            )
+        """)
+        conn.commit()
+
+
+_DEFAULT_REPLY_CONFIRMATION_HTML = """\
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;">
+<p>{{greeting}}</p>
+
+<p>We have received your transport request and created a listing.</p>
+
+<div style="background-color:#e8f5e9;border:2px solid #4caf50;border-radius:8px;padding:16px 20px;margin:16px 0;text-align:center;">
+  <div style="font-size:12px;color:#666;margin-bottom:4px;">Load ID</div>
+  <div style="font-size:24px;font-weight:bold;color:#2e7d32;">{{cd_listing_id}}</div>
+</div>
+
+<div style="background-color:#f8f9fa;border-left:4px solid #1976d2;border-radius:4px;padding:12px 16px;margin:16px 0;">
+  <div style="font-size:12px;color:#666;margin-bottom:4px;">Delivery Warehouse</div>
+  <div style="font-weight:bold;">{{warehouse_name}}</div>
+  <div>{{warehouse_full_address}}</div>
+  {{warehouse_phone_line}}
+</div>
+
+<p><strong>Status:</strong> Listed &mdash; Searching for carriers</p>
+
+<p>We will notify you once a carrier is assigned.</p>
+
+<p>Best regards,<br/>Y7 Agency / Broadway Motoring Inc</p>
+</div>"""
+
+
+def seed_default_templates():
+    """Insert default email templates if they don't exist (INSERT OR IGNORE)."""
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO email_templates
+               (template_key, body_html, description)
+               VALUES (?, ?, ?)""",
+            (
+                "reply_confirmation",
+                _DEFAULT_REPLY_CONFIRMATION_HTML,
+                "Confirmation email sent to sender after CD listing is created",
+            ),
+        )
         conn.commit()
 
 

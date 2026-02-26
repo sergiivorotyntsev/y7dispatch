@@ -4,6 +4,7 @@ import {
   useSettings,
   CDTab,
   EmailTab,
+  EmailTemplateEditor,
   WarehousesTab,
   AuditLogTab,
   CredentialsTab,
@@ -18,6 +19,7 @@ function SettingsContent() {
     { id: 'warehouses', label: 'Warehouses' },
     { id: 'cd', label: 'Central Dispatch' },
     { id: 'email', label: 'Email' },
+    { id: 'email_templates', label: 'Email Templates' },
     { id: 'audit', label: 'Audit Log' },
   ]
 
@@ -68,6 +70,7 @@ function SettingsContent() {
           {activeTab === 'warehouses' && <WarehousesTab />}
           {activeTab === 'cd' && <CDTab />}
           {activeTab === 'email' && <EmailTab />}
+          {activeTab === 'email_templates' && <EmailTemplateEditor />}
           {activeTab === 'audit' && <AuditLogTab />}
         </div>
       </div>

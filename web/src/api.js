@@ -646,6 +646,26 @@ export const api = {
     const whParam = warehouseId ? `?warehouse_id=${warehouseId}` : ''
     return request(`/weather/route-alerts-for-run/${runId}${whParam}`)
   },
+
+  // Email replies
+  sendConfirmationReply: (runId) => request(`/runs/${runId}/reply`, {
+    method: 'POST',
+  }),
+  getReplyStatus: (runId) => request(`/runs/${runId}/reply/status`),
+
+  // Email templates
+  getReplyTemplate: () => request('/templates/reply_confirmation'),
+  updateReplyTemplate: (bodyHtml) => request('/templates/reply_confirmation', {
+    method: 'PUT',
+    body: JSON.stringify({ body_html: bodyHtml }),
+  }),
+  previewReplyTemplate: (bodyHtml) => request('/templates/reply_confirmation/preview', {
+    method: 'POST',
+    body: JSON.stringify({ body_html: bodyHtml }),
+  }),
+  resetReplyTemplate: () => request('/templates/reply_confirmation/reset', {
+    method: 'POST',
+  }),
 }
 
 export default api

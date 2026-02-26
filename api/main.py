@@ -50,6 +50,7 @@ from api.routes import (
     dlq,
     documents,
     email_log,
+    email_templates,
     exports,
     extractions,
     field_mappings,
@@ -59,6 +60,7 @@ from api.routes import (
     metrics,
     models,
     pricing,
+    replies,
     reviews,
     settings,
     sheets,
@@ -266,6 +268,8 @@ app.include_router(dlq.router, prefix="/api", tags=["DLQ"])  # Dead Letter Queue
 app.include_router(sheets.router)  # Sheets webhook override endpoint
 app.include_router(credentials.router, prefix="/api/credentials", tags=["Credentials"])
 app.include_router(listings.router)  # Load ID generation + listing management
+app.include_router(replies.router)  # Email confirmation replies after CD export
+app.include_router(email_templates.router)  # Email template management
 app.include_router(attachments.router)  # Attachment download/list for vehicle release PDFs
 app.include_router(auction_directory.router)  # Auction phone directory lookup
 app.include_router(email_log.router)  # Email log browsing + management
@@ -627,9 +631,17 @@ async def startup():
 
     init_credentials_table()
     # Initialize email log table
-    from api.routes.email_log import init_email_log_table
+    from api.routes.email_log import (
+        init_email_log_table,
+        init_email_replies_table,
+        init_email_templates_table,
+        seed_default_templates,
+    )
 
     init_email_log_table()
+    init_email_replies_table()
+    init_email_templates_table()
+    seed_default_templates()
     # Wire DLQ alert callback for failed processing notifications
     from api.dlq import get_dlq_service
     from services.alerting import Severity, send_alert

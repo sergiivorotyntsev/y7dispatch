@@ -1,6 +1,7 @@
 export { SettingsProvider, useSettings } from './SettingsContext'
 export { default as CDTab } from './CDTab'
 export { default as EmailTab } from './EmailTab'
+export { default as EmailTemplateEditor } from './EmailTemplateEditor'
 export { default as WarehousesTab } from './WarehousesTab'
 export { default as AuditLogTab } from './AuditLogTab'
 export { default as CredentialsTab } from './CredentialsTab'

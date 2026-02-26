@@ -7,7 +7,9 @@
  * - isApproved: shows "Export to CD" button, hides approve
  * - isExported: shows exported summary, hides counters/buttons/helper text
  */
+import { useState, useEffect } from 'react'
 import PreflightBanner from '../PreflightBanner'
+import api from '../../api'
 
 function ExportActions({
   runId, isTrainingMode, saving,
@@ -17,6 +19,50 @@ function ExportActions({
   selectedWarehouse, isApproved, isExported, runStatus,
   correctCount, totalCount, correctedCount, needsReviewCount,
 }) {
+  // Reply button state
+  const [replyStatus, setReplyStatus] = useState(null) // null | 'loading' | 'sending' | 'sent' | 'failed' | 'unavailable'
+  const [replyError, setReplyError] = useState(null)
+  const [repliedTo, setRepliedTo] = useState(null)
+
+  // Load reply status when exported
+  useEffect(() => {
+    if (isExported && runId) {
+      setReplyStatus('loading')
+      api.getReplyStatus(runId).then(data => {
+        if (data.status === 'sent') {
+          setReplyStatus('sent')
+        } else if (data.status === 'failed') {
+          setReplyStatus('failed')
+          setReplyError(data.error || 'Previous attempt failed')
+        } else {
+          setReplyStatus(null)
+        }
+      }).catch(() => {
+        setReplyStatus(null)
+      })
+    }
+  }, [isExported, runId])
+
+  const handleSendReply = async () => {
+    setReplyStatus('sending')
+    setReplyError(null)
+    try {
+      const result = await api.sendConfirmationReply(runId)
+      if (result.success) {
+        setReplyStatus('sent')
+        setRepliedTo(result.replied_to)
+      } else if (result.already_sent) {
+        setReplyStatus('sent')
+      } else {
+        setReplyStatus('failed')
+        setReplyError(result.error || 'Failed to send reply')
+      }
+    } catch (err) {
+      setReplyStatus('failed')
+      setReplyError(err.message || 'Network error')
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Preflight Banner — hide after export, show "Exported" instead */}
@@ -33,6 +79,39 @@ function ExportActions({
               <span className="text-sm text-green-700">
                 CD Listing ID: <span className="font-mono font-medium">{exportResult.cd_listing_id}</span>
               </span>
+            )}
+          </div>
+          {/* Send Confirmation Email button */}
+          <div className="px-4 pb-3 flex items-center gap-3">
+            {replyStatus === 'sent' ? (
+              <span className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-100 border border-green-300 rounded-md">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Confirmation Sent
+                {repliedTo && <span className="text-green-600 font-normal ml-1">to {repliedTo}</span>}
+              </span>
+            ) : replyStatus === 'sending' || replyStatus === 'loading' ? (
+              <button disabled className="px-3 py-1.5 text-sm font-medium text-gray-500 bg-gray-100 border border-gray-300 rounded-md cursor-not-allowed">
+                {replyStatus === 'sending' ? 'Sending...' : 'Loading...'}
+              </button>
+            ) : replyStatus === 'failed' ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSendReply}
+                  className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-md hover:bg-red-100"
+                >
+                  Retry Send Email
+                </button>
+                {replyError && <span className="text-xs text-red-600">{replyError}</span>}
+              </div>
+            ) : (
+              <button
+                onClick={handleSendReply}
+                className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-md hover:bg-blue-100"
+              >
+                Send Confirmation Email
+              </button>
             )}
           </div>
         </div>

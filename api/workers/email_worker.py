@@ -737,6 +737,11 @@ class EmailWorker:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_status ON email_log(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_sender ON email_log(sender)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_date ON email_log(received_date)")
+            # Migration: add graph_message_id for Graph API reply support
+            try:
+                conn.execute("ALTER TABLE email_log ADD COLUMN graph_message_id TEXT")
+            except Exception:
+                pass  # Column already exists
             conn.commit()
 
     def _insert_email_log(self, msg: 'EmailMessage', body_preview: str = "",
@@ -796,6 +801,82 @@ class EmailWorker:
 
         with get_connection() as conn:
             conn.execute(f"UPDATE email_log SET {set_clause} WHERE message_id = ?", values)
+            conn.commit()
+
+    def _lookup_graph_message_id(self, rfc822_message_id: str) -> str | None:
+        """Look up Graph API internal message ID by RFC822 Message-ID.
+
+        Uses Microsoft Graph API to find a message by its internetMessageId,
+        returning the Graph-internal ID (AAMkAG... format) needed for reply.
+        Returns None if lookup fails (non-critical — email still processed).
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        config = self._load_config()
+
+        if config.get("auth_type") != "oauth2":
+            return None  # Graph lookup only works with OAuth2
+
+        tenant_id = config.get("tenant_id", "")
+        client_id = config.get("client_id", "")
+        client_secret = config.get("client_secret", "")
+        email_address = config.get("email_address", "")
+
+        if not all([tenant_id, client_id, client_secret, email_address]):
+            return None
+
+        try:
+            import httpx
+
+            # Get Graph API token (different scope from IMAP token)
+            token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+            token_resp = httpx.post(token_url, data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://graph.microsoft.com/.default",
+                "grant_type": "client_credentials",
+            }, timeout=15.0)
+
+            if token_resp.status_code != 200:
+                logger.warning("[EmailWorker] Graph token failed: %d", token_resp.status_code)
+                return None
+
+            access_token = token_resp.json()["access_token"]
+
+            # Look up message by internetMessageId
+            filter_val = rfc822_message_id.replace("'", "''")
+            url = f"https://graph.microsoft.com/v1.0/users/{email_address}/messages"
+            params = {
+                "$filter": f"internetMessageId eq '{filter_val}'",
+                "$select": "id",
+                "$top": "1",
+            }
+            headers = {"Authorization": f"Bearer {access_token}"}
+
+            resp = httpx.get(url, headers=headers, params=params, timeout=30.0)
+            if resp.status_code == 200:
+                messages = resp.json().get("value", [])
+                if messages:
+                    graph_id = messages[0]["id"]
+                    logger.info("[EmailWorker] Graph ID resolved for %s", rfc822_message_id[:40])
+                    return graph_id
+                else:
+                    logger.debug("[EmailWorker] No Graph message found for %s", rfc822_message_id[:40])
+            else:
+                logger.warning("[EmailWorker] Graph lookup failed: %d", resp.status_code)
+        except Exception as e:
+            logger.warning("[EmailWorker] Graph ID lookup error: %s", e)
+
+        return None
+
+    def _save_graph_message_id(self, rfc822_message_id: str, graph_message_id: str):
+        """Save Graph API message ID to email_log."""
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE email_log SET graph_message_id = ? WHERE message_id = ?",
+                (graph_message_id, rfc822_message_id),
+            )
             conn.commit()
 
     def _is_thread_reply_without_pdf(self, msg: 'EmailMessage') -> bool:
@@ -1391,6 +1472,14 @@ class EmailWorker:
                             error="Duplicate",
                         ))
                         continue
+
+                    # Resolve Graph API message ID for reply support (non-blocking)
+                    try:
+                        graph_id = self._lookup_graph_message_id(msg.message_id)
+                        if graph_id:
+                            self._save_graph_message_id(msg.message_id, graph_id)
+                    except Exception as e:
+                        logger.debug("[EmailWorker] Graph ID lookup skipped: %s", e)
 
                     # Secondary sender filter for domain-only entries (@domain.com)
                     # that can't be filtered server-side
