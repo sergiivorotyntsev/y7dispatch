@@ -1,10 +1,10 @@
 """
-Auction Location Directory — Copart, IAA, Manheim phone/address lookup.
+Auction Location Directory — Copart, IAA, Manheim, ADESA, America's AA, AutoNation lookup.
 
 When extraction returns a pickup_name like "Copart Clearwater" but no phone,
 this directory provides the phone number and address for auto-fill.
 
-Data sources: publicly available Copart/IAA/Manheim location directories.
+Data sources: publicly available auction location directories.
 """
 
 import logging
@@ -153,6 +153,54 @@ ADESA_LOCATIONS = {
     "ADESA San Diego": {"phone": "(833) 289-3533", "address": "8555 Miramar Pl", "city": "San Diego", "state": "CA", "zip": "92121"},
     "ADESA Tampa": {"phone": "(833) 289-3533", "address": "6712 E Broadway", "city": "Tampa", "state": "FL", "zip": "33619"},
     "ADESA Washington DC": {"phone": "(833) 289-3533", "address": "3701 Ironwood Pl", "city": "Landover", "state": "MD", "zip": "20785"},
+    "ADESA Denver": {"phone": "(833) 289-3533", "address": "5000 S Federal Blvd", "city": "Englewood", "state": "CO", "zip": "80110"},
+    "ADESA Houston": {"phone": "(833) 289-3533", "address": "4526 N Sam Houston Pkwy E", "city": "Houston", "state": "TX", "zip": "77032"},
+    "ADESA Las Vegas": {"phone": "(833) 289-3533", "address": "3650 N Nellis Blvd", "city": "North Las Vegas", "state": "NV", "zip": "89032"},
+    "ADESA Los Angeles": {"phone": "(833) 289-3533", "address": "3560 Etiwanda Ave", "city": "Mira Loma", "state": "CA", "zip": "91752"},
+    "ADESA New York": {"phone": "(833) 289-3533", "address": "175 Peconic Ave", "city": "Medford", "state": "NY", "zip": "11763"},
+    "ADESA Orlando": {"phone": "(833) 289-3533", "address": "1200 Dolgner Pl", "city": "Sanford", "state": "FL", "zip": "32771"},
+    "ADESA Philadelphia": {"phone": "(833) 289-3533", "address": "333 N Ship Rd", "city": "Exton", "state": "PA", "zip": "19341"},
+    "ADESA San Francisco": {"phone": "(833) 289-3533", "address": "5800 S Chrisman Rd", "city": "Tracy", "state": "CA", "zip": "95377"},
+    "ADESA Seattle": {"phone": "(833) 289-3533", "address": "1818 C St SW", "city": "Auburn", "state": "WA", "zip": "98001"},
+    "ADESA St. Louis": {"phone": "(833) 289-3533", "address": "1370 N Lindbergh Blvd", "city": "Hazelwood", "state": "MO", "zip": "63042"},
+}
+
+# ─── America's Auto Auction Locations ─────────────────────────────────────────
+# Source: americasaa.com public location directory (verified locations only)
+
+AMERICAS_AA_LOCATIONS = {
+    "America's Auto Auction Houston": {"phone": "(281) 819-3600", "address": "1826 Almeda Genoa Rd", "city": "Houston", "state": "TX", "zip": "77047"},
+    "America's Auto Auction Atlanta": {"phone": "(770) 382-1010", "address": "440 Joe Frank Harris Pkwy SE", "city": "Cartersville", "state": "GA", "zip": "30120"},
+    "America's Auto Auction Dallas": {"phone": "(972) 445-1044", "address": "219 N Loop 12", "city": "Irving", "state": "TX", "zip": "75061"},
+    "America's Auto Auction Northern California": {"phone": "(707) 864-1040", "address": "250 Dittmer Rd", "city": "Fairfield", "state": "CA", "zip": "94534"},
+    "America's Auto Auction Las Vegas": {"phone": "(702) 255-0990", "address": "3038 Losee Rd", "city": "North Las Vegas", "state": "NV", "zip": "89030"},
+    "America's Auto Auction Jacksonville": {"phone": "(904) 764-7653", "address": "11982 New Kings Rd", "city": "Jacksonville", "state": "FL", "zip": "32219"},
+    "America's Auto Auction Tampa Bay": {"phone": "(727) 572-8800", "address": "3010 Scherer Dr N", "city": "St. Petersburg", "state": "FL", "zip": "33716"},
+    "America's Auto Auction Miami": {"phone": "(727) 572-8800", "address": "5895 NW 167th St", "city": "Hialeah", "state": "FL", "zip": "33015"},
+    "America's Auto Auction New Jersey": {"phone": "(732) 566-3403", "address": "1005 State Route 33", "city": "Freehold", "state": "NJ", "zip": "07728"},
+    "America's Auto Auction Chicago": {"phone": "(708) 389-4488", "address": "14001 Karlov Ave", "city": "Crestwood", "state": "IL", "zip": "60418"},
+    "America's Auto Auction Kansas City": {"phone": "(816) 502-3318", "address": "11101 N Congress Ave", "city": "Kansas City", "state": "MO", "zip": "64153"},
+    "America's Auto Auction Toledo": {"phone": "(419) 872-0872", "address": "9797 Freemont Pike", "city": "Perrysburg", "state": "OH", "zip": "43551"},
+    "America's Auto Auction St. Louis": {"phone": "(618) 332-1227", "address": "721 S 45th St", "city": "East St. Louis", "state": "IL", "zip": "62207"},
+    "America's Auto Auction Oklahoma": {"phone": "(918) 794-0660", "address": "66 N Mingo Rd", "city": "Tulsa", "state": "OK", "zip": "74116"},
+    "America's Auto Auction Harrisburg": {"phone": "(717) 697-2222", "address": "1100 S York St", "city": "Mechanicsburg", "state": "PA", "zip": "17055"},
+    "America's Auto Auction Savannah": {"phone": "(912) 965-9901", "address": "1712 Dean Forest Rd", "city": "Savannah", "state": "GA", "zip": "31408"},
+    "America's Auto Auction New Orleans": {"phone": "(985) 345-3302", "address": "18310 Wood-Scale Rd", "city": "Hammond", "state": "LA", "zip": "70401"},
+    "America's Auto Auction Austin": {"phone": "(512) 268-6600", "address": "16611 S I-35 Frontage Rd", "city": "Buda", "state": "TX", "zip": "78610"},
+    "America's Auto Auction San Antonio": {"phone": "(210) 298-5477", "address": "13510 Toepperwein Rd", "city": "Live Oak", "state": "TX", "zip": "78233"},
+    "America's Auto Auction Virginia": {"phone": "(757) 487-3464", "address": "656 S Military Hwy", "city": "Virginia Beach", "state": "VA", "zip": "23464"},
+    "America's Auto Auction Baton Rouge": {"phone": "(225) 778-3737", "address": "3960 Blount Rd", "city": "Baton Rouge", "state": "LA", "zip": "70807"},
+    "America's Auto Auction Greenville": {"phone": "(864) 801-1199", "address": "2415 SC-101", "city": "Greer", "state": "SC", "zip": "29651"},
+}
+
+# ─── AutoNation Auto Auction Locations ────────────────────────────────────────
+# Source: autonationautoauction.com (only 4 physical auction locations exist)
+
+AUTONATION_LOCATIONS = {
+    "AutoNation Auto Auction Atlanta": {"phone": "(855) 907-2622", "address": "2491 Old Anvil Block Rd", "city": "Ellenwood", "state": "GA", "zip": "30294"},
+    "AutoNation Auto Auction Houston": {"phone": "(855) 905-2622", "address": "608 W Mitchell Rd", "city": "Houston", "state": "TX", "zip": "77037"},
+    "AutoNation Auto Auction Orlando": {"phone": "(855) 906-2622", "address": "650 N US Highway 17-92", "city": "Longwood", "state": "FL", "zip": "32750"},
+    "AutoNation Auto Auction Los Angeles": {"phone": "(855) 904-2622", "address": "777 W 190th St", "city": "Gardena", "state": "CA", "zip": "90248"},
 }
 
 
@@ -165,9 +213,10 @@ def _normalize_name(name: str) -> str:
     """
     if not name:
         return ""
-    # Lowercase, replace dashes with space, collapse whitespace
+    # Lowercase, strip apostrophes, replace dashes with space, collapse whitespace
     normalized = name.lower().strip()
-    normalized = re.sub(r"[-–—]", " ", normalized)
+    normalized = normalized.replace("'", "").replace("\u2019", "")
+    normalized = re.sub(r"[-\u2013\u2014]", " ", normalized)
     normalized = re.sub(r"\s+", " ", normalized)
     return normalized
 
@@ -175,7 +224,7 @@ def _normalize_name(name: str) -> str:
 def _build_lookup_index() -> dict:
     """Build a normalized name → location data index from all directories."""
     index = {}
-    for locations in [COPART_LOCATIONS, IAA_LOCATIONS, MANHEIM_LOCATIONS, ADESA_LOCATIONS]:
+    for locations in [COPART_LOCATIONS, IAA_LOCATIONS, MANHEIM_LOCATIONS, ADESA_LOCATIONS, AMERICAS_AA_LOCATIONS, AUTONATION_LOCATIONS]:
         for name, data in locations.items():
             key = _normalize_name(name)
             index[key] = {**data, "name": name}
