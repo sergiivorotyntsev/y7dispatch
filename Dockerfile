@@ -25,7 +25,7 @@ COPY *.yaml .
 COPY static/ static/
 
 # Data directories
-RUN mkdir -p data uploads/email data/attachments config
+RUN mkdir -p data uploads/email data/attachments config logs backups
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

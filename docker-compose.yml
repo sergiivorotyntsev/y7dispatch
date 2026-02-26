@@ -9,6 +9,8 @@ services:
       - ./data:/app/data
       - ./config:/app/config
       - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./backups:/app/backups
       - ./warehouses.yaml:/app/warehouses.yaml:ro
       - ./cd_defaults.yaml:/app/cd_defaults.yaml:ro
       - ./cd_field_mapping.yaml:/app/cd_field_mapping.yaml:ro

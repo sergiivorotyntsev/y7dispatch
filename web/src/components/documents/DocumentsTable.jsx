@@ -219,7 +219,7 @@ function DocumentRow({
 
   return (
     <tr
-      className={`hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
+      className={`hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : isExported ? 'bg-green-50' : ''}`}
       onClick={() => onRowClick(doc)}
     >
       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -338,7 +338,7 @@ function DocumentRow({
         <span className={`px-2 py-1 text-xs font-medium rounded ${
           extStatus === 'needs_review' ? 'bg-yellow-100 text-yellow-800' :
           extStatus === 'reviewed' || extStatus === 'approved' ? 'bg-green-100 text-green-800' :
-          extStatus === 'exported' ? 'bg-blue-100 text-blue-800' :
+          extStatus === 'exported' ? 'bg-green-100 text-green-800' :
           extStatus === 'manual_required' ? 'bg-orange-100 text-orange-800' :
           extStatus === 'failed' ? 'bg-red-100 text-red-800' :
           'bg-gray-100 text-gray-600'

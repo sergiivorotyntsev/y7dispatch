@@ -634,6 +634,7 @@ class AuctionType:
     is_active: bool = True
     description: Optional[str] = None
     extractor_config: Optional[dict] = None
+    predispatch_notes: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -1860,7 +1861,7 @@ class ExportJobRepository:
 
             if status == "submitted":
                 updates["submitted_at"] = now
-            elif status in ("success", "failed", "validation_error"):
+            elif status in ("completed", "success", "failed", "validation_error"):
                 updates["completed_at"] = now
 
             set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
@@ -2388,5 +2389,11 @@ def _run_migrations():
             conn.execute("ALTER TABLE documents ADD COLUMN archived_at TIMESTAMP")
         except Exception:
             pass
+
+        # Migration: Add predispatch_notes column to auction_types
+        try:
+            conn.execute("ALTER TABLE auction_types ADD COLUMN predispatch_notes TEXT")
+        except Exception:
+            pass  # Column already exists
 
         conn.commit()

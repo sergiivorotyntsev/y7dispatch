@@ -8,6 +8,20 @@ export default function CDTab() {
   const [dbTestStatus, setDbTestStatus] = useState(null)
   const [dbTestedAt, setDbTestedAt] = useState(null)
   const [credLoaded, setCredLoaded] = useState(false)
+  const [auctionTypes, setAuctionTypes] = useState([])
+  const [predispatchNotes, setPredispatchNotes] = useState({})
+  const [notesSaving, setNotesSaving] = useState(false)
+
+  // Load auction types for pre-dispatch notes
+  useEffect(() => {
+    api.listAuctionTypes().then(data => {
+      const types = data.items || []
+      setAuctionTypes(types)
+      const notes = {}
+      types.forEach(t => { notes[t.id] = t.predispatch_notes || '' })
+      setPredispatchNotes(notes)
+    }).catch(() => {})
+  }, [])
 
   // Load saved credential from credential store on mount
   useEffect(() => {
@@ -60,6 +74,27 @@ export default function CDTab() {
       setDbTestedAt(new Date().toISOString())
     } else {
       setDbTestStatus('failed')
+    }
+  }
+
+  async function handleSaveNotes() {
+    setNotesSaving(true)
+    try {
+      for (const at of auctionTypes) {
+        const notes = predispatchNotes[at.id] || ''
+        if (notes !== (at.predispatch_notes || '')) {
+          await api.updateAuctionType(at.id, { predispatch_notes: notes })
+        }
+      }
+      showMessage('success', 'Pre-dispatch notes saved')
+      // Refresh auction types to get updated data
+      const data = await api.listAuctionTypes()
+      const types = data.items || []
+      setAuctionTypes(types)
+    } catch (err) {
+      showMessage('error', err.message)
+    } finally {
+      setNotesSaving(false)
     }
   }
 
@@ -165,6 +200,30 @@ export default function CDTab() {
       {dbTestedAt && !result && (
         <div className={`p-3 rounded-lg text-sm ${isConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
           Last tested: {new Date(dbTestedAt).toLocaleString()} — {isConnected ? 'Connected' : 'Failed'}
+        </div>
+      )}
+
+      {auctionTypes.length > 0 && (
+        <div className="border-t pt-6">
+          <h3 className="text-lg font-medium mb-1">Pre-Dispatch Notes</h3>
+          <p className="text-sm text-gray-500 mb-4">Notes added to CD listings per auction source (visible in <code className="bg-gray-100 px-1 rounded">marketplaces[0].predispatchNotes</code>)</p>
+          <div className="space-y-4">
+            {auctionTypes.filter(at => at.is_active).map(at => (
+              <div key={at.id}>
+                <label className="form-label">{at.name} ({at.code})</label>
+                <textarea
+                  value={predispatchNotes[at.id] || ''}
+                  onChange={e => setPredispatchNotes(prev => ({ ...prev, [at.id]: e.target.value }))}
+                  placeholder={`Pre-dispatch notes for ${at.name} listings...`}
+                  className="form-input w-full"
+                  rows={2}
+                />
+              </div>
+            ))}
+          </div>
+          <button onClick={handleSaveNotes} disabled={notesSaving} className="btn btn-primary mt-3">
+            {notesSaving ? 'Saving...' : 'Save Notes'}
+          </button>
         </div>
       )}
 

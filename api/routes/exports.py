@@ -455,6 +455,7 @@ def build_cd_payload(
         delivery_state = warehouse_data.get("state", "")
         delivery_zip = warehouse_data.get("zip_code", "")
         delivery_phone = warehouse_data.get("phone", "")
+        delivery_contact_phone = warehouse_data.get("contact_phone", "")
         delivery_contact = warehouse_data.get("contact_name", "")
         delivery_location_type = warehouse_data.get("location_type", "BUSINESS")
     else:
@@ -464,6 +465,7 @@ def build_cd_payload(
         delivery_state = get_field("delivery_state") or get_field("dropoff_state") or ""
         delivery_zip = get_field("delivery_zip") or get_field("dropoff_zip") or ""
         delivery_phone = get_field("delivery_phone") or ""
+        delivery_contact_phone = ""
         delivery_contact = get_field("delivery_contact") or ""
         delivery_location_type = "BUSINESS"
 
@@ -555,6 +557,8 @@ def build_cd_payload(
     }
     if delivery_phone:
         dropoff_stop["phone"] = delivery_phone
+    if delivery_contact_phone:
+        dropoff_stop["contactPhone"] = delivery_contact_phone
     if delivery_contact:
         # If contact looks like email, use email field instead of contactName
         if "@" in delivery_contact and "." in delivery_contact:
@@ -605,6 +609,25 @@ def build_cd_payload(
             vehicle_additional_info = f"{vehicle_additional_info}. {gate_pass_text}"
         else:
             vehicle_additional_info = gate_pass_text
+
+    # Append Manheim release info to additionalInfo
+    manheim_release_date = get_field("manheim_release_date")
+    manheim_offsite = get_field("manheim_offsite")
+    if manheim_release_date and manheim_release_date != "NO_RELEASE_DOCUMENT":
+        release_parts = []
+        if manheim_offsite is True or (isinstance(manheim_offsite, str) and manheim_offsite.lower() in ("true", "yes", "1")):
+            release_parts.append("VEHICLE RELEASE: OFFSITE")
+        else:
+            release_parts.append("VEHICLE RELEASE: ONSITE")
+        if manheim_release_date == "AVAILABLE_NOW":
+            release_parts.append("Available now")
+        elif manheim_release_date not in ("AVAILABLE_NOW", "NO_RELEASE_DOCUMENT"):
+            release_parts.append(f"Release date: {manheim_release_date}")
+        release_text = ". ".join(release_parts)
+        if vehicle_additional_info:
+            vehicle_additional_info = f"{vehicle_additional_info}. {release_text}"
+        else:
+            vehicle_additional_info = release_text
 
     if vehicle_additional_info:
         vehicle["additionalInfo"] = vehicle_additional_info[:500]
@@ -730,6 +753,10 @@ def build_cd_payload(
             "searchable": True,
         }
     ]
+
+    # Add predispatchNotes from auction type configuration
+    if at and at.predispatch_notes:
+        marketplaces[0]["predispatchNotes"] = at.predispatch_notes
 
     # =================================================================
     # TAGS (CD V2 — automation metadata for tracking/filtering)

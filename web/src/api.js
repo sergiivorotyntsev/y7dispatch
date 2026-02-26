@@ -265,6 +265,10 @@ export const api = {
   // Auction Types
   listAuctionTypes: () => request('/auction-types/'),
   getAuctionType: (id) => request(`/auction-types/${id}`),
+  updateAuctionType: (id, data) => request(`/auction-types/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
 
   // Integration Management
   getAllSettings: async () => {

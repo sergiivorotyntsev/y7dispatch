@@ -199,6 +199,27 @@ STEP 4 — ARCHITECT VERIFICATION:
 - Delivery: ALWAYS from warehouse database, never from document
 - Load-Specific Terms template: "TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY). Pick-up location - {pickup_name}, Delivery - {warehouse_name}"
 
+### CD API V2 Phone Fields (CRITICAL — two separate fields per stop)
+Source of truth: `docs/CD_FIELD_CONFIG_FINAL-COMPLETED.csv`
+- `stops[N].phone` = **facility phone** (warehouse.phone) — the location's main number
+- `stops[N].contactPhone` = **contact person phone** (warehouse.contact_phone) — person to call
+- These are SEPARATE fields. NEVER merge them into one.
+- In exports.py: `dropoff_stop["phone"]` = warehouse.phone, `dropoff_stop["contactPhone"]` = warehouse.contact_phone
+
+### Manheim Release Info in additionalInfo
+- If `manheim_release_date` exists and != "NO_RELEASE_DOCUMENT":
+  - `manheim_offsite=true` → "VEHICLE RELEASE: OFFSITE"
+  - `manheim_offsite=false/null` → "VEHICLE RELEASE: ONSITE"
+  - If date value → append "Release date: YYYY-MM-DD"
+  - If "AVAILABLE_NOW" → append "Available now"
+- Appended to `vehicle_additional_info` in exports.py after gate pass block
+
+### Pre-Dispatch Notes per Auction Source
+- `auction_types.predispatch_notes` column (TEXT, nullable)
+- Maps to CD API V2: `marketplaces[0].predispatchNotes`
+- Configured per auction type in Settings > CD Tab
+- If non-empty, included in export payload; if empty/null, omitted
+
 ## File Reference
 
 | Category | Key Files |
@@ -206,6 +227,7 @@ STEP 4 — ARCHITECT VERIFICATION:
 | Backend entry | api/main.py |
 | Extraction | services/haiku_extractor.py |
 | Export | api/routes/exports.py |
+| Field registry | api/listing_fields.py |
 | Credentials | services/credential_store.py |
 | Pricing | services/pricing_engine.py |
 | Frontend pages | web/src/pages/Review.jsx, Settings.jsx, Documents.jsx |
@@ -217,9 +239,11 @@ STEP 4 — ARCHITECT VERIFICATION:
 | Attachments | api/routes/attachments.py |
 | CD OAuth client | api/cd_client.py |
 | Warehouses | api/routes/warehouses.py |
+| Auction types | api/routes/auction_types.py |
 | Auction directory | services/auction_directory.py |
 | Tests | tests/e2e/ |
 | Docs | docs/DEVELOPMENT_JOURNAL.md, docs/CD_FIELD_CONFIG_FINAL-COMPLETED.csv |
+| Deploy scripts | scripts/deploy.sh, scripts/restore.sh, scripts/backup.sh |
 
 ## Regression Prevention Protocol
 
@@ -233,6 +257,52 @@ STEP 4 — ARCHITECT VERIFICATION:
 8. ZIP3 coords: `_ZIP3_COORDS` in distance_service.py — add entries when new ZIPs fail lookup
 9. Gate pass: inherited from previous extraction runs AND email_log on re-extraction
 10. Email poll: `since_days=7` default — already-processed emails are skipped via message_id dedup
+
+## Deployment (Docker / Digital Ocean)
+
+### Architecture
+```
+Digital Ocean Droplet
+├── docker-compose.yml          # Single-service: app
+├── .env                        # Secrets (CD_CLIENT_ID, CD_CLIENT_SECRET, etc.)
+├── data/control_panel.db       # SQLite DB (persistent volume)
+├── config/                     # Runtime config (persistent volume)
+├── uploads/                    # Email attachments (persistent volume)
+├── logs/                       # Application logs (persistent volume)
+├── backups/                    # DB + config backups (persistent volume)
+└── *.yaml                      # YAML configs (read-only bind mounts)
+```
+
+### Persistent Volumes (docker-compose.yml)
+- `./data:/app/data` — SQLite database
+- `./config:/app/config` — runtime configuration
+- `./uploads:/app/uploads` — email attachments
+- `./logs:/app/logs` — application logs
+- `./backups:/app/backups` — backup archives
+- `./warehouses.yaml:/app/warehouses.yaml:ro` — warehouse config (read-only)
+- `./cd_defaults.yaml:/app/cd_defaults.yaml:ro` — CD defaults (read-only)
+- `./cd_field_mapping.yaml:/app/cd_field_mapping.yaml:ro` — field mapping V1
+- `./cd_field_mapping_v2.yaml:/app/cd_field_mapping_v2.yaml:ro` — field mapping V2
+- `./pricing_config.yaml:/app/pricing_config.yaml:ro` — pricing rules
+
+### Deploy Scripts
+- `scripts/deploy.sh` — Pull latest code, rebuild frontend, Docker rebuild + restart, health check
+- `scripts/backup.sh` — Archive DB + config + YAML to timestamped tar.gz in backups/
+- `scripts/restore.sh <archive>` — Restore DB + config from backup archive, restart app
+
+### Data Sync Strategy (Local ↔ GitHub ↔ DO)
+| Category | GitHub | DO Server | Sync Method |
+|----------|--------|-----------|-------------|
+| Application code | YES | pulled via deploy.sh | `git pull origin main` |
+| .env secrets | NO (.gitignore) | manual | scp or DO env vars |
+| data/control_panel.db | NO (.gitignore) | persistent volume | backup/restore scripts |
+| config/ | NO (.gitignore) | persistent volume | backup/restore scripts |
+| uploads/ | NO (.gitignore) | persistent volume | DO volume snapshots |
+| *.yaml configs | YES | read-only mount | `git pull` via deploy.sh |
+
+### Known Issues
+- export_jobs.completed_at was not being set for status="completed" (fixed 2026-02-26)
+- Logging is stdout-only; file rotation not yet implemented (use `docker compose logs` for now)
 
 ## MULTI-AGENT COLLABORATIVE DEVELOPMENT PROTOCOL
 
@@ -393,3 +463,7 @@ All layers MUST use these exact names. No aliases, no alternatives.
 | Gate pass | gate_pass | gate_pass | gatePass | Gate Pass |
 | Load ID | load_id | load_id | loadId | Load ID |
 | Extraction status | status | status | status | Status |
+| Delivery facility phone | warehouses.phone | stops[1].phone | — | Phone |
+| Delivery contact phone | warehouses.contact_phone | stops[1].contactPhone | — | Contact Phone |
+| Pickup facility phone | (from auction) | stops[0].phone | — | Phone |
+| Pre-dispatch notes | auction_types.predispatch_notes | marketplaces[0].predispatchNotes | predispatchNotes | Pre-Dispatch Notes |

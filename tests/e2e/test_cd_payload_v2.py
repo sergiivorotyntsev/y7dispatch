@@ -342,7 +342,7 @@ class TestLoadSpecificTermsTemplate:
         from api.routes.exports import OperatorOverrides, build_cd_payload
 
         run_id = _create_test_run()
-        wh_id = self._get_warehouse_id()
+        wh_id = _create_test_warehouse(name="Tampa Delivery Hub")
         overrides = OperatorOverrides(
             warehouse_id=wh_id,
             final_price=500.0,
@@ -350,9 +350,8 @@ class TestLoadSpecificTermsTemplate:
         )
         payload, _ = build_cd_payload(run_id, overrides=overrides)
         terms = payload.get("loadSpecificTerms", "")
-        # Should contain some warehouse name
-        assert "Warehouse" in terms or "warehouse" in terms.lower(), \
-            "Terms should include warehouse/delivery location name"
+        assert "Tampa Delivery Hub" in terms, \
+            f"Terms should include warehouse name, got: {terms}"
 
     def test_terms_override_takes_precedence(self):
         """Explicit load_specific_terms override replaces template."""
@@ -813,4 +812,299 @@ class TestExternalIdUsesLoadId:
         payload, _ = build_cd_payload(run_id, overrides=overrides)
         assert payload.get("shipperOrderId") == payload.get("externalId"), (
             f"shipperOrderId '{payload.get('shipperOrderId')}' should match externalId '{payload.get('externalId')}'"
+        )
+
+
+# ── Test Class 10: Delivery Contact Phone ────────────────────────────────────
+
+
+def _create_test_warehouse(contact_phone=None, phone=None, name="Test Warehouse"):
+    """Create a warehouse in test DB and return its ID."""
+    from api.database import get_connection
+
+    wh_code = f"TST{uuid.uuid4().hex[:4].upper()}"
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_phone)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (wh_code, name, "FL", "Tampa", "100 Warehouse Dr", "33601", phone, contact_phone),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+class TestDeliveryContactPhone:
+    """Delivery stop has separate phone (facility) and contactPhone (contact person) per CD API V2."""
+
+    def test_delivery_has_separate_phone_and_contact_phone(self):
+        """CD API V2: stops[1].phone = facility, stops[1].contactPhone = contact person."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+        wh_id = _create_test_warehouse(
+            contact_phone="(555) 999-1234", phone="(555) 000-0000"
+        )
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        delivery = payload["stops"][1]
+        assert delivery.get("phone") == "(555) 000-0000", (
+            f"Expected facility phone '(555) 000-0000', got '{delivery.get('phone')}'"
+        )
+        assert delivery.get("contactPhone") == "(555) 999-1234", (
+            f"Expected contactPhone '(555) 999-1234', got '{delivery.get('contactPhone')}'"
+        )
+
+    def test_delivery_phone_only_when_no_contact_phone(self):
+        """When no contact_phone, only phone field is set (no contactPhone)."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+        wh_id = _create_test_warehouse(
+            contact_phone=None, phone="(555) 111-2222"
+        )
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        delivery = payload["stops"][1]
+        assert delivery.get("phone") == "(555) 111-2222", (
+            f"Expected facility phone '(555) 111-2222', got '{delivery.get('phone')}'"
+        )
+        assert "contactPhone" not in delivery, (
+            f"contactPhone should not be present when warehouse has no contact_phone"
+        )
+
+    def test_delivery_contact_phone_only(self):
+        """When warehouse has only contact_phone (no facility phone), contactPhone is set."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run()
+        wh_id = _create_test_warehouse(
+            contact_phone="(555) 333-4444", phone=None
+        )
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        delivery = payload["stops"][1]
+        assert "phone" not in delivery, "phone should not be set when warehouse has no facility phone"
+        assert delivery.get("contactPhone") == "(555) 333-4444"
+
+
+# ── Test Class 11: Manheim Release Info in additionalInfo ─────────────────────
+
+
+class TestManheimReleaseInfo:
+    """Manheim ONSITE/OFFSITE release info should appear in vehicle additionalInfo."""
+
+    def _create_manheim_run(self, release_date="2026-03-15", offsite=False):
+        """Create a MANHEIM extraction run with release date fields."""
+        from api.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO auction_types (code, name) VALUES (?, ?)",
+                ("MANHEIM", "Manheim"),
+            )
+            at_row = conn.execute(
+                "SELECT id FROM auction_types WHERE code=?", ("MANHEIM",)
+            ).fetchone()
+            at_id = at_row[0]
+
+            doc_uuid = str(uuid.uuid4())[:8]
+            cursor = conn.execute(
+                "INSERT INTO documents (uuid, auction_type_id, dataset_split, filename, raw_text, source) VALUES (?, ?, 'test', 'test.pdf', 'test', 'upload')",
+                (doc_uuid, at_id),
+            )
+            doc_id = cursor.lastrowid
+
+            outputs = json.dumps({
+                "vehicle_vin": "1HGBH41JXMN109186",
+                "vehicle_year": "2021",
+                "vehicle_make": "Honda",
+                "vehicle_model": "Civic",
+                "pickup_name": "Manheim Tampa",
+                "pickup_address": "123 Auction Rd",
+                "pickup_city": "Tampa",
+                "pickup_state": "FL",
+                "pickup_zip": "33637",
+                "manheim_release_date": release_date,
+                "manheim_offsite": offsite,
+            })
+            run_uuid = str(uuid.uuid4())[:8]
+            cursor2 = conn.execute(
+                """INSERT INTO extraction_runs (document_id, auction_type_id, uuid, status, outputs_json)
+                   VALUES (?, ?, ?, 'approved', ?)""",
+                (doc_id, at_id, run_uuid, outputs),
+            )
+            run_id = cursor2.lastrowid
+
+            fields = [
+                ("vehicle_vin", "1HGBH41JXMN109186"),
+                ("vehicle_year", "2021"),
+                ("vehicle_make", "Honda"),
+                ("vehicle_model", "Civic"),
+                ("pickup_name", "Manheim Tampa"),
+                ("pickup_address", "123 Auction Rd"),
+                ("pickup_city", "Tampa"),
+                ("pickup_state", "FL"),
+                ("pickup_zip", "33637"),
+                ("manheim_release_date", release_date),
+                ("manheim_offsite", str(offsite)),
+            ]
+            for key, val in fields:
+                conn.execute(
+                    """INSERT INTO review_items (run_id, source_key, predicted_value, corrected_value, is_match_ok, export_field, confidence)
+                       VALUES (?, ?, ?, ?, 1, 1, 0.95)""",
+                    (run_id, key, val, val),
+                )
+            conn.commit()
+        return run_id
+
+    def test_manheim_onsite_in_additional_info(self):
+        """ONSITE release info appears in additionalInfo when offsite=false."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = self._create_manheim_run(release_date="2026-03-15", offsite=False)
+        wh_id = _create_test_warehouse(name="Manheim Delivery WH")
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        vehicle = payload["vehicles"][0]
+        info = vehicle.get("additionalInfo", "")
+        assert "VEHICLE RELEASE: ONSITE" in info, (
+            f"Expected 'VEHICLE RELEASE: ONSITE' in additionalInfo, got: {info}"
+        )
+        assert "Release date: 2026-03-15" in info
+
+    def test_manheim_offsite_in_additional_info(self):
+        """OFFSITE release info appears in additionalInfo when offsite=true."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = self._create_manheim_run(release_date="2026-03-20", offsite=True)
+        wh_id = _create_test_warehouse(name="Manheim Delivery WH")
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        vehicle = payload["vehicles"][0]
+        info = vehicle.get("additionalInfo", "")
+        assert "VEHICLE RELEASE: OFFSITE" in info, (
+            f"Expected 'VEHICLE RELEASE: OFFSITE' in additionalInfo, got: {info}"
+        )
+        assert "Release date: 2026-03-20" in info
+
+    def test_manheim_available_now(self):
+        """AVAILABLE_NOW shows 'Available now' in additionalInfo."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = self._create_manheim_run(release_date="AVAILABLE_NOW", offsite=False)
+        wh_id = _create_test_warehouse(name="Manheim Delivery WH")
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        vehicle = payload["vehicles"][0]
+        info = vehicle.get("additionalInfo", "")
+        assert "Available now" in info
+        assert "VEHICLE RELEASE: ONSITE" in info
+
+    def test_no_release_document_skips_info(self):
+        """NO_RELEASE_DOCUMENT should not add any release info."""
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = self._create_manheim_run(release_date="NO_RELEASE_DOCUMENT", offsite=False)
+        wh_id = _create_test_warehouse(name="Manheim Delivery WH")
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        vehicle = payload["vehicles"][0]
+        info = vehicle.get("additionalInfo", "")
+        assert "VEHICLE RELEASE" not in info, (
+            f"NO_RELEASE_DOCUMENT should not add release info, got: {info}"
+        )
+
+
+# ── Test Class 12: Pre-dispatch Notes in Marketplace ──────────────────────────
+
+
+class TestPredispatchNotes:
+    """predispatchNotes should appear in marketplaces[0] when configured."""
+
+    def test_predispatch_notes_present_when_configured(self):
+        """marketplaces[0].predispatchNotes populated from auction type config."""
+        from api.database import get_connection
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run("COPART")
+        wh_id = _create_test_warehouse(name="Predispatch Test WH")
+        # Add predispatch_notes to the auction type
+        with get_connection() as conn:
+            try:
+                conn.execute("ALTER TABLE auction_types ADD COLUMN predispatch_notes TEXT")
+            except Exception:
+                pass
+            conn.execute(
+                "UPDATE auction_types SET predispatch_notes = ? WHERE code = ?",
+                ("Vehicle sold as-is. No returns.", "COPART"),
+            )
+            conn.commit()
+
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        mp = payload.get("marketplaces", [{}])[0]
+        assert mp.get("predispatchNotes") == "Vehicle sold as-is. No returns.", (
+            f"Expected predispatchNotes, got: {mp}"
+        )
+
+    def test_predispatch_notes_absent_when_not_configured(self):
+        """marketplaces[0] should NOT have predispatchNotes when auction type has none."""
+        from api.database import get_connection
+        from api.routes.exports import OperatorOverrides, build_cd_payload
+
+        run_id = _create_test_run("IAA")
+        wh_id = _create_test_warehouse(name="Predispatch Test WH 2")
+        # Ensure no predispatch_notes for IAA
+        with get_connection() as conn:
+            try:
+                conn.execute("ALTER TABLE auction_types ADD COLUMN predispatch_notes TEXT")
+            except Exception:
+                pass
+            conn.execute(
+                "UPDATE auction_types SET predispatch_notes = NULL WHERE code = ?",
+                ("IAA",),
+            )
+            conn.commit()
+
+        overrides = OperatorOverrides(
+            warehouse_id=wh_id,
+            final_price=500.0,
+            available_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        payload, _ = build_cd_payload(run_id, overrides=overrides)
+        mp = payload.get("marketplaces", [{}])[0]
+        assert "predispatchNotes" not in mp, (
+            f"predispatchNotes should not be present when not configured, got: {mp}"
         )

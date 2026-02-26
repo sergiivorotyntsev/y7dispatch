@@ -36,6 +36,7 @@ class AuctionTypeUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     extractor_config: Optional[dict] = None
+    predispatch_notes: Optional[str] = None
 
 
 class AuctionTypeResponse(BaseModel):
@@ -50,6 +51,7 @@ class AuctionTypeResponse(BaseModel):
     is_active: bool = True
     description: Optional[str] = None
     extractor_config: Optional[dict] = None
+    predispatch_notes: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -163,6 +165,8 @@ async def update_auction_type(id: int, data: AuctionTypeUpdate):
         update_data["is_active"] = data.is_active
     if data.extractor_config is not None:
         update_data["extractor_config"] = data.extractor_config
+    if data.predispatch_notes is not None:
+        update_data["predispatch_notes"] = data.predispatch_notes
 
     if update_data:
         AuctionTypeRepository.update(id, **update_data)
