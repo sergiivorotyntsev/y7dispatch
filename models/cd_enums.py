@@ -45,6 +45,7 @@ class LocationType(str, Enum):
     """CD API V2 valid locationType values (verified against live API)."""
     AUCTION = "Auction"
     DEALERSHIP = "Dealership"
+    WAREHOUSE = "Warehouse"
     RESIDENCE = "Residence"
     PORT = "Port"
     TERMINAL = "Terminal"

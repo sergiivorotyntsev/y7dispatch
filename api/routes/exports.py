@@ -55,11 +55,12 @@ _CD_LOCATION_TYPE_MAP = {
     "DEALER": "Dealership",
     "DEALERSHIP": "Dealership",
     "BUSINESS": "Dealership",       # "Business" is NOT valid in CD V2 — map to closest
+    "WAREHOUSE": "Warehouse",
     "RESIDENCE": "Residence",
     "PORT": "Port",
     "TERMINAL": "Terminal",
-    "CROSS_DOCK": "Terminal",       # "Cross Dock" is NOT valid in CD V2 — map to Terminal
-    "STORAGE_FACILITY": "Terminal", # "Storage Facility" is NOT valid — map to Terminal
+    "CROSS_DOCK": "Warehouse",      # "Cross Dock" is NOT valid in CD V2 — map to Warehouse
+    "STORAGE_FACILITY": "Warehouse", # "Storage Facility" is NOT valid — map to Warehouse
     "BODY_SHOP": "Other",           # "Body Shop" is NOT valid — map to Other
     "OTHER": "Other",
 }

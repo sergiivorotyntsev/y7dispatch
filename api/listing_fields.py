@@ -298,6 +298,7 @@ LISTING_FIELDS: list[ListingField] = [
         options=[
             "Auction",
             "Dealership",
+            "Warehouse",
             "Residence",
             "Port",
             "Terminal",
@@ -473,12 +474,13 @@ LISTING_FIELDS: list[ListingField] = [
         options=[
             "Auction",
             "Dealership",
+            "Warehouse",
             "Residence",
             "Port",
             "Terminal",
             "Other",
         ],
-        default_value="Terminal",
+        default_value="Warehouse",
         help_text="Type of delivery location (CD API V2 validated values)",
         editable_in_review=False,
     ),
@@ -1814,9 +1816,9 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     # CD API V2 valid locationType values (verified against live API)
     _LOCATION_TYPE_MAP = {
         "AUCTION": "Auction", "DEALER": "Dealership", "DEALERSHIP": "Dealership",
-        "BUSINESS": "Dealership", "RESIDENCE": "Residence", "PORT": "Port",
-        "TERMINAL": "Terminal", "CROSS_DOCK": "Terminal", "STORAGE_FACILITY": "Terminal",
-        "BODY_SHOP": "Other", "OTHER": "Other",
+        "BUSINESS": "Dealership", "WAREHOUSE": "Warehouse", "RESIDENCE": "Residence",
+        "PORT": "Port", "TERMINAL": "Terminal", "CROSS_DOCK": "Warehouse",
+        "STORAGE_FACILITY": "Warehouse", "BODY_SHOP": "Other", "OTHER": "Other",
     }
     pickup_location_type = _LOCATION_TYPE_MAP.get(
         pickup_location_type.upper() if pickup_location_type else "AUCTION", "Auction"
