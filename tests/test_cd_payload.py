@@ -340,9 +340,9 @@ class TestEnums:
         assert PaymentLocation.PICKUP.value == "PICKUP"
 
     def test_location_types(self):
-        assert LocationType.AUCTION.value == "AUCTION"
-        assert LocationType.BUSINESS.value == "BUSINESS"
-        assert LocationType.RESIDENCE.value == "RESIDENCE"
+        assert LocationType.AUCTION.value == "Auction"
+        assert LocationType.DEALERSHIP.value == "Dealership"
+        assert LocationType.RESIDENCE.value == "Residence"
 
     def test_sla_types(self):
         assert SLAType.STANDARD.value == "STANDARD"

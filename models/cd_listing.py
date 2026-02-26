@@ -38,7 +38,7 @@ class CDStop(BaseModel):
     """A pickup or delivery stop."""
 
     stopNumber: int = Field(..., ge=1, le=2)
-    locationType: LocationType = LocationType.BUSINESS
+    locationType: LocationType = LocationType.DEALERSHIP
     locationName: str | None = None
     address: str = Field(..., min_length=1)
     city: str = Field(..., min_length=1)

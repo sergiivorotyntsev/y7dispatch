@@ -296,18 +296,15 @@ LISTING_FIELDS: list[ListingField] = [
         category=FieldCategory.CD_REQUIRED,
         source_type=FieldSourceType.CONSTANT,
         options=[
-            "RESIDENCE",
-            "BUSINESS",
-            "DEALER",
-            "AUCTION",
-            "PORT",
-            "STORAGE_FACILITY",
-            "BODY_SHOP",
-            "CROSS_DOCK",
-            "OTHER",
+            "Auction",
+            "Dealership",
+            "Residence",
+            "Port",
+            "Terminal",
+            "Other",
         ],
-        default_value="AUCTION",
-        help_text="Type of pickup location",
+        default_value="Auction",
+        help_text="Type of pickup location (CD API V2 validated values)",
     ),
     ListingField(
         key="pickup_name",
@@ -474,18 +471,15 @@ LISTING_FIELDS: list[ListingField] = [
         category=FieldCategory.CD_REQUIRED,
         source_type=FieldSourceType.WAREHOUSE_REF,
         options=[
-            "RESIDENCE",
-            "BUSINESS",
-            "DEALER",
-            "AUCTION",
-            "PORT",
-            "STORAGE_FACILITY",
-            "BODY_SHOP",
-            "CROSS_DOCK",
-            "OTHER",
+            "Auction",
+            "Dealership",
+            "Residence",
+            "Port",
+            "Terminal",
+            "Other",
         ],
-        default_value="CROSS_DOCK",
-        help_text="Type of delivery location",
+        default_value="Terminal",
+        help_text="Type of delivery location (CD API V2 validated values)",
         editable_in_review=False,
     ),
     ListingField(
@@ -718,13 +712,14 @@ LISTING_FIELDS: list[ListingField] = [
         source_type=FieldSourceType.CONSTANT,
         options=[
             "IMMEDIATELY",
-            "2_BUSINESS_DAYS",
-            "5_BUSINESS_DAYS",
-            "15_BUSINESS_DAYS",
-            "30_BUSINESS_DAYS",
+            "TWO_BUSINESS_DAYS",
+            "FIVE_BUSINESS_DAYS",
+            "TEN_BUSINESS_DAYS",
+            "FIFTEEN_BUSINESS_DAYS",
+            "THIRTY_BUSINESS_DAYS",
         ],
-        default_value="2_BUSINESS_DAYS",
-        help_text="When balance payment is due",
+        default_value="TWO_BUSINESS_DAYS",
+        help_text="When balance payment is due (CD API V2 spelled-out format)",
     ),
     ListingField(
         key="balance_terms_begin_on",
@@ -1006,13 +1001,14 @@ LISTING_FIELDS: list[ListingField] = [
         source_type=FieldSourceType.CONSTANT,
         options=[
             "IMMEDIATELY",
-            "2_BUSINESS_DAYS",
-            "5_BUSINESS_DAYS",
-            "15_BUSINESS_DAYS",
-            "30_BUSINESS_DAYS",
+            "TWO_BUSINESS_DAYS",
+            "FIVE_BUSINESS_DAYS",
+            "TEN_BUSINESS_DAYS",
+            "FIFTEEN_BUSINESS_DAYS",
+            "THIRTY_BUSINESS_DAYS",
         ],
-        default_value="2_BUSINESS_DAYS",
-        help_text="When balance is paid (Quick Pay = 2 Business Days)",
+        default_value="TWO_BUSINESS_DAYS",
+        help_text="When balance is paid (CD API V2 spelled-out format)",
     ),
     ListingField(
         key="balance_terms_begin_on",
@@ -1813,21 +1809,18 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
             addr["postalCode"] = postal_code
         return addr
 
-    # Build pickup stop
+    # Build pickup stop — normalize to CD API V2 accepted values
     pickup_location_type = data.get("pickup_location_type", "AUCTION")
-    valid_location_types = [
-        "RESIDENCE",
-        "BUSINESS",
-        "DEALER",
-        "AUCTION",
-        "PORT",
-        "STORAGE_FACILITY",
-        "BODY_SHOP",
-        "CROSS_DOCK",
-        "OTHER",
-    ]
-    if pickup_location_type not in valid_location_types:
-        pickup_location_type = "AUCTION"
+    # CD API V2 valid locationType values (verified against live API)
+    _LOCATION_TYPE_MAP = {
+        "AUCTION": "Auction", "DEALER": "Dealership", "DEALERSHIP": "Dealership",
+        "BUSINESS": "Dealership", "RESIDENCE": "Residence", "PORT": "Port",
+        "TERMINAL": "Terminal", "CROSS_DOCK": "Terminal", "STORAGE_FACILITY": "Terminal",
+        "BODY_SHOP": "Other", "OTHER": "Other",
+    }
+    pickup_location_type = _LOCATION_TYPE_MAP.get(
+        pickup_location_type.upper() if pickup_location_type else "AUCTION", "Auction"
+    )
 
     pickup_stop = {
         "stopNumber": 1,
@@ -1862,10 +1855,11 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     if pickup_notes:
         pickup_stop["notes"] = pickup_notes
 
-    # Build delivery stop
+    # Build delivery stop — normalize to CD API V2 accepted values
     delivery_location_type = data.get("delivery_location_type", "CROSS_DOCK")
-    if delivery_location_type not in valid_location_types:
-        delivery_location_type = "CROSS_DOCK"
+    delivery_location_type = _LOCATION_TYPE_MAP.get(
+        delivery_location_type.upper() if delivery_location_type else "TERMINAL", "Terminal"
+    )
 
     delivery_stop = {
         "stopNumber": 2,
@@ -1947,7 +1941,18 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
         if data.get("balance_payment_method"):
             balance["balancePaymentMethod"] = data["balance_payment_method"]
         if data.get("balance_payment_time"):
-            balance["paymentTime"] = data["balance_payment_time"]
+            # Normalize to CD API V2 spelled-out format
+            _PAYMENT_TIME_MAP = {
+                "IMMEDIATELY": "IMMEDIATELY",
+                "2_BUSINESS_DAYS": "TWO_BUSINESS_DAYS",
+                "2_BUSINESS_DAYS_QUICK_PAY": "TWO_BUSINESS_DAYS",
+                "5_BUSINESS_DAYS": "FIVE_BUSINESS_DAYS",
+                "10_BUSINESS_DAYS": "TEN_BUSINESS_DAYS",
+                "15_BUSINESS_DAYS": "FIFTEEN_BUSINESS_DAYS",
+                "30_BUSINESS_DAYS": "THIRTY_BUSINESS_DAYS",
+            }
+            pt = data["balance_payment_time"]
+            balance["paymentTime"] = _PAYMENT_TIME_MAP.get(pt, pt)
         if data.get("balance_terms_begin_on"):
             balance["balancePaymentTermsBeginOn"] = data["balance_terms_begin_on"]
         if balance:

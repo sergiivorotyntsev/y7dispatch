@@ -42,12 +42,13 @@ class PaymentLocation(str, Enum):
 
 
 class LocationType(str, Enum):
-    BUSINESS = "BUSINESS"
-    RESIDENCE = "RESIDENCE"
-    AUCTION = "AUCTION"
-    PORT = "PORT"
-    TERMINAL = "TERMINAL"
-    OTHER = "OTHER"
+    """CD API V2 valid locationType values (verified against live API)."""
+    AUCTION = "Auction"
+    DEALERSHIP = "Dealership"
+    RESIDENCE = "Residence"
+    PORT = "Port"
+    TERMINAL = "Terminal"
+    OTHER = "Other"
 
 
 class SLAType(str, Enum):

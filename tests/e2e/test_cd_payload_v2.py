@@ -388,11 +388,11 @@ class TestPaymentMethodValidation:
 
     VALID_PAYMENT_TIMES = {
         "IMMEDIATELY",
-        "2_BUSINESS_DAYS",
-        "5_BUSINESS_DAYS",
-        "10_BUSINESS_DAYS",
-        "15_BUSINESS_DAYS",
-        "30_BUSINESS_DAYS",
+        "TWO_BUSINESS_DAYS",
+        "FIVE_BUSINESS_DAYS",
+        "TEN_BUSINESS_DAYS",
+        "FIFTEEN_BUSINESS_DAYS",
+        "THIRTY_BUSINESS_DAYS",
     }
 
     VALID_TERMS_BEGIN = {

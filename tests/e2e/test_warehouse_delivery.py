@@ -415,7 +415,7 @@ class TestDeliveryIntegration:
         stops = payload.get("stops", [])
         delivery = next((s for s in stops if s.get("stopNumber") == 2), None)
         assert delivery is not None
-        assert delivery.get("locationType") == "DEALERSHIP"
+        assert delivery.get("locationType") == "Dealership"
 
     def test_transport_instructions_in_payload(self):
         """Transport special instructions flow to payload."""

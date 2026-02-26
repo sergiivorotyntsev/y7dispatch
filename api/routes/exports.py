@@ -42,6 +42,61 @@ def get_cd_semaphore() -> asyncio.Semaphore:
 from api.listing_fields import (
     get_registry,
 )
+
+# =============================================================================
+# CD API V2 ENUM VALUE NORMALIZATION
+# Verified against live CD API — these are the ONLY accepted values.
+# CD silently rejects unknown values (defaults to "Unspecified" / "IMMEDIATELY").
+# =============================================================================
+
+# locationType: CD accepts case-insensitively but stores title case
+_CD_LOCATION_TYPE_MAP = {
+    "AUCTION": "Auction",
+    "DEALER": "Dealership",
+    "DEALERSHIP": "Dealership",
+    "BUSINESS": "Dealership",       # "Business" is NOT valid in CD V2 — map to closest
+    "RESIDENCE": "Residence",
+    "PORT": "Port",
+    "TERMINAL": "Terminal",
+    "CROSS_DOCK": "Terminal",       # "Cross Dock" is NOT valid in CD V2 — map to Terminal
+    "STORAGE_FACILITY": "Terminal", # "Storage Facility" is NOT valid — map to Terminal
+    "BODY_SHOP": "Other",           # "Body Shop" is NOT valid — map to Other
+    "OTHER": "Other",
+}
+
+
+def _normalize_location_type(value: str) -> str:
+    """Normalize locationType to CD API V2 accepted values."""
+    if not value:
+        return "Other"
+    return _CD_LOCATION_TYPE_MAP.get(value.upper().replace(" ", "_"), "Other")
+
+
+# paymentTime: CD V2 uses spelled-out numbers (TWO not 2)
+_CD_PAYMENT_TIME_MAP = {
+    "IMMEDIATELY": "IMMEDIATELY",
+    "2_BUSINESS_DAYS": "TWO_BUSINESS_DAYS",
+    "2_BUSINESS_DAYS_QUICK_PAY": "TWO_BUSINESS_DAYS",
+    "5_BUSINESS_DAYS": "FIVE_BUSINESS_DAYS",
+    "10_BUSINESS_DAYS": "TEN_BUSINESS_DAYS",
+    "15_BUSINESS_DAYS": "FIFTEEN_BUSINESS_DAYS",
+    "30_BUSINESS_DAYS": "THIRTY_BUSINESS_DAYS",
+    # Already-correct V2 values (pass through)
+    "TWO_BUSINESS_DAYS": "TWO_BUSINESS_DAYS",
+    "FIVE_BUSINESS_DAYS": "FIVE_BUSINESS_DAYS",
+    "TEN_BUSINESS_DAYS": "TEN_BUSINESS_DAYS",
+    "FIFTEEN_BUSINESS_DAYS": "FIFTEEN_BUSINESS_DAYS",
+    "THIRTY_BUSINESS_DAYS": "THIRTY_BUSINESS_DAYS",
+}
+
+
+def _normalize_payment_time(value: str) -> str:
+    """Normalize paymentTime to CD API V2 accepted values."""
+    if not value:
+        return "TWO_BUSINESS_DAYS"
+    return _CD_PAYMENT_TIME_MAP.get(value.upper(), "TWO_BUSINESS_DAYS")
+
+
 from api.models import (
     AuctionTypeRepository,
     DocumentRepository,
@@ -468,7 +523,7 @@ def build_cd_payload(
         "state": _sanitize(get_field("pickup_state", "")),
         "postalCode": _sanitize(get_field("pickup_zip", "")),
         "country": "US",
-        "locationType": get_field("pickup_location_type", "AUCTION"),
+        "locationType": _normalize_location_type(get_field("pickup_location_type", "AUCTION")),
     }
 
     pickup_phone = get_field("pickup_phone")
@@ -492,7 +547,7 @@ def build_cd_payload(
         "state": _sanitize(delivery_state),
         "postalCode": _sanitize(delivery_zip),
         "country": "US",
-        "locationType": delivery_location_type,
+        "locationType": _normalize_location_type(delivery_location_type),
     }
     if delivery_phone:
         dropoff_stop["phone"] = delivery_phone
@@ -612,9 +667,8 @@ def build_cd_payload(
     balance_amount = max(0, price_total - cod_amount)
     balance_payment_method = (overrides.balance_payment_method if overrides and overrides.balance_payment_method else "CERTIFIED_FUNDS")
     balance_payment_time = (overrides.balance_payment_time if overrides and overrides.balance_payment_time else "2_BUSINESS_DAYS")
-    # Normalize legacy enum value — CD API V2 does not accept _QUICK_PAY suffix
-    if balance_payment_time == "2_BUSINESS_DAYS_QUICK_PAY":
-        balance_payment_time = "2_BUSINESS_DAYS"
+    # Normalize to CD API V2 spelled-out format (TWO_BUSINESS_DAYS not 2_BUSINESS_DAYS)
+    balance_payment_time = _normalize_payment_time(balance_payment_time)
     balance_terms_begin_on = (overrides.balance_terms_begin_on if overrides and overrides.balance_terms_begin_on else "RECEIVING_SIGNED_BOL")
 
     price = {
