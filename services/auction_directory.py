@@ -149,7 +149,7 @@ def _build_lookup_index() -> dict:
     for locations in [COPART_LOCATIONS, IAA_LOCATIONS, MANHEIM_LOCATIONS]:
         for name, data in locations.items():
             key = _normalize_name(name)
-            index[key] = data
+            index[key] = {**data, "name": name}
     return index
 
 
@@ -187,3 +187,24 @@ def lookup_auction_location(name: Optional[str]) -> Optional[dict]:
     if result is None:
         logger.info(f"Auction location not found: '{name}' (normalized: '{key}')")
     return result
+
+
+def find_by_city_state(city: str, state: str) -> Optional[dict]:
+    """Find auction/dealer location by city and state.
+
+    Searches Copart, IAA, and Manheim directories for a location
+    matching the given city and state.
+
+    Returns:
+        Dict with name, phone, address, city, state, zip or None if not found.
+    """
+    if not city or not state:
+        return None
+    city_lower = city.lower().strip()
+    state_lower = state.lower().strip()
+    for loc in _LOOKUP_INDEX.values():
+        loc_city = (loc.get("city") or "").lower()
+        loc_state = (loc.get("state") or "").lower()
+        if loc_city == city_lower and loc_state == state_lower:
+            return loc
+    return None

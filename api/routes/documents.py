@@ -222,6 +222,9 @@ class DocumentResponse(BaseModel):
     extraction_status: Optional[str] = None
     extraction_run_id: Optional[int] = None
 
+    # Full extraction outputs for frontend (avoids separate extraction API call)
+    outputs: Optional[dict] = None
+
     class Config:
         from_attributes = True
 
@@ -700,8 +703,11 @@ async def list_documents(
     auction_type_id: Optional[int] = Query(None, description="Filter by auction type"),
     dataset_split: Optional[str] = Query(None, description="Filter by split: train or test"),
     search: Optional[str] = Query(None, description="Search by VIN, make, model, or lot"),
+    status: Optional[str] = Query(None, description="Filter by status: needs_review, reviewed, exported, hold, pending, archived, etc."),
     exclude_test_lab: bool = Query(True, description="Exclude Test Lab documents from list"),
     include_archived: bool = Query(False, description="Include archived documents"),
+    sort_by: str = Query("created_at", description="Sort field: created_at, filename, status"),
+    sort_order: str = Query("desc", description="Sort direction: asc or desc"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -721,9 +727,24 @@ async def list_documents(
                 AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
         """
         base_where = " WHERE (d.is_test IS NULL OR d.is_test = 0) AND (d.source IS NULL OR d.source != 'test_lab')"
+        params = []
+
+        # Server-side status filter (must run before archived exclusion)
+        if status:
+            if status == "hold":
+                base_where += " AND d.hold_reason IS NOT NULL AND d.hold_reason != ''"
+            elif status == "pending":
+                base_where += " AND d.pending_reason IS NOT NULL AND d.pending_reason != '' AND (d.hold_reason IS NULL OR d.hold_reason = '')"
+            elif status == "archived":
+                include_archived = True
+                base_where += " AND d.archived_at IS NOT NULL AND d.archived_at != ''"
+            else:
+                base_where += " AND er.status = ?"
+                params.append(status)
+
+        # Exclude archived unless explicitly requested
         if not include_archived:
             base_where += " AND (d.archived_at IS NULL OR d.archived_at = '')"
-        params = []
 
         if search and search.strip():
             q = f"%{search.strip()}%"
@@ -743,15 +764,20 @@ async def list_documents(
             base_where += " AND d.auction_type_id = ?"
             params.append(auction_type_id)
 
-        if dataset_split:
-            base_where += " AND d.dataset_split = ?"
-            params.append(dataset_split)
+        # Server-side sort with whitelist
+        _SORT_WHITELIST = {
+            "created_at": "d.created_at",
+            "filename": "d.filename",
+            "status": "COALESCE(er.status, '')",
+        }
+        sort_col = _SORT_WHITELIST.get(sort_by, "d.created_at")
+        sort_dir = "ASC" if sort_order == "asc" else "DESC"
 
         # Count query (reuses same WHERE clause)
         total = conn.execute(f"SELECT COUNT(*) FROM documents d LEFT JOIN extraction_runs er ON er.document_id = d.id AND er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id){base_where}", params).fetchone()[0]
 
         # Main query with pagination
-        sql = f"{base_join}{base_where} ORDER BY d.created_at DESC LIMIT ? OFFSET ?"
+        sql = f"{base_join}{base_where} ORDER BY {sort_col} {sort_dir} LIMIT ? OFFSET ?"
         rows = conn.execute(sql, params + [limit, offset]).fetchall()
 
         # Build response using JOIN data — no N+1 enrichment
@@ -840,6 +866,9 @@ async def list_documents(
             else:
                 d["warehouse_id"] = None
                 d["warehouse_name"] = None
+
+            # Full extraction outputs (avoids separate extraction API call)
+            d["outputs"] = outputs if outputs else None
 
             items.append(DocumentResponse(**d))
 

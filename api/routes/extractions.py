@@ -612,12 +612,41 @@ def _enrich_location_name(outputs: dict) -> None:
             outputs["pickup_location_name_confidence"] = "low"
 
     elif source == "MANHEIM":
-        # If offsite, prefer seller name as location
+        # If offsite, resolve pickup name — but never use insurance company names
         if outputs.get("manheim_offsite"):
+            _INSURANCE_KEYWORDS = {
+                "geico", "progressive", "state farm", "allstate", "usaa",
+                "liberty mutual", "farmers", "nationwide", "travelers",
+                "hartford", "erie", "american family", "auto-owners",
+                "safeco", "mercury", "kemper", "metlife", "aig", "chubb",
+                "zurich", "markel", "iai", "mapfre",
+            }
             seller = outputs.get("seller_name") or ""
-            if seller and (not name or "manheim" in name.lower()):
+            seller_lower = seller.lower().strip()
+            is_insurance = any(kw in seller_lower for kw in _INSURANCE_KEYWORDS)
+            if seller and not is_insurance and (not name or "manheim" in name.lower()):
                 outputs["pickup_location_name"] = seller
                 outputs["pickup_name"] = seller
+            elif is_insurance and (not name or "manheim" in name.lower()):
+                # Seller is insurance — try auction directory lookup by city/state
+                offsite_city = outputs.get("offsite_pickup_city") or outputs.get("pickup_city") or ""
+                offsite_state = outputs.get("offsite_pickup_state") or outputs.get("pickup_state") or ""
+                if offsite_city and offsite_state:
+                    from services.auction_directory import find_by_city_state
+                    match = find_by_city_state(offsite_city, offsite_state)
+                    if match:
+                        outputs["pickup_location_name"] = match["name"]
+                        outputs["pickup_name"] = match["name"]
+                        if match.get("phone"):
+                            outputs["pickup_phone"] = match["phone"]
+                    else:
+                        outputs["pickup_name"] = f"Pickup - {offsite_city}, {offsite_state}"
+                        warnings = outputs.get("_warnings") or []
+                        warnings.append(
+                            f"Offsite pickup: seller is insurance ({seller}). "
+                            f"Verify actual business name at pickup address."
+                        )
+                        outputs["_warnings"] = warnings
 
 
 def run_extraction(

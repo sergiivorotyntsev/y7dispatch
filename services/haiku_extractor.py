@@ -149,7 +149,13 @@ Fields to extract:
 - pickup_name: Location name — AUCTION-SPECIFIC RULES:
   * COPART: Always "COPART - {{city}}". If sublot mentioned: "COPART Sub Lot - {{city}}"
   * IAA: Extract FULL branch/yard name (e.g., "LI - Rice Court Yard - 613", "332 - East Bay"). Look for "Branch:", "Yard:", "Sold At Branch" headers. Do NOT use just the city.
-  * MANHEIM: Use the Manheim facility name (e.g., "Manheim Portland", "Manheim Dallas-Fort Worth"). If offsite (seller location), use the seller's business name.
+  * MANHEIM: Use the Manheim facility name (e.g., "Manheim Portland", "Manheim Dallas-Fort Worth").
+    If OFFSITE VEHICLE RELEASE: the vehicle is NOT at Manheim.
+    - Look for the actual business/facility name at the pickup address (e.g., "ADESA Des Moines", "AutoNation Toyota").
+    - If the document names a specific dealership, auction, or facility at the pickup address — use THAT name.
+    - Only use seller_name as pickup_name if the seller IS the physical pickup location (e.g., seller is a dealership and car is at their lot).
+    - Do NOT use insurance company names (GEICO, Progressive, State Farm, Allstate, USAA, Liberty Mutual, Farmers, Nationwide, Travelers, Hartford, etc.) as pickup_name — these are sellers, not physical locations.
+    - Extract seller_name separately in its own field.
   * OTHER: Use whatever facility/business name is available. Prefer business name over city.
 - pickup_address: Street address
 - pickup_city: City name

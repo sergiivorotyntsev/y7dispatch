@@ -129,48 +129,49 @@ export default function useDocuments() {
         dataset_split: 'train',
         limit: pagination.limit,
         offset: (pagination.page - 1) * pagination.limit,
+        sort_by: sortConfig.sortBy,
+        sort_order: sortConfig.sortOrder,
       }
       if (filter.auction_type_id) params.auction_type_id = filter.auction_type_id
+      if (filter.status) params.status = filter.status
       if (searchDebounced.trim()) params.search = searchDebounced.trim()
-      if (filter.status === 'archived') params.include_archived = true
 
       const result = await api.listDocuments(params)
-      let prodDocs = (result.items || []).filter(d => !d.is_test)
+      const prodDocs = (result.items || []).filter(d => !d.is_test)
 
-      if (filter.status) {
-        prodDocs = prodDocs.filter(doc => {
-          if (filter.status === 'hold') return !!doc.hold_reason
-          if (filter.status === 'pending') return !!doc.pending_reason && !doc.hold_reason
-          if (filter.status === 'archived') return !!doc.archived_at
-          const ext = docExtractions[doc.id]
-          const extStatus = doc.extraction_status || ext?.status
-          return extStatus === filter.status
-        })
-      }
-
-      const sorted = [...prodDocs].sort((a, b) => {
-        const aVal = a[sortConfig.sortBy] || ''
-        const bVal = b[sortConfig.sortBy] || ''
-        const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0
-        return sortConfig.sortOrder === 'desc' ? -cmp : cmp
-      })
-
-      setDocuments(sorted)
+      setDocuments(prodDocs)
       setPagination(p => ({ ...p, total: result.total || prodDocs.length }))
+
+      // Build docExtractions from document response (eliminates separate API call)
+      const extractionsByDoc = {}
+      let needsReview = 0, readyToExport = 0, exported = 0
+      for (const doc of prodDocs) {
+        if (doc.extraction_run_id) {
+          extractionsByDoc[doc.id] = {
+            id: doc.extraction_run_id,
+            status: doc.extraction_status,
+            outputs: doc.outputs || {},
+          }
+          if (doc.extraction_status === 'needs_review') needsReview++
+          else if (doc.extraction_status === 'reviewed' || doc.extraction_status === 'approved') readyToExport++
+          else if (doc.extraction_status === 'exported') exported++
+        }
+      }
+      setDocExtractions(extractionsByDoc)
 
       if (!hasFilter) {
         try {
           sessionStorage.setItem(cacheKey, JSON.stringify({
-            docs: sorted, total: result.total || prodDocs.length,
+            docs: prodDocs, total: result.total || prodDocs.length,
           }))
         } catch { /* storage full */ }
       }
 
       setStats({
         total: result.total || prodDocs.length,
-        needs_review: 0,
-        ready_to_export: 0,
-        exported: 0,
+        needs_review: needsReview,
+        ready_to_export: readyToExport,
+        exported,
       })
     } catch (err) {
       setError(err.message)
@@ -200,43 +201,6 @@ export default function useDocuments() {
     fetchDocuments()
   }, [fetchDocuments])
 
-  // Fetch latest extraction status for each document
-  const fetchDocExtractions = useCallback(async () => {
-    try {
-      const result = await api.listExtractions({ limit: 200, is_test: false })
-      const extractionsByDoc = {}
-      let needsReview = 0
-      let readyToExport = 0
-      let exported = 0
-
-      const prodDocIds = new Set(documents.map(d => d.id))
-
-      for (const run of (result.items || [])) {
-        if (!prodDocIds.has(run.document_id)) continue
-        if (!extractionsByDoc[run.document_id] || run.id > extractionsByDoc[run.document_id].id) {
-          extractionsByDoc[run.document_id] = run
-        }
-        if (run.status === 'needs_review') needsReview++
-        else if (run.status === 'reviewed' || run.status === 'approved') readyToExport++
-        else if (run.status === 'exported') exported++
-      }
-
-      setDocExtractions(extractionsByDoc)
-      setStats(prev => ({
-        ...prev,
-        needs_review: needsReview,
-        ready_to_export: readyToExport,
-        exported: exported,
-      }))
-    } catch (err) {
-      console.error('Failed to fetch extractions:', err)
-    }
-  }, [documents])
-
-  useEffect(() => {
-    fetchDocExtractions()
-  }, [fetchDocExtractions])
-
   // Upload handler
   async function handleUpload() {
     if (!uploadFile) return
@@ -257,7 +221,6 @@ export default function useDocuments() {
       })
       setUploadFile(null)
       fetchDocuments()
-      fetchDocExtractions()
     } catch (err) {
       setError(`Upload failed: ${err.message}`)
       setUploadResult({ success: false, error: err.message })
@@ -300,7 +263,6 @@ export default function useDocuments() {
         navigate(`/review/${result.run_id}`)
       } else {
         fetchDocuments()
-        fetchDocExtractions()
       }
     } catch (err) {
       setError(`Extraction failed: ${err.message}`)
@@ -374,7 +336,6 @@ export default function useDocuments() {
       console.error('Failed to update warehouse:', err)
       setError(`Failed to update warehouse: ${err.message}`)
       fetchDocuments()
-      fetchDocExtractions()
     }
   }
 
@@ -433,7 +394,7 @@ export default function useDocuments() {
     }
     try {
       await api.updateExtraction(extraction.id, { outputs_json: { price_total: newPrice } })
-      fetchDocExtractions()
+      fetchDocuments()
     } catch (err) {
       setError(`Price update failed: ${err.message}`)
     } finally {
@@ -448,7 +409,7 @@ export default function useDocuments() {
     setExportingDocId(docId)
     try {
       await api.exportToCD([extraction.id], false, true)
-      fetchDocExtractions()
+      fetchDocuments()
     } catch (err) {
       setError(`Export failed: ${err.message}`)
     } finally {
@@ -507,7 +468,6 @@ export default function useDocuments() {
       const result = await api.batchPost(runIds, postOnlyReady, true)
       setBatchResult(result)
       fetchDocuments()
-      fetchDocExtractions()
     } catch (err) {
       setError(`Batch post failed: ${err.message}`)
     } finally {
@@ -553,7 +513,6 @@ export default function useDocuments() {
       const result = await api.batchApprove(approveRunIds)
       setBatchOpResult({ action: 'approve', ...result })
       fetchDocuments()
-      fetchDocExtractions()
       setSelectedDocs(new Set())
     } catch (err) {
       setError(`Batch approve failed: ${err.message}`)
@@ -614,7 +573,6 @@ export default function useDocuments() {
         results: result.errors.map(e => ({ id: e.doc_id, success: false, error: e.error })),
       })
       fetchDocuments()
-      fetchDocExtractions()
       if (docIds.length > 0) setSelectedDocs(new Set())
     } catch (err) {
       setError(`Auto-assign warehouse failed: ${err.message}`)
@@ -676,7 +634,7 @@ export default function useDocuments() {
     showExportPreview, setShowExportPreview,
     navigate,
     // Handlers
-    fetchDocuments, fetchDocExtractions,
+    fetchDocuments,
     handleUpload, handleRunExtraction,
     handleWarehouseChange, handleDelete,
     handleSetHold, handleReleaseHold,

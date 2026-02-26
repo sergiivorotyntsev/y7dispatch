@@ -20,16 +20,25 @@ export default function DocumentsTable({
   onPageChange, onUploadClick,
   getSourceDisplay, navigate,
 }) {
-  if (loading) {
+  if (loading && documents.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-        <span className="ml-3 text-gray-600">Loading documents...</span>
+      <div className="bg-white rounded-lg shadow p-4">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} style={{
+            height: '48px',
+            background: 'linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%)',
+            backgroundSize: '200% 100%',
+            marginBottom: '8px',
+            borderRadius: '6px',
+            animation: 'skeleton-pulse 1.5s ease-in-out infinite',
+          }} />
+        ))}
+        <style>{`@keyframes skeleton-pulse { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
       </div>
     )
   }
 
-  if (documents.length === 0) {
+  if (!loading && documents.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-8 text-center">
         <p className="text-gray-500 mb-4">No documents found</p>

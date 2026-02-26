@@ -111,7 +111,7 @@ function Documents() {
           documentId={d.showExportPreview.documentId}
           onClose={() => d.setShowExportPreview(null)}
           onExport={(result) => {
-            d.fetchDocExtractions()
+            d.fetchDocuments()
             if (result.posted > 0) d.setShowExportPreview(null)
           }}
         />
