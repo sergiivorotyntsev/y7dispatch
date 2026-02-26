@@ -518,6 +518,9 @@ class GraphEmailReader(BaseEmailReader):
         Used for emails received before graph_message_id migration.
         Searches via Graph API $filter on internetMessageId.
 
+        Graph API stores internetMessageId WITH angle brackets, e.g.
+        ``<CAEwcc...@mail.gmail.com>``, so we must keep them in the filter.
+
         Returns:
             Graph message ID (AAMkAG... format) or None if not found.
         """
@@ -530,29 +533,40 @@ class GraphEmailReader(BaseEmailReader):
                 logger.error("Auth failed during resolve_graph_message_id: %s", e)
                 return None
 
-        # Strip angle brackets if present: <msg-id@domain> → msg-id@domain
-        clean_id = rfc822_message_id.strip("<>")
+        # Graph API expects internetMessageId WITH angle brackets.
+        # Ensure they're present; escape single quotes for OData filter.
+        filter_id = rfc822_message_id
+        if not filter_id.startswith("<"):
+            filter_id = f"<{filter_id}>"
+        filter_val = filter_id.replace("'", "''")
 
         url = f"https://graph.microsoft.com/v1.0/users/{self.config.address}/messages"
         params = {
-            "$filter": f"internetMessageId eq '{clean_id}'",
-            "$select": "id",
+            "$filter": f"internetMessageId eq '{filter_val}'",
+            "$select": "id,internetMessageId",
             "$top": 1,
         }
+
+        logger.info(
+            "Resolving Graph message ID: filter_id='%s' (raw from DB: '%s')",
+            filter_id[:60], rfc822_message_id[:60],
+        )
 
         try:
             response = requests.get(url, headers=self._get_headers(), params=params, timeout=30)
             if response.status_code != 200:
-                logger.warning("Graph search failed (%d): %s", response.status_code, response.text[:200])
+                logger.warning(
+                    "Graph search failed (%d): %s", response.status_code, response.text[:300],
+                )
                 return None
 
             messages = response.json().get("value", [])
             if messages:
                 graph_id = messages[0]["id"]
-                logger.info("Resolved RFC822 %s → Graph %s", clean_id[:40], graph_id[:30])
+                logger.info("Resolved RFC822 %s → Graph %s", filter_id[:50], graph_id[:30])
                 return graph_id
             else:
-                logger.info("No Graph message found for RFC822 ID: %s", clean_id[:40])
+                logger.warning("No Graph message found for RFC822 ID: %s", filter_id[:60])
                 return None
         except Exception as e:
             logger.error("resolve_graph_message_id request error: %s", e)

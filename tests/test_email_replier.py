@@ -949,10 +949,33 @@ class TestResolveGraphMessageId:
             result = reader.resolve_graph_message_id("<test-msg@example.com>")
 
         assert result == "AAMkAGI1RESOLVED"
-        # Verify angle brackets stripped
+        # Graph API expects angle brackets in internetMessageId filter
         call_params = mock_get.call_args[1]["params"]
-        assert "test-msg@example.com" in call_params["$filter"]
-        assert "<" not in call_params["$filter"]
+        assert "<test-msg@example.com>" in call_params["$filter"]
+
+    def test_resolve_adds_angle_brackets_if_missing(self):
+        """resolve_graph_message_id adds angle brackets when not present."""
+        from unittest.mock import patch, MagicMock
+        from ingest.email_reader import GraphEmailReader, EmailConfig
+
+        config = MagicMock(spec=EmailConfig)
+        config.address = "test@example.com"
+        reader = GraphEmailReader(config)
+        reader._access_token = "fake-token"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "value": [{"id": "AAMkRESOLVED"}]
+        }
+
+        # Pass without angle brackets
+        with patch("requests.get", return_value=mock_response) as mock_get:
+            result = reader.resolve_graph_message_id("test-msg@example.com")
+
+        assert result == "AAMkRESOLVED"
+        call_params = mock_get.call_args[1]["params"]
+        assert "<test-msg@example.com>" in call_params["$filter"]
 
     def test_resolve_graph_message_id_not_found(self):
         """resolve_graph_message_id returns None when email not in mailbox."""
