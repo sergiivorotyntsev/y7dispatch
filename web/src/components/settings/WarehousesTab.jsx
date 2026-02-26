@@ -30,6 +30,7 @@ export default function WarehousesTab() {
     location_type: 'BUSINESS',
     transport_special_instructions: '',
     buyer_reference: '',
+    contact_email: '',
     is_default: false,
   })
 
@@ -63,6 +64,7 @@ export default function WarehousesTab() {
       location_type: 'BUSINESS',
       transport_special_instructions: '',
       buyer_reference: '',
+      contact_email: '',
       is_default: false,
     })
     setEditingId(null)
@@ -83,6 +85,7 @@ export default function WarehousesTab() {
       location_type: wh.location_type || 'BUSINESS',
       transport_special_instructions: wh.transport_special_instructions || '',
       buyer_reference: wh.buyer_reference || '',
+      contact_email: wh.contact_email || '',
       is_default: wh.is_default || false,
     })
     setEditingId(wh.id)
@@ -234,6 +237,16 @@ export default function WarehousesTab() {
                 value={form.contact_phone}
                 onChange={e => setForm({ ...form, contact_phone: e.target.value })}
                 placeholder="(555) 123-4567"
+                className="form-input w-full"
+              />
+            </div>
+            <div>
+              <label className="form-label">Email</label>
+              <input
+                type="email"
+                value={form.contact_email}
+                onChange={e => setForm({ ...form, contact_email: e.target.value })}
+                placeholder="warehouse@example.com"
                 className="form-input w-full"
               />
             </div>

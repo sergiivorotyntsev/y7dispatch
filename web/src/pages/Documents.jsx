@@ -33,6 +33,7 @@ function Documents() {
         onExportPreflight={d.handleBatchPostPreflight}
         onHold={() => d.setShowBatchHold(true)}
         onArchive={d.handleBatchArchive}
+        onAutoAssignWarehouse={d.handleAutoAssignWarehouse}
         onClearSelection={() => d.setSelectedDocs(new Set())}
         onDismissResult={() => d.setBatchOpResult(null)}
       />

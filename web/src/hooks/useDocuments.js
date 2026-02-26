@@ -600,6 +600,29 @@ export default function useDocuments() {
     }
   }
 
+  async function handleAutoAssignWarehouse() {
+    const docIds = [...selectedDocs]
+    setBatchOperating(true)
+    setBatchOpResult(null)
+    try {
+      const result = await api.autoAssignWarehouse(docIds)
+      setBatchOpResult({
+        action: 'warehouse assign',
+        succeeded: result.assigned,
+        failed: result.skipped + result.errors.length,
+        total: result.total,
+        results: result.errors.map(e => ({ id: e.doc_id, success: false, error: e.error })),
+      })
+      fetchDocuments()
+      fetchDocExtractions()
+      if (docIds.length > 0) setSelectedDocs(new Set())
+    } catch (err) {
+      setError(`Auto-assign warehouse failed: ${err.message}`)
+    } finally {
+      setBatchOperating(false)
+    }
+  }
+
   function getSourceDisplay(doc) {
     if (doc.source === 'email') return { label: 'Email', color: 'bg-blue-100 text-blue-800' }
     if (doc.source === 'webhook') return { label: 'Webhook', color: 'bg-purple-100 text-purple-800' }
@@ -662,7 +685,7 @@ export default function useDocuments() {
     toggleSelectDoc, toggleSelectAll,
     handleBatchPostPreflight, handleBatchPost, closeBatchPostModal,
     getBatchEligibility,
-    handleBatchApprove, handleBatchHoldConfirm, handleBatchArchive,
+    handleBatchApprove, handleBatchHoldConfirm, handleBatchArchive, handleAutoAssignWarehouse,
     getSourceDisplay, getExportStatus,
     handleRowClick,
     toggleDate, collapseAll, expandAll,

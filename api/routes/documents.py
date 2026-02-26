@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -1393,6 +1393,126 @@ async def reclassify_other_documents():
         skipped += 1
 
     return {"updated": updated, "skipped": skipped, "total_checked": len(rows)}
+
+
+@router.post("/auto-assign-warehouse")
+async def auto_assign_warehouse(request: Request):
+    """
+    Auto-assign best warehouse to documents without warehouse_id.
+
+    Accepts optional document_ids list. If empty, processes all
+    needs_review/approved extraction runs missing a warehouse.
+    Uses DistanceService to pick the closest/cheapest warehouse.
+    """
+    import json as _json
+
+    from api.database import get_connection
+
+    body = await request.json()
+    doc_ids = body.get("document_ids", [])
+
+    with get_connection() as conn:
+        if doc_ids:
+            placeholders = ",".join("?" * len(doc_ids))
+            rows = conn.execute(
+                f"""SELECT id, document_id, outputs_json FROM extraction_runs
+                    WHERE document_id IN ({placeholders})
+                    AND status IN ('needs_review', 'approved')
+                    ORDER BY id DESC""",
+                doc_ids,
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, document_id, outputs_json FROM extraction_runs
+                   WHERE status IN ('needs_review', 'approved')
+                   ORDER BY id DESC"""
+            ).fetchall()
+
+    # Deduplicate: keep latest run per document
+    seen_docs = set()
+    runs = []
+    for row in rows:
+        r = dict(row)
+        if r["document_id"] in seen_docs:
+            continue
+        seen_docs.add(r["document_id"])
+        outputs = r["outputs_json"]
+        if isinstance(outputs, str):
+            try:
+                outputs = _json.loads(outputs)
+            except (ValueError, TypeError):
+                outputs = {}
+        r["outputs"] = outputs or {}
+        runs.append(r)
+
+    # Filter to runs without warehouse
+    unassigned = [r for r in runs if not r["outputs"].get("warehouse_id")]
+
+    if not unassigned:
+        return {"assigned": 0, "skipped": 0, "errors": [], "message": "All documents already have a warehouse"}
+
+    # Load distance service once
+    from services.distance_service import DistanceService
+
+    svc = DistanceService()
+    assigned = 0
+    skipped = 0
+    errors = []
+
+    for run in unassigned:
+        outputs = run["outputs"]
+        pickup_zip = outputs.get("pickup_zip", "")
+        pickup_city = outputs.get("pickup_city", "")
+        pickup_state = outputs.get("pickup_state", "")
+
+        if not pickup_zip and not pickup_city:
+            skipped += 1
+            continue
+
+        try:
+            options = svc.get_warehouse_options(pickup_zip, pickup_city, pickup_state)
+            if not options:
+                skipped += 1
+                continue
+
+            best = options[0]  # best_value=True, sorted by price/distance
+            wh_id = best.warehouse_id
+
+            # Fetch full warehouse record for delivery fields
+            from api.routes.warehouses import _get_warehouse_by_id
+
+            wh = _get_warehouse_by_id(wh_id)
+            if not wh:
+                skipped += 1
+                continue
+
+            # Merge into outputs
+            merged = {**outputs}
+            merged["warehouse_id"] = wh_id
+            merged["delivery_name"] = wh.get("name", "")
+            merged["delivery_address"] = wh.get("address", "")
+            merged["delivery_city"] = wh.get("city", "")
+            merged["delivery_state"] = wh.get("state", "")
+            merged["delivery_zip"] = wh.get("zip_code", "")
+            merged["delivery_location_type"] = wh.get("location_type") or "CROSS_DOCK"
+            if wh.get("buyer_reference"):
+                merged["delivery_buyer_number"] = wh.get("buyer_reference")
+
+            # Save
+            from api.models import ExtractionRunRepository
+
+            ExtractionRunRepository.update(run["id"], outputs_json=merged)
+            assigned += 1
+
+        except Exception as e:
+            errors.append({"run_id": run["id"], "doc_id": run["document_id"], "error": str(e)})
+
+    return {
+        "assigned": assigned,
+        "skipped": skipped,
+        "total": len(unassigned),
+        "errors": errors,
+    }
 
 
 @router.delete("/{id}", status_code=204)

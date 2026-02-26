@@ -497,6 +497,10 @@ export const api = {
   // Archive
   archiveDocument: (docId) => request(`/documents/${docId}/archive`, { method: 'POST' }),
   unarchiveDocument: (docId) => request(`/documents/${docId}/unarchive`, { method: 'POST' }),
+  autoAssignWarehouse: (docIds = []) => request('/documents/auto-assign-warehouse', {
+    method: 'POST',
+    body: JSON.stringify({ document_ids: docIds }),
+  }),
 
   // Auction Directory Lookup
   lookupAuctionLocation: (name) => request(`/auction-directory/lookup?name=${encodeURIComponent(name)}`),

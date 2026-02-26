@@ -47,6 +47,7 @@ class WarehouseCreate(BaseModel):
     longitude: Optional[float] = None
     notes: Optional[str] = None
     buyer_reference: Optional[str] = None
+    contact_email: Optional[str] = None
 
     @field_validator("code")
     @classmethod
@@ -77,6 +78,7 @@ class WarehouseUpdate(BaseModel):
     longitude: Optional[float] = None
     notes: Optional[str] = None
     buyer_reference: Optional[str] = None
+    contact_email: Optional[str] = None
 
     @field_validator("state")
     @classmethod
@@ -105,6 +107,7 @@ class WarehouseResponse(BaseModel):
     longitude: Optional[float] = None
     notes: Optional[str] = None
     buyer_reference: Optional[str] = None
+    contact_email: Optional[str] = None
 
 
 class WarehouseListResponse(BaseModel):
@@ -180,6 +183,10 @@ def init_warehouses_schema():
             pass
         try:
             conn.execute("ALTER TABLE warehouses ADD COLUMN buyer_reference TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE warehouses ADD COLUMN contact_email TEXT")
         except Exception:
             pass
 
@@ -305,8 +312,8 @@ async def create_warehouse(data: WarehouseCreate):
 
         cursor = conn.execute(
             """
-            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, contact_phone, location_type, transport_special_instructions, is_default, is_active, latitude, longitude, notes, buyer_reference, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO warehouses (code, name, state, city, address, zip_code, phone, contact_name, contact_phone, location_type, transport_special_instructions, is_default, is_active, latitude, longitude, notes, buyer_reference, contact_email, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.code,
@@ -326,6 +333,7 @@ async def create_warehouse(data: WarehouseCreate):
                 data.longitude,
                 data.notes,
                 data.buyer_reference,
+                data.contact_email,
                 now,
                 now,
             ),
@@ -614,6 +622,10 @@ async def update_warehouse(id: int, data: WarehouseUpdate):
         updates["longitude"] = data.longitude
     if data.notes is not None:
         updates["notes"] = data.notes
+    if data.buyer_reference is not None:
+        updates["buyer_reference"] = data.buyer_reference
+    if data.contact_email is not None:
+        updates["contact_email"] = data.contact_email
 
     if not updates:
         return await get_warehouse(id)
@@ -697,4 +709,6 @@ def _row_to_response(row: dict) -> WarehouseResponse:
         latitude=row.get("latitude"),
         longitude=row.get("longitude"),
         notes=row.get("notes"),
+        buyer_reference=row.get("buyer_reference"),
+        contact_email=row.get("contact_email"),
     )

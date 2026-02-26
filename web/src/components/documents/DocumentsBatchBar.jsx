@@ -7,6 +7,7 @@ export default function DocumentsBatchBar({
   batchOperating, batchPosting,
   batchOpResult,
   onApprove, onExportPreflight, onHold, onArchive,
+  onAutoAssignWarehouse,
   onClearSelection, onDismissResult,
 }) {
   return (
@@ -54,6 +55,14 @@ export default function DocumentsBatchBar({
               Archive ({eligibility.archiveDocIds.length})
             </button>
           )}
+          <button
+            onClick={onAutoAssignWarehouse}
+            disabled={batchOperating}
+            className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+            title="Auto-assign closest warehouse to selected documents"
+          >
+            {batchOperating ? '...' : 'Auto-Assign Warehouse'}
+          </button>
           <button
             onClick={onClearSelection}
             className="ml-auto text-sm text-blue-600 hover:text-blue-800"
