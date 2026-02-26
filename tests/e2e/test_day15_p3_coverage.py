@@ -285,8 +285,8 @@ class TestLocationNameEnrichment:
             f"Expected 'Sub Lot' in name, got: {outputs.get('pickup_location_name')}"
         assert "Houston" in outputs.get("pickup_location_name", "")
 
-    def test_iaa_keeps_branch_name(self):
-        """IAA with proper branch name is not overwritten."""
+    def test_iaa_keeps_branch_name_with_iaa_prefix(self):
+        """IAA with branch name already containing IAA is not duplicated."""
         from api.routes.extractions import _enrich_location_name
         outputs = {
             "auction_source": "IAA",
@@ -295,10 +295,22 @@ class TestLocationNameEnrichment:
             "pickup_location_name": "IAA Chicago South Branch",
         }
         _enrich_location_name(outputs)
-        assert outputs["pickup_location_name"] == "IAA Chicago South Branch"
+        assert outputs.get("pickup_location_name") == "IAA Chicago South Branch"
 
-    def test_iaa_city_only_flags_low_confidence(self):
-        """IAA with name == city flags low confidence."""
+    def test_iaa_strips_branch_number_and_prefixes(self):
+        """IAA branch code like '636 - Scranton' becomes 'IAAI Scranton'."""
+        from api.routes.extractions import _enrich_location_name
+        outputs = {
+            "auction_source": "IAA",
+            "pickup_city": "Pittston",
+            "pickup_state": "PA",
+            "pickup_location_name": "636 - Scranton",
+        }
+        _enrich_location_name(outputs)
+        assert outputs["pickup_name"] == "IAAI Scranton"
+
+    def test_iaa_city_only_gets_prefix_and_low_confidence(self):
+        """IAA with name == city gets IAAI prefix and flags low confidence."""
         from api.routes.extractions import _enrich_location_name
         outputs = {
             "auction_source": "IAA",
@@ -307,6 +319,7 @@ class TestLocationNameEnrichment:
             "pickup_location_name": "Chicago",
         }
         _enrich_location_name(outputs)
+        assert outputs["pickup_name"] == "IAAI Chicago"
         assert outputs.get("pickup_location_name_confidence") == "low"
 
     def test_manheim_offsite_uses_seller(self):

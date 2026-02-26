@@ -4,6 +4,7 @@ Extractions API Routes
 Run and manage extraction runs on documents.
 """
 
+import re
 import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
@@ -618,8 +619,24 @@ def _enrich_location_name(outputs: dict) -> None:
             outputs["pickup_name"] = outputs["pickup_location_name"]
 
     elif source == "IAA":
-        # IAA should have branch name, not just city
-        if name and name.upper() == city.upper():
+        # IAA: normalize to "IAAI {branch_name}" format
+        # Strip leading branch number (e.g., "636 - Scranton" → "Scranton")
+        iaa_name = name
+        if iaa_name:
+            stripped = re.sub(r"^\d+\s*[-–—]\s*", "", iaa_name).strip()
+            if stripped:
+                iaa_name = stripped
+
+        # Prefix "IAAI" if not already present (skip non-IAA names like "DEALERS AA")
+        if iaa_name and "iaa" not in iaa_name.lower() and "dealers" not in iaa_name.lower():
+            iaa_name = f"IAAI {iaa_name}"
+
+        if iaa_name and iaa_name != name:
+            outputs["pickup_name"] = iaa_name
+            outputs["pickup_location_name"] = iaa_name
+
+        # Flag low confidence if name is just the city
+        if iaa_name and iaa_name.upper().replace("IAAI ", "") == city.upper():
             outputs["pickup_location_name_confidence"] = "low"
 
     elif source == "MANHEIM":
