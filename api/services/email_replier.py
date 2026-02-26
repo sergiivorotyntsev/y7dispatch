@@ -7,12 +7,68 @@ Uses Microsoft Graph API to reply in the original email thread.
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
 from api.database import get_connection
 
 logger = logging.getLogger(__name__)
+
+# Words that indicate a company name, not a person name
+_CORPORATE_WORDS = {
+    "llc", "inc", "corp", "corporation", "ltd", "agency", "import", "export",
+    "auto", "autos", "motors", "motor", "transport", "transportation",
+    "logistics", "international", "group", "co", "services", "service",
+    "trading", "enterprises", "global", "dealers", "dealer", "sales",
+    "shipping", "freight", "express", "solutions", "partners", "usa",
+    "company", "automotive",
+}
+
+# Generic email prefixes that aren't person names
+_GENERIC_EMAIL_PREFIXES = {
+    "info", "sales", "admin", "office", "support", "dispatch", "shipping",
+    "orders", "contact", "hello", "team", "noreply", "no-reply", "billing",
+    "accounts", "help", "service", "mail", "general", "ops", "operations",
+}
+
+
+def _looks_like_person_name(name: str) -> bool:
+    """Check if a string looks like a person's name (not a company)."""
+    if not name or not name.strip():
+        return False
+    words = name.strip().split()
+    if len(words) > 3:
+        return False
+    lower_words = {w.lower().rstrip(".,") for w in words}
+    if lower_words & _CORPORATE_WORDS:
+        return False
+    # At least one word should start with uppercase and be alpha
+    return any(w[0].isupper() and w.isalpha() for w in words)
+
+
+def _extract_name_from_email(email: str) -> Optional[str]:
+    """Try to extract a person's first name from email address.
+
+    E.g. maciej@importusa.com → "Maciej"
+         john.doe@example.com → "John"
+    """
+    if not email or "@" not in email:
+        return None
+    local = email.split("@")[0]
+    # Split by common separators
+    parts = re.split(r"[._\-+]", local)
+    if not parts:
+        return None
+    candidate = parts[0].strip()
+    # Must be 3+ letters, all alpha, not a generic prefix
+    if (
+        len(candidate) >= 3
+        and candidate.isalpha()
+        and candidate.lower() not in _GENERIC_EMAIL_PREFIXES
+    ):
+        return candidate.capitalize()
+    return None
 
 
 class ReplyBodyBuilder:
@@ -48,9 +104,16 @@ class ReplyBodyBuilder:
             return None
 
     @staticmethod
-    def _build_variables(load_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> dict:
+    def _build_variables(load_id: str, warehouse: dict, sender_name: str = None,
+                         vin: str = None, sender_email: str = None) -> dict:
         """Build the variable dict for template substitution."""
-        greeting = f"Hello {sender_name}," if sender_name else "Hello,"
+        # Smart greeting: prefer person name, fall back to email extraction
+        display_name = None
+        if sender_name and _looks_like_person_name(sender_name):
+            display_name = sender_name.split()[0]  # first name only
+        if not display_name and sender_email:
+            display_name = _extract_name_from_email(sender_email)
+        greeting = f"Hello {display_name}," if display_name else "Hello,"
 
         wh_name = warehouse.get("name", "")
         wh_address = warehouse.get("address", "")
@@ -93,12 +156,15 @@ class ReplyBodyBuilder:
         return result
 
     @classmethod
-    def build(cls, load_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> str:
+    def build(cls, load_id: str, warehouse: dict, sender_name: str = None,
+              vin: str = None, sender_email: str = None) -> str:
         """Build HTML reply body with Load ID and warehouse address.
 
         Loads template from DB; falls back to hardcoded default.
         """
-        variables = cls._build_variables(load_id, warehouse, sender_name, vin=vin)
+        variables = cls._build_variables(
+            load_id, warehouse, sender_name, vin=vin, sender_email=sender_email,
+        )
 
         template = cls._load_template()
         if template:
@@ -198,7 +264,8 @@ class EmailReplier:
             return data
 
         html_body = self.body_builder.build(
-            data["load_id"], data["warehouse"], data["sender_name"], vin=data["vin"],
+            data["load_id"], data["warehouse"], data["sender_name"],
+            vin=data["vin"], sender_email=data["sender"],
         )
 
         return {
@@ -256,7 +323,8 @@ class EmailReplier:
 
         # 4. Build HTML body (uses load_id, our internal ID, for display)
         html_body = self.body_builder.build(
-            load_id, data["warehouse"], sender_name, vin=data["vin"],
+            load_id, data["warehouse"], sender_name,
+            vin=data["vin"], sender_email=sender,
         )
 
         # 5. Send via Graph API

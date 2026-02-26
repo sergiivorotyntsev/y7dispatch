@@ -238,7 +238,7 @@ class TestReplyBodyBuilder:
 
         html = ReplyBodyBuilder.build("CD-TEST", {"name": "WH"})
         assert "Y7 Agency" in html
-        assert "Broadway Motoring" in html
+        assert "Broadway Motoring" not in html
 
     def test_reply_body_has_vin(self):
         from api.services.email_replier import ReplyBodyBuilder
@@ -582,6 +582,45 @@ class TestBuildVariables:
         variables = ReplyBodyBuilder._build_variables("CD-X", {"name": "WH"})
         assert variables["vin"] == ""
 
+    def test_build_variables_company_name_uses_email(self):
+        """Company sender_name → extract first name from email."""
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables(
+            "CD-X", {"name": "WH"},
+            sender_name="Import USA", sender_email="maciej@importusa.com",
+        )
+        assert variables["greeting"] == "Hello Maciej,"
+
+    def test_build_variables_company_name_no_email_fallback(self):
+        """Company sender_name + no usable email → plain Hello."""
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables(
+            "CD-X", {"name": "WH"},
+            sender_name="Auto Transport LLC", sender_email="info@autotransport.com",
+        )
+        assert variables["greeting"] == "Hello,"
+
+    def test_build_variables_person_name_first_name_only(self):
+        """Person sender_name uses first name only in greeting."""
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables(
+            "CD-X", {"name": "WH"}, sender_name="Jane Doe",
+        )
+        assert variables["greeting"] == "Hello Jane,"
+
+    def test_build_variables_no_name_email_extraction(self):
+        """No sender_name → try email extraction."""
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables(
+            "CD-X", {"name": "WH"},
+            sender_name=None, sender_email="john.smith@example.com",
+        )
+        assert variables["greeting"] == "Hello John,"
+
 
 class TestTemplateFromDB:
     def _create_email_templates_table(self, conn):
@@ -688,6 +727,41 @@ class TestSeedDefaultTemplates:
         assert "{{greeting}}" in row["body_html"]
         assert "{{vin}}" in row["body_html"]
         assert "Confirmation email" in row["description"]
+
+    def test_seed_migrates_old_placeholders(self, test_db, monkeypatch):
+        """Seed migrates {{cd_listing_id}} → {{load_id}} and fixes signature."""
+        _patch_get_connection_all(monkeypatch, test_db)
+
+        test_db.execute("""
+            CREATE TABLE IF NOT EXISTS email_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_key TEXT UNIQUE NOT NULL,
+                subject_template TEXT,
+                body_html TEXT NOT NULL,
+                description TEXT,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_by TEXT
+            )
+        """)
+        # Insert old-style template
+        test_db.execute(
+            "INSERT INTO email_templates (template_key, body_html, description) VALUES (?, ?, ?)",
+            ("reply_confirmation",
+             "<p>{{greeting}}</p><p>{{cd_listing_id}}</p><p>Y7 Agency / Broadway Motoring Inc</p>",
+             "Confirmation email"),
+        )
+        test_db.commit()
+
+        from api.routes.email_log import seed_default_templates
+        seed_default_templates()
+
+        row = test_db.execute(
+            "SELECT body_html FROM email_templates WHERE template_key = 'reply_confirmation'"
+        ).fetchone()
+        assert "{{cd_listing_id}}" not in row["body_html"]
+        assert "{{load_id}}" in row["body_html"]
+        assert "Broadway Motoring" not in row["body_html"]
+        assert "Y7 Agency" in row["body_html"]
 
     def test_seed_is_idempotent(self, test_db, monkeypatch):
         _patch_get_connection_all(monkeypatch, test_db)

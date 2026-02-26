@@ -116,12 +116,18 @@ _DEFAULT_REPLY_CONFIRMATION_HTML = """\
 </div>
 <p><strong>Status:</strong> Listed &mdash; Searching for carriers</p>
 <p>We will notify you once a carrier is assigned.</p>
-<p style="margin-top:24px;">Best regards,<br/>Y7 Agency / Broadway Motoring Inc</p>
+<p style="margin-top:24px;">Best regards,<br/>Y7 Agency</p>
 </div>"""
 
 
 def seed_default_templates():
-    """Insert default email templates if they don't exist (INSERT OR IGNORE)."""
+    """Insert default email templates if they don't exist (INSERT OR IGNORE).
+
+    Also migrates existing templates:
+    - {{cd_listing_id}} → {{load_id}}
+    - Old signature → new signature
+    - Ensures {{vin}} placeholder is present
+    """
     with get_connection() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO email_templates
@@ -133,6 +139,41 @@ def seed_default_templates():
                 "Confirmation email sent to sender after CD listing is created",
             ),
         )
+        # Migrate: rename {{cd_listing_id}} → {{load_id}} in existing templates
+        conn.execute(
+            """UPDATE email_templates
+               SET body_html = REPLACE(body_html, '{{cd_listing_id}}', '{{load_id}}'),
+                   updated_at = datetime('now'), updated_by = 'migration'
+               WHERE template_key = 'reply_confirmation'
+                 AND body_html LIKE '%{{cd_listing_id}}%'""",
+        )
+        # Migrate: update signature
+        conn.execute(
+            """UPDATE email_templates
+               SET body_html = REPLACE(body_html, 'Y7 Agency / Broadway Motoring Inc', 'Y7 Agency'),
+                   updated_at = datetime('now'), updated_by = 'migration'
+               WHERE template_key = 'reply_confirmation'
+                 AND body_html LIKE '%Y7 Agency / Broadway Motoring Inc%'""",
+        )
+        # Migrate: ensure {{vin}} is in template (add after {{load_id}} line if missing)
+        row = conn.execute(
+            """SELECT body_html FROM email_templates
+               WHERE template_key = 'reply_confirmation'
+                 AND body_html NOT LIKE '%{{vin}}%'""",
+        ).fetchone()
+        if row:
+            # Insert VIN line after the load_id div
+            updated = row["body_html"].replace(
+                "{{load_id}}</div>\n</div>",
+                '{{load_id}}</div>\n  <div style="font-size:13px;color:#555;margin-top:8px;">VIN: {{vin}}</div>\n</div>',
+            )
+            if updated != row["body_html"]:
+                conn.execute(
+                    """UPDATE email_templates
+                       SET body_html = ?, updated_at = datetime('now'), updated_by = 'migration'
+                       WHERE template_key = 'reply_confirmation'""",
+                    (updated,),
+                )
         conn.commit()
 
 
