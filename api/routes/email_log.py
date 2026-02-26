@@ -106,7 +106,7 @@ _DEFAULT_REPLY_CONFIRMATION_HTML = """\
 <p>We have received your transport request and created a listing.</p>
 <div style="background-color:#e8f5e9;border:2px solid #4caf50;border-radius:8px;padding:16px 20px;margin:16px 0;text-align:center;">
   <div style="font-size:12px;color:#666;margin-bottom:4px;">Load ID</div>
-  <div style="font-size:24px;font-weight:bold;color:#2e7d32;">{{cd_listing_id}}</div>
+  <div style="font-size:24px;font-weight:bold;color:#2e7d32;">{{load_id}}</div>
   <div style="font-size:13px;color:#555;margin-top:8px;">VIN: {{vin}}</div>
 </div>
 <div style="background-color:#f8f9fa;border-left:4px solid #1976d2;border-radius:4px;padding:12px 16px;margin:16px 0;">

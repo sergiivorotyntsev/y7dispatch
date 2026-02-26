@@ -128,16 +128,16 @@ def populated_db(test_db):
         VALUES (1, 'BRD1', 'Broadway Warehouse', 'NJ', 'Newark', '123 Broadway Ave', '07101', '555-123-4567', 'John Smith', '555-987-6543')
     """)
 
-    # Create extraction run with warehouse_id in outputs
+    # Create extraction run with warehouse_id in outputs (vehicle_vin is the real field name)
     conn.execute("""
         INSERT INTO extraction_runs (id, status, outputs_json)
         VALUES (42, 'exported', ?)
-    """, (json.dumps({"warehouse_id": 1, "vin": "1HGCM82633A123456"}),))
+    """, (json.dumps({"warehouse_id": 1, "vehicle_vin": "1HGCM82633A123456"}),))
 
-    # Create CD listing
+    # Create CD listing (external_id = our internal Load ID, cd_listing_id = CD's internal ID)
     conn.execute("""
         INSERT INTO cd_listings (run_id, cd_listing_id, external_id)
-        VALUES (42, 'CD-226HONAC1', 'ext-123')
+        VALUES (42, '304787159', '226HONAC1')
     """)
 
     # Create email_log entry
@@ -172,12 +172,12 @@ class TestReplyBodyBuilder:
         from api.services.email_replier import ReplyBodyBuilder
 
         html = ReplyBodyBuilder.build(
-            cd_listing_id="CD-226HONAC1",
+            load_id="226HONAC1",
             warehouse={"name": "Test WH", "address": "123 Main St", "city": "Newark",
                         "state": "NJ", "zip_code": "07101", "phone": "555-0000"},
             sender_name="John",
         )
-        assert "CD-226HONAC1" in html
+        assert "226HONAC1" in html
 
     def test_reply_body_has_warehouse_address(self):
         from api.services.email_replier import ReplyBodyBuilder
@@ -201,7 +201,7 @@ class TestReplyBodyBuilder:
         from api.services.email_replier import ReplyBodyBuilder
 
         html = ReplyBodyBuilder.build(
-            cd_listing_id="CD-TEST",
+            load_id="TEST-LOAD1",
             warehouse={"name": "WH", "address": "1 St", "city": "C", "state": "NJ", "zip_code": "07101"},
             sender_name=None,
         )
@@ -212,7 +212,7 @@ class TestReplyBodyBuilder:
         from api.services.email_replier import ReplyBodyBuilder
 
         html = ReplyBodyBuilder.build(
-            cd_listing_id="CD-TEST",
+            load_id="TEST-LOAD1",
             warehouse={"name": "WH", "address": "1 St", "city": "C", "state": "NJ", "zip_code": "07101"},
             sender_name="John",
         )
@@ -222,7 +222,7 @@ class TestReplyBodyBuilder:
         from api.services.email_replier import ReplyBodyBuilder
 
         html = ReplyBodyBuilder.build(
-            cd_listing_id="CD-TEST",
+            load_id="TEST-LOAD1",
             warehouse={"name": "WH", "address": "1 St", "city": "C", "state": "NJ", "zip_code": "07101"},
         )
         assert "Phone:" not in html
@@ -273,21 +273,22 @@ class TestSendConfirmationSuccess:
         result = replier.send_confirmation(42)
 
         assert result["success"] is True
-        assert result["cd_listing_id"] == "CD-226HONAC1"
+        assert result["load_id"] == "226HONAC1"
+        assert result["cd_listing_id"] == "304787159"
         assert result["replied_to"] == "seller@auction.com"
 
-        # Verify reply record in DB
+        # Verify reply record in DB (cd_listing_id column stores CD's internal ID)
         row = populated_db.execute(
             "SELECT status, cd_listing_id FROM email_replies WHERE run_id = 42"
         ).fetchone()
         assert row["status"] == "sent"
-        assert row["cd_listing_id"] == "CD-226HONAC1"
+        assert row["cd_listing_id"] == "304787159"
 
         # Verify Graph API was called with correct args
         mock_graph.reply_to_message.assert_called_once()
         call_args = mock_graph.reply_to_message.call_args
         assert call_args[0][0] == "AAMkAGI1AAAoZCfHAAA="
-        assert "CD-226HONAC1" in call_args[0][1]  # HTML body contains listing ID
+        assert "226HONAC1" in call_args[0][1]  # HTML body contains our Load ID
         assert "1HGCM82633A123456" in call_args[0][1]  # HTML body contains VIN
 
 
@@ -390,7 +391,7 @@ class TestSendConfirmationNoWarehouse:
         # Remove warehouse_id from outputs
         populated_db.execute(
             "UPDATE extraction_runs SET outputs_json = ? WHERE id = 42",
-            (json.dumps({"vin": "1HGCM82633A123456"}),),
+            (json.dumps({"vehicle_vin": "1HGCM82633A123456"}),),
         )
         populated_db.commit()
 
@@ -434,12 +435,12 @@ class TestPreviewConfirmation:
         result = replier.preview_confirmation(42)
 
         assert result["success"] is True
-        assert "CD-226HONAC1" in result["preview_html"]
+        assert "226HONAC1" in result["preview_html"]
         assert "1HGCM82633A123456" in result["preview_html"]
         assert result["recipient_email"] == "seller@auction.com"
         assert result["recipient_name"] == "Jane Doe"
         assert result["subject"] == "Invoice #12345"
-        assert result["cd_listing_id"] == "CD-226HONAC1"
+        assert result["load_id"] == "226HONAC1"
         assert result["vin"] == "1HGCM82633A123456"
         assert result["warehouse_name"] == "Broadway Warehouse"
         assert result["has_graph_id"] is True
@@ -470,7 +471,7 @@ class TestPreviewConfirmation:
         result = replier.preview_confirmation(42)
 
         assert result["success"] is True
-        assert "CD-226HONAC1" in result["preview_html"]
+        assert "226HONAC1" in result["preview_html"]
         assert result["has_graph_id"] is False
 
     def test_gather_reply_data_reused(self, populated_db, monkeypatch):
@@ -504,12 +505,12 @@ class TestRenderTemplate:
     def test_render_simple_placeholders(self):
         from api.services.email_replier import ReplyBodyBuilder
 
-        template = "<p>{{greeting}}</p><p>Load: {{cd_listing_id}}</p>"
+        template = "<p>{{greeting}}</p><p>Load: {{load_id}}</p>"
         result = ReplyBodyBuilder.render_template(template, {
             "greeting": "Hello John,",
-            "cd_listing_id": "CD-TEST1",
+            "load_id": "226TOYPR1",
         })
-        assert result == "<p>Hello John,</p><p>Load: CD-TEST1</p>"
+        assert result == "<p>Hello John,</p><p>Load: 226TOYPR1</p>"
 
     def test_render_all_warehouse_variables(self):
         from api.services.email_replier import ReplyBodyBuilder
@@ -543,7 +544,7 @@ class TestBuildVariables:
         )
         assert variables["greeting"] == "Hello Alice,"
         assert variables["sender_name"] == "Alice"
-        assert variables["cd_listing_id"] == "CD-123"
+        assert variables["load_id"] == "CD-123"
         assert variables["warehouse_name"] == "WH"
         assert variables["warehouse_full_address"] == "1 St, C, NJ 07101"
 
@@ -604,14 +605,14 @@ class TestTemplateFromDB:
 
         test_db.execute(
             "INSERT INTO email_templates (template_key, body_html) VALUES (?, ?)",
-            ("reply_confirmation", "<p>{{greeting}}</p><p>CUSTOM Load: {{cd_listing_id}}</p><p>WH: {{warehouse_name}}</p>"),
+            ("reply_confirmation", "<p>{{greeting}}</p><p>CUSTOM Load: {{load_id}}</p><p>WH: {{warehouse_name}}</p>"),
         )
         test_db.commit()
 
         from api.services.email_replier import ReplyBodyBuilder
 
-        html = ReplyBodyBuilder.build("CD-CUSTOM", {"name": "Broadway WH"}, sender_name="Bob")
-        assert "CUSTOM Load: CD-CUSTOM" in html
+        html = ReplyBodyBuilder.build("226CUSTOM", {"name": "Broadway WH"}, sender_name="Bob")
+        assert "CUSTOM Load: 226CUSTOM" in html
         assert "Hello Bob," in html
         assert "Broadway WH" in html
 
@@ -683,7 +684,7 @@ class TestSeedDefaultTemplates:
             "SELECT template_key, body_html, description FROM email_templates WHERE template_key = 'reply_confirmation'"
         ).fetchone()
         assert row is not None
-        assert "{{cd_listing_id}}" in row["body_html"]
+        assert "{{load_id}}" in row["body_html"]
         assert "{{greeting}}" in row["body_html"]
         assert "{{vin}}" in row["body_html"]
         assert "Confirmation email" in row["description"]
@@ -769,10 +770,10 @@ class TestTemplateGetEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["template_key"] == "reply_confirmation"
-        assert "{{cd_listing_id}}" in data["body_html"]
+        assert "{{load_id}}" in data["body_html"]
         assert data["description"] == "Confirmation email"
         assert isinstance(data["available_variables"], list)
-        assert any(v["key"] == "cd_listing_id" for v in data["available_variables"])
+        assert any(v["key"] == "load_id" for v in data["available_variables"])
         assert any(v["key"] == "greeting" for v in data["available_variables"])
         assert any(v["key"] == "vin" for v in data["available_variables"])
 
@@ -789,7 +790,7 @@ class TestTemplatePutEndpoint:
 
     def test_update_template(self, template_db):
         client = self._make_client()
-        new_html = "<p>{{greeting}}</p><p>Load: {{cd_listing_id}}</p>"
+        new_html = "<p>{{greeting}}</p><p>Load: {{load_id}}</p>"
         resp = client.put("/api/email-templates/reply_confirmation", json={"body_html": new_html})
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -801,7 +802,7 @@ class TestTemplatePutEndpoint:
         assert row["body_html"] == new_html
 
     def test_update_template_validation(self, template_db):
-        """PUT without {{cd_listing_id}} → 400; empty → 400; too long → 400."""
+        """PUT without {{load_id}} → 400; empty → 400; too long → 400."""
         client = self._make_client()
 
         # Empty body
@@ -811,10 +812,10 @@ class TestTemplatePutEndpoint:
         # Missing required placeholder
         resp = client.put("/api/email-templates/reply_confirmation", json={"body_html": "<p>No load id</p>"})
         assert resp.status_code == 400
-        assert "cd_listing_id" in resp.json()["detail"]
+        assert "load_id" in resp.json()["detail"]
 
         # Too long
-        huge = "{{cd_listing_id}}" + "x" * 50001
+        huge = "{{load_id}}" + "x" * 50001
         resp = client.put("/api/email-templates/reply_confirmation", json={"body_html": huge})
         assert resp.status_code == 400
         assert "too long" in resp.json()["detail"]
@@ -830,12 +831,12 @@ class TestTemplatePreviewEndpoint:
         app.include_router(router)
         client = TestClient(app)
 
-        template = "<p>{{greeting}}</p><p>Load: {{cd_listing_id}}</p><p>VIN: {{vin}}</p><p>WH: {{warehouse_name}}</p>"
+        template = "<p>{{greeting}}</p><p>Load: {{load_id}}</p><p>VIN: {{vin}}</p><p>WH: {{warehouse_name}}</p>"
         resp = client.post("/api/email-templates/reply_confirmation/preview", json={"body_html": template})
         assert resp.status_code == 200
         html = resp.json()["preview_html"]
         assert "Hello John," in html
-        assert "CD-12345678" in html
+        assert "226TOYPR1" in html
         assert "4T1BF1FK5EU123456" in html
         assert "NJ Warehouse" in html
 
@@ -853,7 +854,7 @@ class TestTemplateResetEndpoint:
 
         # First modify the template
         client.put("/api/email-templates/reply_confirmation", json={
-            "body_html": "<p>Custom {{cd_listing_id}}</p>"
+            "body_html": "<p>Custom {{load_id}}</p>"
         })
 
         # Then reset

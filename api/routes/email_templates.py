@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/email-templates", tags=["Email Templates"])
 AVAILABLE_VARIABLES = [
     {"key": "greeting", "description": "\"Hello {name},\" or \"Hello,\""},
     {"key": "sender_name", "description": "Sender's name (empty if unknown)"},
-    {"key": "cd_listing_id", "description": "Central Dispatch Load ID"},
+    {"key": "load_id", "description": "Internal Load ID (e.g. 226PORMA1)"},
     {"key": "vin", "description": "Vehicle VIN number(s)"},
     {"key": "warehouse_name", "description": "Warehouse name"},
     {"key": "warehouse_address", "description": "Warehouse street address"},
@@ -37,7 +37,7 @@ AVAILABLE_VARIABLES = [
 SAMPLE_DATA = {
     "greeting": "Hello John,",
     "sender_name": "John",
-    "cd_listing_id": "CD-12345678",
+    "load_id": "226TOYPR1",
     "vin": "4T1BF1FK5EU123456",
     "warehouse_name": "NJ Warehouse",
     "warehouse_address": "123 Main Street",
@@ -94,10 +94,10 @@ async def update_reply_template(data: TemplateUpdate):
             status_code=400,
             detail=f"body_html too long ({len(body)} chars, max 50000)",
         )
-    if "{{cd_listing_id}}" not in body:
+    if "{{load_id}}" not in body:
         raise HTTPException(
             status_code=400,
-            detail="Template must contain {{cd_listing_id}} placeholder",
+            detail="Template must contain {{load_id}} placeholder",
         )
 
     now = datetime.now(timezone.utc).isoformat() + "Z"

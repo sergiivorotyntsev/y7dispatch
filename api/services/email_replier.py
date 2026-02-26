@@ -23,7 +23,7 @@ class ReplyBodyBuilder:
 
     Available placeholders:
         {{greeting}}               - "Hello {name}," or "Hello,"
-        {{cd_listing_id}}          - Load ID from Central Dispatch
+        {{load_id}}                - Our internal Load ID (e.g. 226PORMA1)
         {{warehouse_name}}         - warehouse name
         {{warehouse_address}}      - street address
         {{warehouse_city}}         - city
@@ -48,7 +48,7 @@ class ReplyBodyBuilder:
             return None
 
     @staticmethod
-    def _build_variables(cd_listing_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> dict:
+    def _build_variables(load_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> dict:
         """Build the variable dict for template substitution."""
         greeting = f"Hello {sender_name}," if sender_name else "Hello,"
 
@@ -72,7 +72,7 @@ class ReplyBodyBuilder:
         return {
             "greeting": greeting,
             "sender_name": sender_name or "",
-            "cd_listing_id": cd_listing_id,
+            "load_id": load_id,
             "vin": vin or "",
             "warehouse_name": wh_name,
             "warehouse_address": wh_address,
@@ -93,12 +93,12 @@ class ReplyBodyBuilder:
         return result
 
     @classmethod
-    def build(cls, cd_listing_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> str:
+    def build(cls, load_id: str, warehouse: dict, sender_name: str = None, vin: str = None) -> str:
         """Build HTML reply body with Load ID and warehouse address.
 
         Loads template from DB; falls back to hardcoded default.
         """
-        variables = cls._build_variables(cd_listing_id, warehouse, sender_name, vin=vin)
+        variables = cls._build_variables(load_id, warehouse, sender_name, vin=vin)
 
         template = cls._load_template()
         if template:
@@ -150,11 +150,12 @@ class EmailReplier:
     def _gather_reply_data(self, run_id: int) -> dict:
         """Gather all data needed to build a confirmation reply.
 
-        Returns dict with keys: cd_listing_id, warehouse, vin, email_log, sender,
-        sender_name, subject, graph_message_id.
+        Returns dict with keys: load_id, cd_listing_id, warehouse, vin, email_log,
+        sender, sender_name, subject, graph_message_id.
         On failure returns dict with success=False and error message.
         """
-        # Get CD listing
+        # Get CD listing — external_id is our internal Load ID (e.g. 226PORMA1),
+        # cd_listing_id is CD's internal ID (e.g. 304787159)
         with get_connection() as conn:
             listing = conn.execute(
                 "SELECT cd_listing_id, external_id FROM cd_listings WHERE run_id = ?",
@@ -163,12 +164,15 @@ class EmailReplier:
         if not listing:
             return {"success": False, "error": "No CD listing found for this run"}
 
+        load_id = listing["external_id"] or listing["cd_listing_id"]
         cd_listing_id = listing["cd_listing_id"]
 
         # Get warehouse data and VIN
         warehouse, vin = self._get_warehouse_and_vin_for_run(run_id)
         if not warehouse:
             return {"success": False, "error": "No warehouse found for this run"}
+
+        logger.info("Reply data for run_id=%s: load_id=%s, vin=%s", run_id, load_id, vin)
 
         # Find email_log entry for this run
         email_log = self._find_email_log_for_run(run_id)
@@ -177,6 +181,7 @@ class EmailReplier:
 
         return {
             "success": True,
+            "load_id": load_id,
             "cd_listing_id": cd_listing_id,
             "warehouse": warehouse,
             "vin": vin,
@@ -193,7 +198,7 @@ class EmailReplier:
             return data
 
         html_body = self.body_builder.build(
-            data["cd_listing_id"], data["warehouse"], data["sender_name"], vin=data["vin"],
+            data["load_id"], data["warehouse"], data["sender_name"], vin=data["vin"],
         )
 
         return {
@@ -202,6 +207,7 @@ class EmailReplier:
             "recipient_email": data["sender"],
             "recipient_name": data["sender_name"] or "",
             "subject": data["subject"],
+            "load_id": data["load_id"],
             "cd_listing_id": data["cd_listing_id"],
             "vin": data["vin"],
             "warehouse_name": data["warehouse"].get("name", ""),
@@ -225,6 +231,7 @@ class EmailReplier:
         if not data.get("success"):
             return data
 
+        load_id = data["load_id"]
         cd_listing_id = data["cd_listing_id"]
         graph_message_id = data["graph_message_id"]
         if not graph_message_id:
@@ -236,7 +243,7 @@ class EmailReplier:
         sender = data["sender"]
         sender_name = data["sender_name"]
 
-        # 3. Create pending reply record
+        # 3. Create pending reply record (store cd_listing_id for DB reference)
         with get_connection() as conn:
             cursor = conn.execute(
                 """INSERT INTO email_replies
@@ -247,9 +254,9 @@ class EmailReplier:
             conn.commit()
             reply_id = cursor.lastrowid
 
-        # 4. Build HTML body
+        # 4. Build HTML body (uses load_id, our internal ID, for display)
         html_body = self.body_builder.build(
-            cd_listing_id, data["warehouse"], sender_name, vin=data["vin"],
+            load_id, data["warehouse"], sender_name, vin=data["vin"],
         )
 
         # 5. Send via Graph API
@@ -275,11 +282,12 @@ class EmailReplier:
 
         if result.get("success"):
             logger.info(
-                "Confirmation reply sent for run %d (listing %s) to %s",
-                run_id, cd_listing_id, sender,
+                "Confirmation reply sent for run %d (load %s) to %s",
+                run_id, load_id, sender,
             )
             return {
                 "success": True,
+                "load_id": load_id,
                 "cd_listing_id": cd_listing_id,
                 "replied_to": sender,
             }
@@ -303,8 +311,8 @@ class EmailReplier:
         if isinstance(outputs, str):
             outputs = json.loads(outputs)
 
-        # Extract VIN — single string or list
-        vin_raw = outputs.get("vin", "")
+        # Extract VIN — field is "vehicle_vin" in outputs_json
+        vin_raw = outputs.get("vehicle_vin") or outputs.get("vin") or ""
         if isinstance(vin_raw, list):
             vin = ", ".join(str(v) for v in vin_raw if v)
         else:
