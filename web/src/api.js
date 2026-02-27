@@ -165,6 +165,7 @@ export const api = {
   },
 
   // Documents
+  getDocumentStats: () => request('/documents/stats'),
   listDocuments: (params = {}) => {
     const query = new URLSearchParams(params).toString()
     return request(`/documents/${query ? `?${query}` : ''}`)
@@ -208,7 +209,7 @@ export const api = {
       body: formData,
     })
   },
-  getDocumentStats: () => request('/documents/stats/by-auction-type'),
+  getDocumentStatsByAuctionType: () => request('/documents/stats/by-auction-type'),
 
   // Extractions
   listExtractions: (params = {}) => {

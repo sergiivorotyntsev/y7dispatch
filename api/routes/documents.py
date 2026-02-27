@@ -699,6 +699,53 @@ def _enrich_doc_with_extraction(doc_dict: dict, conn) -> dict:
     return doc_dict
 
 
+@router.get("/stats")
+async def get_document_stats():
+    """Return global dashboard stats from the entire database (no pagination)."""
+    from api.database import get_connection
+
+    with get_connection() as conn:
+        # Total emails received (email_log may not exist in test environments)
+        try:
+            total_emails = conn.execute("SELECT COUNT(*) FROM email_log").fetchone()[0]
+        except Exception:
+            total_emails = 0
+
+        # Transport requests — emails that generated extraction runs
+        try:
+            transport_requests = conn.execute(
+                """SELECT COUNT(DISTINCT el.id) FROM email_log el
+                   WHERE el.extraction_run_ids IS NOT NULL
+                     AND el.extraction_run_ids != '[]'"""
+            ).fetchone()[0]
+        except Exception:
+            transport_requests = 0
+
+        # Counts by extraction status (latest run per document, production only)
+        status_row = conn.execute(
+            """SELECT
+                 SUM(CASE WHEN er.status = 'needs_review' THEN 1 ELSE 0 END) AS needs_review,
+                 SUM(CASE WHEN er.status IN ('reviewed', 'approved') THEN 1 ELSE 0 END) AS ready_to_export,
+                 SUM(CASE WHEN er.status = 'exported' THEN 1 ELSE 0 END) AS exported,
+                 SUM(CASE WHEN er.status = 'failed' THEN 1 ELSE 0 END) AS failed
+               FROM extraction_runs er
+               INNER JOIN documents d ON d.id = er.document_id
+               WHERE er.id = (SELECT MAX(e2.id) FROM extraction_runs e2 WHERE e2.document_id = d.id)
+                 AND (d.is_test IS NULL OR d.is_test = 0)
+                 AND (d.source IS NULL OR d.source != 'test_lab')
+                 AND (d.archived_at IS NULL OR d.archived_at = '')"""
+        ).fetchone()
+
+    return {
+        "total_emails": total_emails,
+        "transport_requests": transport_requests,
+        "needs_review": status_row["needs_review"] or 0,
+        "ready_to_export": status_row["ready_to_export"] or 0,
+        "exported": status_row["exported"] or 0,
+        "failed": status_row["failed"] or 0,
+    }
+
+
 @router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     auction_type_id: Optional[int] = Query(None, description="Filter by auction type"),
@@ -739,6 +786,8 @@ async def list_documents(
             elif status == "archived":
                 include_archived = True
                 base_where += " AND d.archived_at IS NOT NULL AND d.archived_at != ''"
+            elif status == "ready_to_export":
+                base_where += " AND er.status IN ('reviewed', 'approved')"
             else:
                 base_where += " AND er.status = ?"
                 params.append(status)
@@ -757,11 +806,19 @@ async def list_documents(
                     OR json_extract(er.outputs_json, '$.vehicle_model') LIKE ?
                     OR json_extract(er.outputs_json, '$.vehicle_lot') LIKE ?
                     OR json_extract(er.outputs_json, '$.gate_pass') LIKE ?
+                    OR json_extract(er.outputs_json, '$.load_id') LIKE ?
                     OR d.filename LIKE ?
+                    OR EXISTS (
+                        SELECT 1 FROM email_log el
+                        WHERE el.extraction_run_ids LIKE '%' || CAST(er.id AS TEXT) || '%'
+                          AND el.subject LIKE ?
+                    )
                 )
             """
-            params.extend([q_upper, q, q, q, q, q])
-        elif auction_type_id:
+            params.extend([q_upper, q, q, q, q, q_upper, q, q])
+
+        # Auction type filter — combines with search (not exclusive)
+        if auction_type_id:
             base_where += " AND d.auction_type_id = ?"
             params.append(auction_type_id)
 

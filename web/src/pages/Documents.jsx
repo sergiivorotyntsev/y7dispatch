@@ -20,6 +20,11 @@ function Documents() {
     <div className="p-6">
       <DocumentsHeader
         stats={d.stats}
+        activeStatus={d.filter.status}
+        onStatusFilter={(status) => {
+          d.setFilter(f => ({ ...f, status }))
+          d.setPagination(p => ({ ...p, page: 1 }))
+        }}
         onUploadClick={() => d.setShowUpload(true)}
       />
 

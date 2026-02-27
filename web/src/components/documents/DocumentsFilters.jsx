@@ -14,7 +14,7 @@ export default function DocumentsFilters({
       <div className="mb-3">
         <input
           type="text"
-          placeholder="Search by VIN, make, model, lot, or gate pass..."
+          placeholder="Search by VIN, Load ID, lot, make, model, gate pass, or email subject..."
           value={search}
           onChange={e => onSearchChange(e.target.value)}
           className="form-input w-full text-sm"
@@ -43,7 +43,7 @@ export default function DocumentsFilters({
           >
             <option value="">All Status</option>
             <option value="needs_review">Needs Review</option>
-            <option value="reviewed">Ready to Export</option>
+            <option value="ready_to_export">Ready to Export</option>
             <option value="exported">Exported</option>
             <option value="manual_required">OCR Required</option>
             <option value="pending">Pending</option>

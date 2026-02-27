@@ -59,12 +59,14 @@ export default function useDocuments() {
     sortOrder: 'desc',
   })
 
-  // Stats
+  // Stats (from server — covers entire DB, not just current page)
   const [stats, setStats] = useState({
-    total: 0,
+    total_emails: 0,
+    transport_requests: 0,
     needs_review: 0,
     ready_to_export: 0,
     exported: 0,
+    failed: 0,
   })
 
   // Upload state
@@ -98,6 +100,16 @@ export default function useDocuments() {
 
   // Export preview modal
   const [showExportPreview, setShowExportPreview] = useState(null)
+
+  // Fetch global stats from server (independent of pagination/filters)
+  const fetchStats = useCallback(async () => {
+    try {
+      const data = await api.getDocumentStats()
+      setStats(data)
+    } catch (err) {
+      console.error('Failed to fetch stats:', err)
+    }
+  }, [])
 
   // Debounce search input
   useEffect(() => {
@@ -144,7 +156,6 @@ export default function useDocuments() {
 
       // Build docExtractions from document response (eliminates separate API call)
       const extractionsByDoc = {}
-      let needsReview = 0, readyToExport = 0, exported = 0
       for (const doc of prodDocs) {
         if (doc.extraction_run_id) {
           extractionsByDoc[doc.id] = {
@@ -152,9 +163,6 @@ export default function useDocuments() {
             status: doc.extraction_status,
             outputs: doc.outputs || {},
           }
-          if (doc.extraction_status === 'needs_review') needsReview++
-          else if (doc.extraction_status === 'reviewed' || doc.extraction_status === 'approved') readyToExport++
-          else if (doc.extraction_status === 'exported') exported++
         }
       }
       setDocExtractions(extractionsByDoc)
@@ -166,13 +174,6 @@ export default function useDocuments() {
           }))
         } catch { /* storage full */ }
       }
-
-      setStats({
-        total: result.total || prodDocs.length,
-        needs_review: needsReview,
-        ready_to_export: readyToExport,
-        exported,
-      })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -199,7 +200,8 @@ export default function useDocuments() {
 
   useEffect(() => {
     fetchDocuments()
-  }, [fetchDocuments])
+    fetchStats()
+  }, [fetchDocuments, fetchStats])
 
   // Upload handler
   async function handleUpload() {
@@ -649,7 +651,7 @@ export default function useDocuments() {
     showExportPreview, setShowExportPreview,
     navigate,
     // Handlers
-    fetchDocuments,
+    fetchDocuments, fetchStats,
     handleUpload, handleRunExtraction,
     handleWarehouseChange, handleDelete,
     handleSetHold, handleReleaseHold,
