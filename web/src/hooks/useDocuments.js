@@ -581,6 +581,21 @@ export default function useDocuments() {
     }
   }
 
+  async function handleSendReply(runId) {
+    try {
+      await api.sendConfirmationReply(runId)
+      // Update local state to show sent status
+      setDocuments(prev => prev.map(doc => {
+        if (doc.extraction_run_id === runId) {
+          return { ...doc, reply_status: 'sent' }
+        }
+        return doc
+      }))
+    } catch (err) {
+      setError(`Reply failed: ${err.message}`)
+    }
+  }
+
   function getSourceDisplay(doc) {
     if (doc.source === 'email') return { label: 'Email', color: 'bg-blue-100 text-blue-800' }
     if (doc.source === 'webhook') return { label: 'Webhook', color: 'bg-purple-100 text-purple-800' }
@@ -644,7 +659,7 @@ export default function useDocuments() {
     handleBatchPostPreflight, handleBatchPost, closeBatchPostModal,
     getBatchEligibility,
     handleBatchApprove, handleBatchHoldConfirm, handleBatchArchive, handleAutoAssignWarehouse,
-    getSourceDisplay, getExportStatus,
+    getSourceDisplay, getExportStatus, handleSendReply,
     handleRowClick,
     toggleDate, collapseAll, expandAll,
   }

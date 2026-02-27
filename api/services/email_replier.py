@@ -57,6 +57,7 @@ class ReplyBodyBuilder:
         {{warehouse_full_address}} - "address, city, state zip"
         {{warehouse_phone_line}}   - phone HTML div (empty if no phone)
         {{vin}}                    - Vehicle VIN number(s), comma-separated
+        {{pickup_name}}            - Pickup/auction location name
     """
 
     @staticmethod
@@ -73,7 +74,7 @@ class ReplyBodyBuilder:
 
     @staticmethod
     def _build_variables(load_id: str, warehouse: dict, sender_name: str = None,
-                         vin: str = None) -> dict:
+                         vin: str = None, pickup_name: str = None) -> dict:
         """Build the variable dict for template substitution."""
         # Smart greeting: use first name if sender_name looks like a person,
         # otherwise plain "Hello," (don't try to extract from email — unreliable)
@@ -104,6 +105,7 @@ class ReplyBodyBuilder:
             "sender_name": sender_name or "",
             "load_id": load_id,
             "vin": vin or "",
+            "pickup_name": pickup_name or "",
             "warehouse_name": wh_name,
             "warehouse_address": wh_address,
             "warehouse_city": wh_city,
@@ -124,12 +126,13 @@ class ReplyBodyBuilder:
 
     @classmethod
     def build(cls, load_id: str, warehouse: dict, sender_name: str = None,
-              vin: str = None) -> str:
+              vin: str = None, pickup_name: str = None) -> str:
         """Build HTML reply body with Load ID and warehouse address.
 
         Loads template from DB; falls back to hardcoded default.
         """
-        variables = cls._build_variables(load_id, warehouse, sender_name, vin=vin)
+        variables = cls._build_variables(load_id, warehouse, sender_name, vin=vin,
+                                         pickup_name=pickup_name)
 
         template = cls._load_template()
         if template:
@@ -198,8 +201,8 @@ class EmailReplier:
         load_id = listing["external_id"] or listing["cd_listing_id"]
         cd_listing_id = listing["cd_listing_id"]
 
-        # Get warehouse data and VIN
-        warehouse, vin = self._get_warehouse_and_vin_for_run(run_id)
+        # Get warehouse data, VIN, and pickup name
+        warehouse, vin, pickup_name = self._get_warehouse_and_vin_for_run(run_id)
         if not warehouse:
             return {"success": False, "error": "No warehouse found for this run"}
 
@@ -216,6 +219,7 @@ class EmailReplier:
             "cd_listing_id": cd_listing_id,
             "warehouse": warehouse,
             "vin": vin,
+            "pickup_name": pickup_name,
             "email_log": email_log,
             "sender": email_log["sender"],
             "sender_name": email_log["sender_name"],
@@ -229,7 +233,8 @@ class EmailReplier:
             return data
 
         html_body = self.body_builder.build(
-            data["load_id"], data["warehouse"], data["sender_name"], vin=data["vin"],
+            data["load_id"], data["warehouse"], data["sender_name"],
+            vin=data["vin"], pickup_name=data.get("pickup_name"),
         )
 
         return {
@@ -295,7 +300,8 @@ class EmailReplier:
 
         # 4. Build HTML body (uses load_id, our internal ID, for display)
         html_body = self.body_builder.build(
-            load_id, data["warehouse"], sender_name, vin=data["vin"],
+            load_id, data["warehouse"], sender_name,
+            vin=data["vin"], pickup_name=data.get("pickup_name"),
         )
 
         # 5. Send via Graph API
@@ -333,18 +339,18 @@ class EmailReplier:
         else:
             return {"success": False, "error": result.get("error", "Reply failed")}
 
-    def _get_warehouse_and_vin_for_run(self, run_id: int) -> tuple[Optional[dict], str]:
-        """Get warehouse data and VIN for a run via extraction_runs.outputs_json.
+    def _get_warehouse_and_vin_for_run(self, run_id: int) -> tuple[Optional[dict], str, str]:
+        """Get warehouse data, VIN, and pickup name for a run via extraction_runs.outputs_json.
 
         Returns:
-            (warehouse_dict or None, vin_string)
+            (warehouse_dict or None, vin_string, pickup_name_string)
         """
         with get_connection() as conn:
             run = conn.execute(
                 "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
             ).fetchone()
         if not run or not run["outputs_json"]:
-            return None, ""
+            return None, "", ""
 
         outputs = run["outputs_json"]
         if isinstance(outputs, str):
@@ -357,21 +363,58 @@ class EmailReplier:
         else:
             vin = str(vin_raw) if vin_raw else ""
 
+        pickup_name = outputs.get("pickup_name") or ""
+
         warehouse_id = outputs.get("warehouse_id")
         if not warehouse_id:
-            return None, vin
+            return None, vin, pickup_name
 
         with get_connection() as conn:
             wh = conn.execute(
                 "SELECT * FROM warehouses WHERE id = ?", (warehouse_id,)
             ).fetchone()
-        return (dict(wh) if wh else None), vin
+        return (dict(wh) if wh else None), vin, pickup_name
 
     def _find_email_log_for_run(self, run_id: int) -> Optional[dict]:
-        """Find email_log entry that contains this run_id in extraction_run_ids."""
+        """Find email_log entry that contains this run_id in extraction_run_ids.
+
+        If direct lookup fails, falls back to searching via sibling runs
+        (same document_id) to handle re-run scenarios where email_log only
+        contains the original run_id.
+        """
+        # 1. Direct lookup
+        result = self._search_email_log_by_run_id(run_id)
+        if result:
+            return result
+
+        # 2. Fallback: find sibling run_ids via document_id
+        with get_connection() as conn:
+            run_row = conn.execute(
+                "SELECT document_id FROM extraction_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if not run_row:
+                return None
+
+            sibling_rows = conn.execute(
+                "SELECT id FROM extraction_runs WHERE document_id = ? AND id != ? ORDER BY id",
+                (run_row["document_id"], run_id),
+            ).fetchall()
+
+        for sib in sibling_rows:
+            result = self._search_email_log_by_run_id(sib["id"])
+            if result:
+                logger.info(
+                    "Found email_log for run %d via sibling run %d (same doc %d)",
+                    run_id, sib["id"], run_row["document_id"],
+                )
+                return result
+
+        return None
+
+    def _search_email_log_by_run_id(self, run_id: int) -> Optional[dict]:
+        """Search email_log for a specific run_id in extraction_run_ids."""
         run_id_str = str(run_id)
         with get_connection() as conn:
-            # extraction_run_ids is JSON array stored as TEXT, e.g. "[42, 43]"
             rows = conn.execute(
                 """SELECT id, message_id, sender, sender_name, subject,
                           graph_message_id, extraction_run_ids
@@ -381,7 +424,6 @@ class EmailReplier:
                 (f"%{run_id_str}%",),
             ).fetchall()
 
-        # Verify run_id is actually in the JSON array (not just substring match)
         for row in rows:
             try:
                 run_ids = json.loads(row["extraction_run_ids"] or "[]")

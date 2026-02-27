@@ -115,6 +115,7 @@ _DEFAULT_REPLY_CONFIRMATION_HTML = """\
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px;">Load ID</div>
         <div style="font-size:22px;font-weight:bold;color:#2e7d32;">{{load_id}}</div>
         <div style="font-size:13px;color:#555;margin-top:6px;">VIN: {{vin}}</div>
+        <div style="font-size:12px;color:#777;margin-top:2px;">{{pickup_name}}</div>
       </td>
     </tr>
   </table>
@@ -143,7 +144,7 @@ def seed_default_templates():
         conn.execute(
             """INSERT OR IGNORE INTO email_templates
                (template_key, body_html, description, version)
-               VALUES (?, ?, ?, 2)""",
+               VALUES (?, ?, ?, 3)""",
             (
                 "reply_confirmation",
                 _DEFAULT_REPLY_CONFIRMATION_HTML,
@@ -157,6 +158,15 @@ def seed_default_templates():
                    updated_at = datetime('now'), updated_by = 'migration_v2'
                WHERE template_key = 'reply_confirmation'
                  AND (version IS NULL OR version < 2)""",
+            (_DEFAULT_REPLY_CONFIRMATION_HTML,),
+        )
+        # Migrate v2 → v3: add {{pickup_name}} below VIN
+        conn.execute(
+            """UPDATE email_templates
+               SET body_html = ?, version = 3,
+                   updated_at = datetime('now'), updated_by = 'migration_v3'
+               WHERE template_key = 'reply_confirmation'
+                 AND version = 2 AND updated_by != 'ui'""",
             (_DEFAULT_REPLY_CONFIRMATION_HTML,),
         )
         conn.commit()

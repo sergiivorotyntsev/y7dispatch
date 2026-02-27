@@ -2,11 +2,12 @@
  * Section 3: Pick-Up Location
  * Extracted from document: name, address, city/state/zip, phone, location type, buyer ref, contact.
  * Auto-fill phone from Auction Directory when extraction misses it.
+ * Shows validation badges from directory + ZIP cross-check (verified/mismatch/unverified).
  */
 import { useState } from 'react'
 import api from '../../api'
 
-function PickupSection({ fields, updateField, highlightedField, setHighlightedField }) {
+function PickupSection({ fields, updateField, highlightedField, setHighlightedField, validation }) {
   const [phoneLookupStatus, setPhoneLookupStatus] = useState(null) // null | 'loading' | 'found' | 'not_found'
 
   const handlePhoneLookup = async () => {
@@ -39,6 +40,7 @@ function PickupSection({ fields, updateField, highlightedField, setHighlightedFi
   }
 
   const showLookupButton = fields.pickup_name?.corrected && !fields.pickup_phone?.corrected
+  const pFields = validation?.pickup || {}
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
@@ -48,19 +50,26 @@ function PickupSection({ fields, updateField, highlightedField, setHighlightedFi
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
         Pick-Up Location
+        {validation?.summary?.pickup_ok && (
+          <span className="ml-2 text-green-500">
+            <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+          </span>
+        )}
       </h3>
 
       {/* Location Name */}
-      <FieldRow field={fields.pickup_name} fieldKey="pickup_name" updateField={updateField} />
+      <FieldRow field={fields.pickup_name} fieldKey="pickup_name" updateField={updateField} vInfo={pFields.pickup_name} />
 
       {/* Address */}
-      <FieldRow field={fields.pickup_address} fieldKey="pickup_address" updateField={updateField} />
+      <FieldRow field={fields.pickup_address} fieldKey="pickup_address" updateField={updateField} vInfo={pFields.pickup_address} />
 
       {/* City / State / ZIP */}
       <div className="grid grid-cols-3 gap-3 mb-3">
-        <FieldInput field={fields.pickup_city} fieldKey="pickup_city" label="City" updateField={updateField} required />
-        <FieldInput field={fields.pickup_state} fieldKey="pickup_state" label="State" updateField={updateField} required maxLength={2} placeholder="XX" />
-        <FieldInput field={fields.pickup_zip} fieldKey="pickup_zip" label="ZIP" updateField={updateField} required maxLength={10} placeholder="12345" />
+        <FieldInput field={fields.pickup_city} fieldKey="pickup_city" label="City" updateField={updateField} required vInfo={pFields.pickup_city} />
+        <FieldInput field={fields.pickup_state} fieldKey="pickup_state" label="State" updateField={updateField} required maxLength={2} placeholder="XX" vInfo={pFields.pickup_state} />
+        <FieldInput field={fields.pickup_zip} fieldKey="pickup_zip" label="ZIP" updateField={updateField} required maxLength={10} placeholder="12345" vInfo={pFields.pickup_zip} />
       </div>
 
       {/* Phone / Location Type */}
@@ -119,13 +128,14 @@ function PickupSection({ fields, updateField, highlightedField, setHighlightedFi
   )
 }
 
-/** Simple field input with label */
-function FieldInput({ field, fieldKey, label, updateField, required, maxLength, placeholder }) {
+/** Simple field input with label and optional validation badge */
+function FieldInput({ field, fieldKey, label, updateField, required, maxLength, placeholder, vInfo }) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-600 mb-1">
         {label || field?.label || fieldKey}
         {required && <span className="text-red-500 ml-0.5">*</span>}
+        <InlineBadge info={vInfo} />
       </label>
       <input
         type="text"
@@ -137,21 +147,20 @@ function FieldInput({ field, fieldKey, label, updateField, required, maxLength, 
         placeholder={placeholder || label || fieldKey}
         maxLength={maxLength}
       />
+      <MismatchHint info={vInfo} fieldKey={fieldKey} updateField={updateField} />
     </div>
   )
 }
 
-/** Full-width field row with label and confidence indicator */
-function FieldRow({ field, fieldKey, updateField }) {
+/** Full-width field row with label and validation badge */
+function FieldRow({ field, fieldKey, updateField, vInfo }) {
   if (!field) return null
   return (
     <div className="mb-3">
       <label className="block text-xs font-medium text-gray-600 mb-1">
         {field.label}
         {field.required && <span className="text-red-500 ml-0.5">*</span>}
-        {field.confidence != null && field.confidence < 0.6 && (
-          <span className="ml-2 text-orange-500 text-xs">Low confidence ({(field.confidence * 100).toFixed(0)}%)</span>
-        )}
+        <InlineBadge info={vInfo} />
       </label>
       <input
         type="text"
@@ -162,7 +171,39 @@ function FieldRow({ field, fieldKey, updateField }) {
         }`}
         placeholder={field.label}
       />
+      <MismatchHint info={vInfo} fieldKey={fieldKey} updateField={updateField} />
     </div>
+  )
+}
+
+/** Inline badge next to label text */
+function InlineBadge({ info }) {
+  if (!info) return null
+  const { status } = info
+  if (status === 'verified') {
+    return <span className="ml-1.5 text-green-600 text-xs font-normal">Verified</span>
+  }
+  if (status === 'mismatch') {
+    return <span className="ml-1.5 text-red-600 text-xs font-normal">Mismatch</span>
+  }
+  if (status === 'unverified') {
+    return <span className="ml-1.5 text-yellow-600 text-xs font-normal">Unverified</span>
+  }
+  return null
+}
+
+/** Clickable mismatch hint: "Use {directory value}" */
+function MismatchHint({ info, fieldKey, updateField }) {
+  if (!info || info.status !== 'mismatch') return null
+  const correctValue = info.directory || info.zip_expected
+  if (!correctValue) return null
+  return (
+    <button
+      onClick={() => updateField(fieldKey, correctValue)}
+      className="text-xs text-blue-600 hover:text-blue-800 mt-0.5 block"
+    >
+      Use "{correctValue}"
+    </button>
   )
 }
 

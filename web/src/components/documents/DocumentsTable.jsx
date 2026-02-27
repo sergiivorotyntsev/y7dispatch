@@ -18,7 +18,7 @@ export default function DocumentsTable({
   onRunExtraction, onExportPreview,
   onReleaseHold, onHold, onArchive, onDelete,
   onPageChange, onUploadClick,
-  getSourceDisplay, navigate,
+  getSourceDisplay, navigate, onSendReply,
 }) {
   if (loading && documents.length === 0) {
     return (
@@ -117,6 +117,7 @@ export default function DocumentsTable({
                       onDelete={onDelete}
                       getSourceDisplay={getSourceDisplay}
                       navigate={navigate}
+                      onSendReply={onSendReply}
                     />
                   ))}
                 </Fragment>
@@ -165,7 +166,7 @@ function DocumentRow({
   onEditPrice, onSetEditingPrice,
   onRunExtraction, onExportPreview,
   onReleaseHold, onHold, onArchive, onDelete,
-  getSourceDisplay, navigate,
+  getSourceDisplay, navigate, onSendReply,
 }) {
   const isPending = !!doc.pending_reason
   const isOnHold = !!doc.hold_reason
@@ -350,6 +351,18 @@ function DocumentRow({
            extStatus === 'failed' ? 'Failed' :
            extStatus || 'No Data'}
         </span>
+        {doc.reply_status === 'sent' && (
+          <span className="ml-1 text-green-600" title="Confirmation sent" style={{ fontSize: '13px' }}>&#9993;&#10003;</span>
+        )}
+        {doc.reply_status === 'not_sent' && onSendReply && (
+          <button
+            className="ml-1 px-1.5 py-0.5 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+            title="Send confirmation reply"
+            onClick={(e) => { e.stopPropagation(); onSendReply(doc.extraction_run_id) }}
+          >
+            Reply
+          </button>
+        )}
       </td>
       <td className="px-4 py-3">
         <span className={`px-2 py-1 text-xs font-medium rounded ${sourceDisplay.color}`}>

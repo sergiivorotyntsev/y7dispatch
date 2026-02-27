@@ -1575,6 +1575,49 @@ def run_extraction(
         if True:  # Always create review items, even if outputs is empty
             _create_review_items_for_all_fields(run_id, auction_type_id, outputs or {})
 
+        # Auto-validate VIN + pickup address in background (non-blocking)
+        if run_status == "needs_review" and outputs.get("vehicle_vin"):
+            try:
+                from api.routes.validation import _get_run_data, _build_summary
+                from api.services.vin_decoder import VINDecoder
+                from api.services.address_validator import PickupAddressValidator
+
+                vin = str(outputs.get("vehicle_vin") or "").strip()
+                year = str(outputs.get("vehicle_year") or "").strip()
+                make = str(outputs.get("vehicle_make") or "").strip()
+                model = str(outputs.get("vehicle_model") or "").strip()
+
+                decoder = VINDecoder()
+                vehicle_result = decoder.validate_vehicle(vin, year, make, model)
+
+                pickup_fields = {
+                    "pickup_name": outputs.get("pickup_name", ""),
+                    "pickup_address": outputs.get("pickup_address", ""),
+                    "pickup_city": outputs.get("pickup_city", ""),
+                    "pickup_state": outputs.get("pickup_state", ""),
+                    "pickup_zip": outputs.get("pickup_zip", ""),
+                }
+                addr_validator = PickupAddressValidator()
+                at_code = auction_type.code if auction_type else "UNKNOWN"
+                pickup_result = addr_validator.validate(at_code, pickup_fields)
+
+                summary = _build_summary(vehicle_result, pickup_result)
+
+                import json as _json
+                with get_connection() as conn2:
+                    conn2.execute(
+                        """INSERT OR REPLACE INTO validation_results
+                           (run_id, vehicle_json, pickup_json, summary_json, validated_at)
+                           VALUES (?, ?, ?, ?, datetime('now'))""",
+                        (run_id, _json.dumps(vehicle_result), _json.dumps(pickup_result), _json.dumps(summary)),
+                    )
+                    conn2.commit()
+                import logging as _log
+                _log.getLogger(__name__).info("Auto-validation completed for run %d", run_id)
+            except Exception as val_err:
+                import logging as _log
+                _log.getLogger(__name__).warning("Auto-validation failed for run %d: %s", run_id, val_err)
+
     except Exception as e:
         import traceback
 
@@ -1711,6 +1754,63 @@ def _create_empty_review_items(run_id: int, auction_type_id: int, mode: str = "t
     _create_review_items_for_all_fields(run_id, auction_type_id, {}, mode=mode)
 
 
+def _link_rerun_to_email_log(document_id: int, new_run_id: int):
+    """If this document has prior runs linked to email_log, add new_run_id.
+
+    When a user re-runs extraction, a new extraction_run is created for the same
+    document. The email_log entry only contains the original run_id(s). This
+    function finds the email_log entry via sibling runs and appends new_run_id
+    so that "Send Confirmation Email" works for re-runs.
+    """
+    import json as _json
+    from api.database import get_connection
+
+    try:
+        with get_connection() as conn:
+            # Find all other run_ids for the same document
+            sibling_rows = conn.execute(
+                "SELECT id FROM extraction_runs WHERE document_id = ? AND id != ?",
+                (document_id, new_run_id),
+            ).fetchall()
+            if not sibling_rows:
+                return  # First run for this document — nothing to link
+
+            # Search email_log for any sibling run_id
+            for sib in sibling_rows:
+                sib_id = sib[0]
+                email_row = conn.execute(
+                    """SELECT id, extraction_run_ids FROM email_log
+                       WHERE extraction_run_ids IS NOT NULL
+                       AND extraction_run_ids LIKE ?""",
+                    (f"%{sib_id}%",),
+                ).fetchone()
+                if not email_row:
+                    continue
+
+                # Verify it's a real match (not substring)
+                run_ids = _json.loads(email_row["extraction_run_ids"] or "[]")
+                if sib_id not in run_ids:
+                    continue
+
+                # Add new_run_id if not already present
+                if new_run_id not in run_ids:
+                    run_ids.append(new_run_id)
+                    conn.execute(
+                        "UPDATE email_log SET extraction_run_ids = ? WHERE id = ?",
+                        (_json.dumps(run_ids), email_row["id"]),
+                    )
+                    conn.commit()
+                    import logging as _log
+                    _log.getLogger(__name__).info(
+                        "Linked re-run %d to email_log %d (run_ids: %s)",
+                        new_run_id, email_row["id"], run_ids,
+                    )
+                return  # Found and updated
+    except Exception as e:
+        import logging as _log
+        _log.getLogger(__name__).warning("Failed to link re-run %d to email_log: %s", new_run_id, e)
+
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -1755,6 +1855,9 @@ async def run_extraction_endpoint(
         extractor_kind=extractor_kind,
         model_version_id=model_version_id,
     )
+
+    # If re-run, add new run_id to email_log.extraction_run_ids
+    _link_rerun_to_email_log(data.document_id, run_id)
 
     if sync:
         # Run synchronously

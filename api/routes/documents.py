@@ -221,6 +221,7 @@ class DocumentResponse(BaseModel):
     rate_per_mile: Optional[float] = None
     extraction_status: Optional[str] = None
     extraction_run_id: Optional[int] = None
+    reply_status: Optional[str] = None  # 'sent' | 'not_sent' | None
 
     # Full extraction outputs for frontend (avoids separate extraction API call)
     outputs: Optional[dict] = None
@@ -870,7 +871,34 @@ async def list_documents(
             # Full extraction outputs (avoids separate extraction API call)
             d["outputs"] = outputs if outputs else None
 
-            items.append(DocumentResponse(**d))
+            items.append(d)
+
+        # Batch-query email_replies for reply status (avoids N+1)
+        exported_run_ids = [
+            it["extraction_run_id"] for it in items
+            if it.get("extraction_status") == "exported" and it.get("extraction_run_id")
+            and it.get("source") == "email"
+        ]
+        reply_status_map = {}
+        if exported_run_ids:
+            ph = ",".join("?" * len(exported_run_ids))
+            reply_rows = conn.execute(
+                f"SELECT run_id, status FROM email_replies WHERE run_id IN ({ph})",
+                exported_run_ids,
+            ).fetchall()
+            for rr in reply_rows:
+                reply_status_map[rr["run_id"]] = rr["status"]
+
+        # Finalize items with reply_status
+        final_items = []
+        for it in items:
+            run_id = it.get("extraction_run_id")
+            if run_id and run_id in reply_status_map:
+                it["reply_status"] = reply_status_map[run_id]
+            elif run_id and it.get("extraction_status") == "exported" and it.get("source") == "email":
+                it["reply_status"] = "not_sent"
+            final_items.append(DocumentResponse(**it))
+        items = final_items
 
         # Counts for split badges
         count_filter = " AND (is_test IS NULL OR is_test = 0) AND (source IS NULL OR source != 'test_lab')"

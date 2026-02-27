@@ -113,13 +113,15 @@ function App() {
 
       {/* Main content */}
       <div className="flex-1 overflow-auto">
-        <Routes>
-          <Route path="/" element={<Documents />} />
-          <Route path="/review/:runId" element={<Review />} />
-          <Route path="/email-log" element={<EmailLog />} />
-          <Route path="/test-lab" element={<TestLab />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
+        <div className="max-w-7xl mx-auto">
+          <Routes>
+            <Route path="/" element={<Documents />} />
+            <Route path="/review/:runId" element={<Review />} />
+            <Route path="/email-log" element={<EmailLog />} />
+            <Route path="/test-lab" element={<TestLab />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </div>
       </div>
     </div>
   )

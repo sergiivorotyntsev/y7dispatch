@@ -110,6 +110,10 @@ function Review() {
   // Day 13: Attachments (vehicle release, condition reports)
   const [attachments, setAttachments] = useState([])
 
+  // Validation state (VIN decode + pickup address)
+  const [validation, setValidation] = useState(null)  // cached result from API
+  const [validating, setValidating] = useState(false)
+
   // Hold state
   const [showHoldModal, setShowHoldModal] = useState(false)
   const [holdReason, setHoldReason] = useState('awaiting_gate_pass')
@@ -375,7 +379,30 @@ function Review() {
     return () => { stale = true }
   }, [run, runId])
 
-  // === STREAM 5: Load ID (INDEPENDENT — auto-generates when make/model available) ===
+  // === STREAM 5: Validation (INDEPENDENT — load cached result if available) ===
+  useEffect(() => {
+    if (!runId) return
+    let stale = false
+    api.getValidation(runId)
+      .then(data => { if (!stale) setValidation(data) })
+      .catch(() => {}) // 404 = not yet validated, that's fine
+    return () => { stale = true }
+  }, [runId])
+
+  const handleValidate = useCallback(async () => {
+    if (!runId) return
+    setValidating(true)
+    try {
+      const data = await api.validateRun(runId)
+      setValidation(data)
+    } catch (err) {
+      setError(`Validation failed: ${err.message}`)
+    } finally {
+      setValidating(false)
+    }
+  }, [runId])
+
+  // === STREAM 6: Load ID (INDEPENDENT — auto-generates when make/model available) ===
   useEffect(() => {
     const make = fields.vehicle_make?.corrected
     const model = fields.vehicle_model?.corrected
@@ -1032,12 +1059,16 @@ function Review() {
               updateField={updateField}
               trailerType={trailerType}
               setTrailerType={setTrailerType}
+              validation={validation}
+              validating={validating}
+              onValidate={handleValidate}
             />
 
             {/* Section 3: Pick-Up Location */}
             <PickupSection
               fields={fields}
               updateField={updateField}
+              validation={validation}
             />
 
             {/* Section 4: Delivery Location */}

@@ -601,6 +601,22 @@ class TestBuildVariables:
         )
         assert variables["greeting"] == "Hello Jane,"
 
+    def test_build_variables_pickup_name(self):
+        """pickup_name is included in variables when provided."""
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables(
+            "CD-X", {"name": "WH"}, pickup_name="Copart North Boston",
+        )
+        assert variables["pickup_name"] == "Copart North Boston"
+
+    def test_build_variables_pickup_name_none(self):
+        """pickup_name defaults to empty string when None."""
+        from api.services.email_replier import ReplyBodyBuilder
+
+        variables = ReplyBodyBuilder._build_variables("CD-X", {"name": "WH"})
+        assert variables["pickup_name"] == ""
+
 
 class TestTemplateFromDB:
     def _create_email_templates_table(self, conn):
@@ -710,13 +726,14 @@ class TestSeedDefaultTemplates:
         assert "{{greeting}}" in row["body_html"]
         assert "{{vin}}" in row["body_html"]
         assert "Confirmation email" in row["description"]
-        assert row["version"] == 2
-        # v2 template uses table-based layout
+        assert row["version"] == 3
+        # v2+ template uses table-based layout
         assert "<table" in row["body_html"]
         assert "We will notify" not in row["body_html"]
+        assert "{{pickup_name}}" in row["body_html"]
 
-    def test_seed_migrates_v1_to_v2(self, test_db, monkeypatch):
-        """Seed upgrades v1 template to v2 redesigned HTML."""
+    def test_seed_migrates_v1_to_v3(self, test_db, monkeypatch):
+        """Seed upgrades v1 template through v2 to v3."""
         _patch_get_connection_all(monkeypatch, test_db)
 
         test_db.execute(self._TEMPLATE_TABLE_SQL)
@@ -735,20 +752,21 @@ class TestSeedDefaultTemplates:
         row = test_db.execute(
             "SELECT body_html, version FROM email_templates WHERE template_key = 'reply_confirmation'"
         ).fetchone()
-        assert row["version"] == 2
-        assert "<table" in row["body_html"]  # v2 uses table layout
+        assert row["version"] == 3
+        assert "<table" in row["body_html"]  # v2+ uses table layout
         assert "{{load_id}}" in row["body_html"]
         assert "{{vin}}" in row["body_html"]
+        assert "{{pickup_name}}" in row["body_html"]
         assert "We will notify" not in row["body_html"]
 
     def test_seed_preserves_user_edited_v2(self, test_db, monkeypatch):
-        """Seed does NOT overwrite template already at version 2."""
+        """Seed does NOT overwrite template edited by user (updated_by='ui')."""
         _patch_get_connection_all(monkeypatch, test_db)
 
         test_db.execute(self._TEMPLATE_TABLE_SQL)
         custom_html = "<p>{{greeting}}</p><p>Custom user template {{load_id}}</p>"
         test_db.execute(
-            "INSERT INTO email_templates (template_key, body_html, description, version) VALUES (?, ?, ?, 2)",
+            "INSERT INTO email_templates (template_key, body_html, description, version, updated_by) VALUES (?, ?, ?, 2, 'ui')",
             ("reply_confirmation", custom_html, "Confirmation email"),
         )
         test_db.commit()
@@ -1075,3 +1093,131 @@ class TestSendWithGraphResolve:
         assert result["success"] is True
         assert "226HONAC1" in result["preview_html"]
         assert result["has_graph_id"] is False
+
+
+# ---------------------------------------------------------------------------
+# Re-Run Email Log Tests
+# ---------------------------------------------------------------------------
+
+
+class TestReRunEmailLog:
+    """Tests for email_log linkage after re-run extraction."""
+
+    def test_find_email_log_via_sibling_run(self, test_db, monkeypatch):
+        """Re-run (run 99) shares document_id with original run (42) → finds email_log."""
+        conn = test_db
+
+        # Original run 42 for document 1
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (42, 1, 'exported', ?)",
+            (json.dumps({"vehicle_vin": "1HGCM82633A123456"}),),
+        )
+        # Re-run 99 for same document 1
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (99, 1, 'needs_review', ?)",
+            (json.dumps({"vehicle_vin": "1HGCM82633A123456"}),),
+        )
+        # email_log only references original run 42
+        conn.execute(
+            "INSERT INTO email_log (id, message_id, sender, sender_name, subject, extraction_run_ids, graph_message_id, status) "
+            "VALUES (10, '<test@example.com>', 'seller@auction.com', 'Jane Doe', 'Invoice', ?, 'AAMkAGI1AAAoZCfHAAA=', 'processed')",
+            (json.dumps([42]),),
+        )
+        conn.commit()
+
+        _patch_get_connection(monkeypatch, conn)
+        from api.services.email_replier import EmailReplier
+
+        replier = EmailReplier(graph_reader=None)
+
+        # Direct lookup for run 42 works
+        result42 = replier._find_email_log_for_run(42)
+        assert result42 is not None
+        assert result42["id"] == 10
+
+        # Sibling fallback for re-run 99 also works
+        result99 = replier._find_email_log_for_run(99)
+        assert result99 is not None
+        assert result99["id"] == 10
+
+    def test_find_email_log_no_sibling(self, test_db, monkeypatch):
+        """Run with no siblings and no email_log entry → returns None."""
+        conn = test_db
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (50, 5, 'needs_review', '{}')",
+        )
+        conn.commit()
+
+        _patch_get_connection(monkeypatch, conn)
+        from api.services.email_replier import EmailReplier
+
+        replier = EmailReplier(graph_reader=None)
+        assert replier._find_email_log_for_run(50) is None
+
+    def test_link_rerun_to_email_log(self, test_db, monkeypatch):
+        """_link_rerun_to_email_log adds new run_id to email_log.extraction_run_ids."""
+        conn = test_db
+
+        # Setup: original run 42, email_log has [42]
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (42, 1, 'exported', '{}')",
+        )
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (55, 1, 'needs_review', '{}')",
+        )
+        conn.execute(
+            "INSERT INTO email_log (id, message_id, sender, sender_name, extraction_run_ids, status) "
+            "VALUES (10, '<test@example.com>', 'seller@auction.com', 'Jane', ?, 'processed')",
+            (json.dumps([42]),),
+        )
+        conn.commit()
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def mock_get_connection():
+            yield conn
+
+        monkeypatch.setattr("api.database.get_connection", mock_get_connection)
+
+        from api.routes.extractions import _link_rerun_to_email_log
+        _link_rerun_to_email_log(document_id=1, new_run_id=55)
+
+        # Verify email_log was updated
+        row = conn.execute("SELECT extraction_run_ids FROM email_log WHERE id = 10").fetchone()
+        run_ids = json.loads(row["extraction_run_ids"])
+        assert 42 in run_ids
+        assert 55 in run_ids
+
+    def test_link_rerun_idempotent(self, test_db, monkeypatch):
+        """Calling _link_rerun_to_email_log twice doesn't duplicate the run_id."""
+        conn = test_db
+
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (42, 1, 'exported', '{}')",
+        )
+        conn.execute(
+            "INSERT INTO extraction_runs (id, document_id, status, outputs_json) VALUES (55, 1, 'needs_review', '{}')",
+        )
+        conn.execute(
+            "INSERT INTO email_log (id, message_id, sender, sender_name, extraction_run_ids, status) "
+            "VALUES (10, '<test@example.com>', 'seller@auction.com', 'Jane', ?, 'processed')",
+            (json.dumps([42]),),
+        )
+        conn.commit()
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def mock_get_connection():
+            yield conn
+
+        monkeypatch.setattr("api.database.get_connection", mock_get_connection)
+
+        from api.routes.extractions import _link_rerun_to_email_log
+        _link_rerun_to_email_log(document_id=1, new_run_id=55)
+        _link_rerun_to_email_log(document_id=1, new_run_id=55)  # second call
+
+        row = conn.execute("SELECT extraction_run_ids FROM email_log WHERE id = 10").fetchone()
+        run_ids = json.loads(row["extraction_run_ids"])
+        assert run_ids.count(55) == 1  # no duplicates

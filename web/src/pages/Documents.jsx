@@ -102,6 +102,7 @@ function Documents() {
         onUploadClick={() => d.setShowUpload(true)}
         getSourceDisplay={d.getSourceDisplay}
         navigate={d.navigate}
+        onSendReply={d.handleSendReply}
       />
 
       {/* Export Preview Modal */}

@@ -669,6 +669,10 @@ export const api = {
   resetReplyTemplate: () => request('/email-templates/reply_confirmation/reset', {
     method: 'POST',
   }),
+
+  // Validation (VIN decode + pickup address)
+  validateRun: (runId) => request(`/runs/${runId}/validate`, { method: 'POST' }),
+  getValidation: (runId) => request(`/runs/${runId}/validation`),
 }
 
 export default api

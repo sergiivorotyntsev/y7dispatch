@@ -67,6 +67,7 @@ from api.routes import (
     templates,
     test,
     training,
+    validation,
     warehouses,
     weather,
 )
@@ -275,6 +276,7 @@ app.include_router(auction_directory.router)  # Auction phone directory lookup
 app.include_router(email_log.router)  # Email log browsing + management
 app.include_router(weather.router)  # NWS weather alerts along transport routes
 app.include_router(batch.router)  # Batch operations: bulk approve/hold/archive
+app.include_router(validation.router)  # VIN decode + pickup address validation
 
 
 # =============================================================================
@@ -642,6 +644,10 @@ async def startup():
     init_email_replies_table()
     init_email_templates_table()
     seed_default_templates()
+    # Initialize validation tables (VIN cache, ZIP cache, validation results)
+    from api.routes.validation import init_validation_schema
+
+    init_validation_schema()
     # Wire DLQ alert callback for failed processing notifications
     from api.dlq import get_dlq_service
     from services.alerting import Severity, send_alert

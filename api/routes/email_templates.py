@@ -31,6 +31,7 @@ AVAILABLE_VARIABLES = [
     {"key": "warehouse_phone", "description": "Warehouse phone number"},
     {"key": "warehouse_full_address", "description": "Full address: street, city, state zip"},
     {"key": "warehouse_phone_line", "description": "Phone HTML block (empty if no phone)"},
+    {"key": "pickup_name", "description": "Pickup/auction location name (e.g. Copart North Boston)"},
 ]
 
 # Sample data for preview rendering
@@ -47,6 +48,7 @@ SAMPLE_DATA = {
     "warehouse_phone": "(973) 555-0100",
     "warehouse_full_address": "123 Main Street, Newark, NJ 07102",
     "warehouse_phone_line": '<div style="margin-top:4px;">Phone: (973) 555-0100</div>',
+    "pickup_name": "Copart North Boston",
 }
 
 
