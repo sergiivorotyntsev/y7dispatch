@@ -133,6 +133,36 @@ class ExtractionResult:
         }
 
 
+def _copart_name_from_city(city: str, fields: dict) -> str:
+    """Derive Copart pickup_name from pickup_city + pickup_zip via auction directory.
+
+    Lookup priority:
+      1. Match by city + state (exact)
+      2. Match by zip code (fallback when Haiku extracts wrong city)
+      3. Fall back to "COPART - {CITY}"
+    """
+    state = str(fields.get("pickup_state", ExtractedField(value="")).value or "").strip()
+    zip_code = str(fields.get("pickup_zip", ExtractedField(value="")).value or "").strip()
+    try:
+        from services.auction_directory import COPART_LOCATIONS
+
+        city_lower = city.lower()
+        state_lower = state.lower()
+        # Priority 1: city + state match
+        for name, loc in COPART_LOCATIONS.items():
+            if (loc.get("city", "").lower() == city_lower
+                    and loc.get("state", "").lower() == state_lower):
+                return name  # e.g., "Copart North Boston"
+        # Priority 2: zip code match (handles wrong city from 3-column PDF layout)
+        if zip_code:
+            for name, loc in COPART_LOCATIONS.items():
+                if loc.get("zip", "") == zip_code:
+                    return name
+    except Exception:
+        pass
+    return f"COPART - {city.upper()}"
+
+
 # Extraction prompt template (will be refined iteratively based on user feedback)
 EXTRACTION_PROMPT = """Extract auction invoice fields from this document. Return ONLY valid JSON.
 
@@ -536,6 +566,65 @@ Vehicle operability detection:
                     and result.fields["vehicle_lot"].value.startswith("000-")
                 ):
                     result.fields["vehicle_lot"].value = result.fields["vehicle_lot"].value.replace("000-", "", 1)
+
+                # Post-processing: Copart pickup location consistency
+                # Copart 3-column PDF layout often causes Haiku to pick up
+                # fields from the wrong column (seller vs lot). Use the
+                # auction directory (city+state OR zip) as source of truth
+                # for pickup_name, pickup_address, pickup_city, pickup_state, pickup_zip.
+                if result.auction_type == "COPART" and ("pickup_city" in result.fields or "pickup_zip" in result.fields):
+                    city = str(result.fields.get("pickup_city", ExtractedField(value="")).value or "").strip()
+                    new_name = _copart_name_from_city(city, result.fields) if city else None
+                    # If directory match found, correct ALL pickup fields from directory
+                    if new_name and not new_name.startswith("COPART - "):
+                        try:
+                            from services.auction_directory import COPART_LOCATIONS
+                            loc = COPART_LOCATIONS.get(new_name, {})
+                            # Correct pickup_city
+                            dir_city = loc.get("city", "")
+                            if dir_city and dir_city.upper() != city.upper():
+                                logger.info("Copart pickup_city corrected: %r -> %r (via directory)", city, dir_city.upper())
+                                result.fields["pickup_city"] = ExtractedField(
+                                    value=dir_city.upper(), confidence=0.95, source=FieldSource.EXTRACTED)
+                            # Correct pickup_state
+                            dir_state = loc.get("state", "")
+                            if dir_state:
+                                old_state = str(result.fields.get("pickup_state", ExtractedField(value="")).value or "")
+                                if dir_state.upper() != old_state.upper():
+                                    logger.info("Copart pickup_state corrected: %r -> %r (via directory)", old_state, dir_state.upper())
+                                result.fields["pickup_state"] = ExtractedField(
+                                    value=dir_state.upper(), confidence=0.95, source=FieldSource.EXTRACTED)
+                            # Correct pickup_zip
+                            dir_zip = loc.get("zip", "")
+                            if dir_zip:
+                                old_zip = str(result.fields.get("pickup_zip", ExtractedField(value="")).value or "")
+                                if dir_zip != old_zip:
+                                    logger.info("Copart pickup_zip corrected: %r -> %r (via directory)", old_zip, dir_zip)
+                                result.fields["pickup_zip"] = ExtractedField(
+                                    value=dir_zip, confidence=0.95, source=FieldSource.EXTRACTED)
+                            # Correct pickup_address
+                            dir_address = loc.get("address", "")
+                            if dir_address:
+                                old_addr = str(result.fields.get("pickup_address", ExtractedField(value="")).value or "")
+                                if dir_address.upper() != old_addr.upper():
+                                    logger.info("Copart pickup_address corrected: %r -> %r (via directory)", old_addr, dir_address.upper())
+                                result.fields["pickup_address"] = ExtractedField(
+                                    value=dir_address.upper(), confidence=0.95, source=FieldSource.EXTRACTED)
+                        except Exception:
+                            pass
+                    if new_name:
+                        old_name = result.fields.get("pickup_name")
+                        if old_name is None or old_name.value != new_name:
+                            if old_name:
+                                logger.info(
+                                    "Copart pickup_name corrected: %r -> %r (city=%s)",
+                                    old_name.value, new_name, city,
+                                )
+                            result.fields["pickup_name"] = ExtractedField(
+                                value=new_name,
+                                confidence=0.95,
+                                source=FieldSource.EXTRACTED,
+                            )
 
                 # Calculate overall confidence
                 if result.fields:

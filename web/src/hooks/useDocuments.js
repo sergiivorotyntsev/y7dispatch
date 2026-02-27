@@ -259,8 +259,8 @@ export default function useDocuments() {
     setExtractingDocId(docId)
     try {
       const result = await api.runExtraction(docId)
-      if (result?.run_id) {
-        navigate(`/review/${result.run_id}`)
+      if (result?.id) {
+        navigate(`/review/${result.id}`)
       } else {
         fetchDocuments()
       }

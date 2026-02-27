@@ -67,6 +67,8 @@ COPART_LOCATIONS = {
     "Copart Nashville": {"phone": "(615) 399-4219", "address": "1609 Antioch Pike", "city": "Nashville", "state": "TN", "zip": "37211"},
     "Copart Memphis": {"phone": "(901) 345-4985", "address": "4609 E Raines Rd", "city": "Memphis", "state": "TN", "zip": "38118"},
     "Copart Boston": {"phone": "(508) 384-3304", "address": "139 W Main St", "city": "Norton", "state": "MA", "zip": "02766"},
+    "Copart North Boston": {"phone": "(978) 772-2300", "address": "77 Fitchburg Rd", "city": "Ayer", "state": "MA", "zip": "01432"},
+    "Copart Exeter": {"phone": "(401) 294-6600", "address": "10 Industrial Dr", "city": "Exeter", "state": "RI", "zip": "02822"},
 }
 
 # ─── IAA Locations ───────────────────────────────────────────────────────────

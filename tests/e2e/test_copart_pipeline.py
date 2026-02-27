@@ -422,6 +422,62 @@ class TestCopartFullPipeline:
         # Should either succeed (duplicate detection) or reject
         assert resp2.status_code in [200, 201, 409]
 
+    def test_copart_address_corrected_from_directory_by_zip(self):
+        """Post-processing should correct all pickup fields from directory when ZIP matches.
+
+        Simulates the 3-column Copart PDF layout issue where Haiku extracts
+        city/state from the WRONG column (seller) but ZIP is correct.
+        Example: city=NORFOLK, state=VA (seller) but zip=02822 (lot = Exeter, RI).
+        City+state won't match any directory entry, so ZIP fallback kicks in.
+        """
+        from services.haiku_extractor import _copart_name_from_city, ExtractedField, FieldSource
+
+        # Simulate Haiku extracting seller's city/state but lot's ZIP
+        fields = {
+            "pickup_name": ExtractedField(value="COPART - NORFOLK", confidence=0.8, source=FieldSource.EXTRACTED),
+            "pickup_address": ExtractedField(value="77 FITCHBURG ROAD", confidence=0.8, source=FieldSource.EXTRACTED),
+            "pickup_city": ExtractedField(value="NORFOLK", confidence=0.8, source=FieldSource.EXTRACTED),
+            "pickup_state": ExtractedField(value="VA", confidence=0.8, source=FieldSource.EXTRACTED),
+            "pickup_zip": ExtractedField(value="02822", confidence=0.9, source=FieldSource.EXTRACTED),
+        }
+
+        # City+state (NORFOLK, VA) won't match any Copart location
+        # ZIP 02822 matches Copart Exeter → correct via fallback
+        name = _copart_name_from_city("NORFOLK", fields)
+        assert name == "Copart Exeter", f"Expected 'Copart Exeter', got '{name}'"
+
+        # Verify the directory has the correct address for Copart Exeter
+        from services.auction_directory import COPART_LOCATIONS
+        loc = COPART_LOCATIONS["Copart Exeter"]
+        assert loc["address"] == "10 Industrial Dr"
+        assert loc["city"] == "Exeter"
+        assert loc["state"] == "RI"
+        assert loc["zip"] == "02822"
+
+    def test_copart_address_city_match_takes_priority_over_zip(self):
+        """City+state match should take priority over ZIP match."""
+        from services.haiku_extractor import _copart_name_from_city, ExtractedField, FieldSource
+
+        # City=Ayer, State=MA, ZIP=02822 (ZIP is wrong for Ayer but city+state is valid)
+        fields = {
+            "pickup_city": ExtractedField(value="Ayer", confidence=0.8, source=FieldSource.EXTRACTED),
+            "pickup_state": ExtractedField(value="MA", confidence=0.8, source=FieldSource.EXTRACTED),
+            "pickup_zip": ExtractedField(value="01432", confidence=0.9, source=FieldSource.EXTRACTED),
+        }
+        name = _copart_name_from_city("Ayer", fields)
+        assert name == "Copart North Boston", f"Expected 'Copart North Boston', got '{name}'"
+
+    def test_copart_no_match_returns_fallback(self):
+        """When neither city+state nor ZIP match, return COPART - CITY."""
+        from services.haiku_extractor import _copart_name_from_city, ExtractedField, FieldSource
+
+        fields = {
+            "pickup_state": ExtractedField(value="XX", confidence=0.5, source=FieldSource.EXTRACTED),
+            "pickup_zip": ExtractedField(value="99999", confidence=0.5, source=FieldSource.EXTRACTED),
+        }
+        name = _copart_name_from_city("Nowhere", fields)
+        assert name == "COPART - NOWHERE"
+
     def test_extraction_run_endpoint_lists_runs(self, client, copart_pdf_bytes):
         """Extraction runs list should include our uploaded doc's run."""
         upload_resp = _upload_copart(client, copart_pdf_bytes, is_test=True)

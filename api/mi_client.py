@@ -8,7 +8,8 @@ Provides recommended pricing for vehicle transport based on:
 
 API Requirements:
 - POST /market-intelligence/list-prices
-- Content-Type: application/vnd.coxauto.v1+json
+- Content-Type: application/vnd.coxauto.v2+json
+- Uses same base URL and Bearer token as CD listings API
 - stops must contain 2 stops with sequential stopNumber (1, 2)
 - vehicles must have pickupStopNumber and dropOffStopNumber
 """
@@ -143,10 +144,14 @@ class MarketIntelligenceClient:
         return self._client
 
     def _get_headers(self) -> dict[str, str]:
-        """Get request headers including auth."""
+        """Get request headers including auth.
+
+        Uses V2 content type (same as CDClient for listings) — the MI
+        endpoint lives under the same marketplace-api domain.
+        """
         headers = {
-            "Content-Type": "application/vnd.coxauto.v1+json",
-            "Accept": "application/vnd.coxauto.v1+json",
+            "Content-Type": "application/vnd.coxauto.v2+json",
+            "Accept": "application/vnd.coxauto.v2+json",
         }
         token = self._bearer_token or self.config.api_key
         if token:
@@ -214,29 +219,59 @@ class MarketIntelligenceClient:
         request_id = f"mi-{int(time.time())}-{payload_hash}"
 
         logger.info(
-            f"MI API request: {request_id}, "
-            f"pickup={stops[0].city},{stops[0].state}, "
-            f"dropoff={stops[1].city},{stops[1].state}"
+            "MI API request: %s, base=%s, pickup=%s,%s, dropoff=%s,%s",
+            request_id, self.config.base_url,
+            stops[0].city, stops[0].state,
+            stops[1].city, stops[1].state,
         )
 
-        try:
-            response = self.client.post(
-                "/market-intelligence/list-prices",
-                json=payload,
-            )
+        mi_path = "/market-intelligence/list-prices"
 
-            logger.info(f"MI API response: {request_id}, status={response.status_code}")
+        try:
+            response = self.client.post(mi_path, json=payload)
+
+            # === DEBUG: full request/response details ===
+            full_url = str(response.url)
+            resp_body = response.text[:2000]
+            resp_headers = dict(response.headers)
+            logger.warning(
+                "MI API DEBUG: %s\n"
+                "  URL: %s\n"
+                "  Status: %d\n"
+                "  Response Headers: %s\n"
+                "  Response Body: %s",
+                request_id, full_url, response.status_code,
+                json.dumps(resp_headers, indent=2),
+                resp_body,
+            )
+            # === END DEBUG ===
 
             if response.status_code == 200:
                 data = response.json()
                 return self._parse_response(data, request_id)
 
             elif response.status_code == 403:
-                logger.warning(f"MI API 403 (no subscription): {request_id}")
                 return MIPriceQuote(
                     suggested_price=0,
                     source="CD_MARKET_INTELLIGENCE",
-                    error="Market Intelligence API not available — requires Price Check Plus subscription",
+                    error=(
+                        f"CD Market Intelligence not accessible (403). "
+                        f"URL: {full_url} — "
+                        f"Verify your CD API client has Premium permissions at centraldispatch.com. "
+                        f"Response: {resp_body[:300]}"
+                    ),
+                    request_id=request_id,
+                )
+
+            elif response.status_code == 404:
+                return MIPriceQuote(
+                    suggested_price=0,
+                    source="CD_MARKET_INTELLIGENCE",
+                    error=(
+                        f"CD Market Intelligence endpoint not found (404). "
+                        f"URL: {full_url} — "
+                        f"Response: {resp_body[:300]}"
+                    ),
                     request_id=request_id,
                 )
 
@@ -250,16 +285,10 @@ class MarketIntelligenceClient:
                 )
 
             else:
-                body_text = response.text[:1000]
-                logger.error(
-                    f"MI API error: {request_id}, "
-                    f"status={response.status_code}, "
-                    f"body={body_text}"
-                )
                 return MIPriceQuote(
                     suggested_price=0,
                     source="CD_MARKET_INTELLIGENCE",
-                    error=f"CD MI API returned HTTP {response.status_code}: {body_text}",
+                    error=f"CD MI API returned HTTP {response.status_code}. URL: {full_url}. Response: {resp_body[:500]}",
                     request_id=request_id,
                 )
 
@@ -503,7 +532,10 @@ def create_authenticated_mi_client() -> MarketIntelligenceClient:
     """Create an MI client with OAuth2 Bearer token from credential store.
 
     Gets a fresh token from the CDClient's OAuth2 flow using the same
-    credentials stored in the credential store.
+    credentials stored in the credential store (marketplace scope).
+
+    The MI API endpoint lives under the same marketplace-api domain
+    and uses the same Bearer token as listing operations.
 
     Raises Exception if token acquisition fails so the caller can surface it.
     """
@@ -512,10 +544,14 @@ def create_authenticated_mi_client() -> MarketIntelligenceClient:
     cd = CDClient()
     if not cd.client_id or not cd.client_secret:
         raise ValueError(
-            "CD API credentials not configured. Go to Settings > Central Dispatch and enter client_id/client_secret. "
-            "Ensure 'market_intelligence_api' scope is included."
+            "CD API credentials not configured. Go to Settings > Central Dispatch and enter client_id/client_secret."
         )
 
     token = cd._get_bearer_token()
-    logger.info("MI client created with OAuth2 Bearer token (token=%s...)", token[:20] if token else "None")
-    return MarketIntelligenceClient(bearer_token=token)
+    base_url = cd.base_url  # Use same base URL as listing API
+    logger.info(
+        "MI client created with OAuth2 Bearer token (base=%s, token=%s...)",
+        base_url, token[:20] if token else "None",
+    )
+    config = MIClientConfig(base_url=base_url)
+    return MarketIntelligenceClient(config=config, bearer_token=token)
