@@ -209,8 +209,6 @@ export const api = {
       body: formData,
     })
   },
-  getDocumentStatsByAuctionType: () => request('/documents/stats/by-auction-type'),
-
   // Extractions
   listExtractions: (params = {}) => {
     const query = new URLSearchParams(params).toString()
@@ -612,17 +610,7 @@ export const api = {
     method: 'POST',
   }),
 
-  // ==========================================================================
-  // Email Log
-  // ==========================================================================
-  getEmailLog: (params = {}) => {
-    const query = new URLSearchParams(params).toString()
-    return request(`/email-log${query ? `?${query}` : ''}`)
-  },
-  getEmailStats: () => request('/email-log/stats'),
-  processEmail: (emailId) => request(`/email-log/${emailId}/process`, { method: 'POST' }),
-  skipEmail: (emailId) => request(`/email-log/${emailId}/skip`, { method: 'POST' }),
-  reprocessEmail: (emailId) => request(`/email-log/${emailId}/reprocess`, { method: 'POST' }),
+  // Email poll (triggers worker)
   pollEmails: (sinceDays = 0) => request(`/email/poll?since_days=${sinceDays}`, { method: 'POST' }),
 
   // Email Context + Vision Extract (Review page)
