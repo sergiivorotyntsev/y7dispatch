@@ -15,7 +15,7 @@ from datetime import date, timedelta
 import pytest
 from pydantic import ValidationError
 
-from api.cd_client import generate_idempotency_key, generate_partner_reference_id
+from api.cd_client import generate_idempotency_key
 from models.cd_enums import (
     DEFAULT_MARKETPLACE_ID,
     LUXURY_MAKES,
@@ -43,7 +43,7 @@ def _make_stop(number, **overrides):
     """Build a valid CDStop dict."""
     defaults = {
         "stopNumber": number,
-        "locationType": "AUCTION" if number == 1 else "BUSINESS",
+        "locationType": "Auction" if number == 1 else "Dealership",
         "address": f"{number}00 Main St",
         "city": "Dallas" if number == 1 else "Houston",
         "state": "TX",
@@ -366,26 +366,6 @@ class TestEnums:
 
 class TestCDClientHelpers:
     """Test helper functions from cd_client module."""
-
-    def test_partner_reference_id_format(self):
-        ref = generate_partner_reference_id(42, 100)
-        assert ref.startswith("CD-42-100-")
-        assert len(ref) <= 50
-
-    def test_partner_reference_id_deterministic(self):
-        ref1 = generate_partner_reference_id(1, 2)
-        ref2 = generate_partner_reference_id(1, 2)
-        assert ref1 == ref2
-
-    def test_partner_reference_id_different_inputs(self):
-        ref1 = generate_partner_reference_id(1, 2)
-        ref2 = generate_partner_reference_id(1, 3)
-        assert ref1 != ref2
-
-    def test_partner_reference_id_max_length(self):
-        # Large IDs should still be truncated to 50 chars
-        ref = generate_partner_reference_id(999999999, 999999999)
-        assert len(ref) <= 50
 
     def test_idempotency_key_format(self):
         key = generate_idempotency_key("CD-1-2-abc", "create")

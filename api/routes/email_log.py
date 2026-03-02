@@ -49,14 +49,28 @@ def init_email_log_table():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Migrations: add columns that may be missing from older schema versions
+        for col_def in [
+            "thread_id TEXT",
+            "received_date DATETIME",
+            "body_preview TEXT",
+            "has_attachments BOOLEAN DEFAULT FALSE",
+            "attachment_count INTEGER DEFAULT 0",
+            "attachment_names TEXT",
+            "gate_pass TEXT",
+            "skip_reason TEXT",
+            "processed_at DATETIME",
+            "extraction_run_ids TEXT",
+            "error_message TEXT",
+            "graph_message_id TEXT",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE email_log ADD COLUMN {col_def}")
+            except Exception:
+                pass  # Column already exists
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_status ON email_log(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_sender ON email_log(sender)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_date ON email_log(received_date)")
-        # Migration: add graph_message_id for Graph API reply support
-        try:
-            conn.execute("ALTER TABLE email_log ADD COLUMN graph_message_id TEXT")
-        except Exception:
-            pass  # Column already exists
         conn.commit()
 
 

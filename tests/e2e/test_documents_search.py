@@ -64,30 +64,10 @@ def _create_doc_with_run(auction_type_id, outputs, status="needs_review", source
 
 def _ensure_tables():
     """Create email_log and email_replies tables if they don't exist."""
-    with get_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS email_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id TEXT UNIQUE,
-                sender TEXT,
-                sender_name TEXT,
-                subject TEXT,
-                received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                graph_message_id TEXT,
-                extraction_run_ids TEXT,
-                status TEXT DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS email_replies (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id INTEGER,
-                status TEXT DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
+    from api.routes.email_log import init_email_log_table, init_email_replies_table
+
+    init_email_log_table()
+    init_email_replies_table()
 
 
 def _create_email_log(subject, sender, run_ids):
