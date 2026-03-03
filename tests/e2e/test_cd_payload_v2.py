@@ -564,7 +564,7 @@ class TestFullV2PayloadStructure:
         """Pickup stop includes buyer reference number."""
         payload, _ = self._build_full_payload()
         pickup = payload["stops"][0]
-        assert pickup.get("buyerReferenceNumber") == "535527"
+        assert pickup.get("buyerNumber") == "535527"
 
     def test_optional_fields_present(self):
         """Optional fields (loadSpecificTerms, transportationReleaseNotes) included."""

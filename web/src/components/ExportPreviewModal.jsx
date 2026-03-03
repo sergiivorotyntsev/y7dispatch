@@ -225,8 +225,8 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
       fields.push({ key: 'pickup_phone', value: pickupStop.phone, category: 'cd_optional', group: 'Pickup' })
       fields.push({ key: 'pickup_contact', value: pickupStop.contactName, category: 'cd_optional', group: 'Pickup' })
       fields.push({ key: 'pickup_location_type', value: pickupStop.locationType, category: 'cd_optional', group: 'Pickup' })
-      if (pickupStop.buyerReferenceNumber) {
-        fields.push({ key: 'buyer_reference_number', value: pickupStop.buyerReferenceNumber, category: 'cd_optional', group: 'Pickup' })
+      if (pickupStop.buyerNumber) {
+        fields.push({ key: 'buyer_reference_number', value: pickupStop.buyerNumber, category: 'cd_optional', group: 'Pickup' })
       }
     }
 
@@ -242,8 +242,8 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
       fields.push({ key: 'delivery_contact', value: deliveryStop.contactName, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_email', value: deliveryStop.email, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_location_type', value: deliveryStop.locationType, category: 'cd_optional', group: 'Delivery/Warehouse' })
-      if (deliveryStop.buyerReferenceNumber) {
-        fields.push({ key: 'delivery_buyer_reference', value: deliveryStop.buyerReferenceNumber, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      if (deliveryStop.buyerNumber) {
+        fields.push({ key: 'delivery_buyer_reference', value: deliveryStop.buyerNumber, category: 'cd_optional', group: 'Delivery/Warehouse' })
       }
     }
 

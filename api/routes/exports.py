@@ -564,7 +564,7 @@ def build_cd_payload(
 
     buyer_ref = get_field("buyer_id")
     if buyer_ref:
-        pickup_stop["buyerReferenceNumber"] = str(buyer_ref)
+        pickup_stop["buyerNumber"] = str(buyer_ref)
 
     # Build delivery stop
     dropoff_stop = {
@@ -589,7 +589,7 @@ def build_cd_payload(
     # Buyer reference from warehouse (dropoff location)
     dropoff_buyer_ref = warehouse_data.get("buyer_reference") if warehouse_data else None
     if dropoff_buyer_ref:
-        dropoff_stop["buyerReferenceNumber"] = str(dropoff_buyer_ref)
+        dropoff_stop["buyerNumber"] = str(dropoff_buyer_ref)
 
     # Fallback: ensure contact_email from warehouse reaches delivery stop
     if not dropoff_stop.get("email"):

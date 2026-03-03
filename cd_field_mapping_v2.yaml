@@ -82,7 +82,7 @@ stops:
     contactName: pickup_contact_name
     contactPhone: pickup_contact_phone
     locationType: pickup_location_type
-    buyerReferenceNumber: buyer_id  # Copart Member ID / IAA Buyer ID / Manheim Buyer Account #
+    buyerNumber: buyer_id  # Copart Member ID / IAA Buyer ID / Manheim Buyer Account #
 
   # Dropoff (stop index 1, stopNumber=2)
   - stopNumber: dropoff_stop_number

@@ -339,10 +339,10 @@ class TestDirectoryNewEntries:
 
 
 class TestBuyerReferenceInCDPayload:
-    """buyer_id from extraction must appear as buyerReferenceNumber in CD payload."""
+    """buyer_id from extraction must appear as buyerNumber in CD payload."""
 
     def test_buyer_reference_in_cd_payload(self, client, copart_type_id):
-        """buyer_id flows into pickup stop as buyerReferenceNumber."""
+        """buyer_id flows into pickup stop as buyerNumber."""
         outputs = {
             "vehicle_vin": "WAUABAF48NA016329",
             "vehicle_year": "2022",
@@ -367,12 +367,12 @@ class TestBuyerReferenceInCDPayload:
         data = resp.json()
         payload = data.get("payload", {})
 
-        # Verify buyer_id appears as buyerReferenceNumber in pickup stop
+        # Verify buyer_id appears as buyerNumber in pickup stop
         stops = payload.get("stops", [])
         pickup_stop = next((s for s in stops if s.get("stopNumber") == 1), None)
         assert pickup_stop is not None, "Pickup stop not found in payload"
-        assert pickup_stop.get("buyerReferenceNumber") == "535527", (
-            f"Expected buyerReferenceNumber='535527', got: {pickup_stop.get('buyerReferenceNumber')}"
+        assert pickup_stop.get("buyerNumber") == "535527", (
+            f"Expected buyerNumber='535527', got: {pickup_stop.get('buyerNumber')}"
         )
 
     def test_buyer_reference_overridable_via_field_overrides(self, client, copart_type_id):
@@ -407,6 +407,6 @@ class TestBuyerReferenceInCDPayload:
         stops = payload.get("stops", [])
         pickup_stop = next((s for s in stops if s.get("stopNumber") == 1), None)
         assert pickup_stop is not None
-        assert pickup_stop.get("buyerReferenceNumber") == "999888", (
-            f"Expected overridden buyer ref '999888', got: {pickup_stop.get('buyerReferenceNumber')}"
+        assert pickup_stop.get("buyerNumber") == "999888", (
+            f"Expected overridden buyer ref '999888', got: {pickup_stop.get('buyerNumber')}"
         )
