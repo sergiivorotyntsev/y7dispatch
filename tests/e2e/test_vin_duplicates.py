@@ -153,6 +153,56 @@ class TestDuplicateFlagInDocuments:
             assert run2 in run_ids
 
 
+class TestRerunNotDuplicate:
+    """Re-run of same document should NOT be flagged as duplicate."""
+
+    def test_rerun_not_duplicate(self):
+        vin = "WAUFNCF53JA032010"
+
+        with get_connection() as conn:
+            # Create first run
+            run1, doc_id = _create_test_run(conn, vin, filename="same_doc.pdf")
+
+            # Create second run for the SAME document (re-run)
+            run2_uuid = str(uuid.uuid4())
+            outputs = json.dumps({"vehicle_vin": vin, "vehicle_make": "TOYOTA", "vehicle_model": "CAMRY"})
+            conn.execute(
+                "INSERT INTO extraction_runs (uuid, document_id, auction_type_id, status, outputs_json) "
+                "VALUES (?, ?, 1, 'needs_review', ?)",
+                (run2_uuid, doc_id, outputs),
+            )
+            run2 = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+
+        # Detect from run2's perspective — should find NO duplicates
+        dups = detect_vin_duplicates(run2, vin)
+        assert len(dups) == 0, f"Re-run of same document should not be a duplicate, got {dups}"
+
+        # vin_duplicates table should have no entry for this run
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM vin_duplicates WHERE vin = ? AND run_id = ?", (vin, run2)
+            ).fetchone()
+            assert row is None
+
+
+class TestDifferentDocumentIsDuplicate:
+    """Same VIN from different documents IS a real duplicate."""
+
+    def test_different_document_is_duplicate(self):
+        vin = "WAUFNCF53JA032011"
+
+        with get_connection() as conn:
+            run1, doc1 = _create_test_run(conn, vin, filename="doc_A.pdf")
+            run2, doc2 = _create_test_run(conn, vin, filename="doc_B.pdf")
+
+        # Different documents → should detect as duplicate
+        assert doc1 != doc2, "Test setup error: should be different documents"
+        dups = detect_vin_duplicates(run2, vin)
+        assert len(dups) >= 1, "Same VIN from different documents should be a duplicate"
+        assert any(d["run_id"] == run1 for d in dups)
+
+
 class TestDuplicateAutoDetection:
     """After detect_vin_duplicates, vin_duplicates is auto-populated."""
 

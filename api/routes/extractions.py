@@ -70,6 +70,12 @@ def detect_vin_duplicates(run_id: int, vin: str) -> list[dict]:
         return []
 
     with get_connection() as conn:
+        # Get current run's document_id to exclude re-runs of the same document
+        current = conn.execute(
+            "SELECT document_id FROM extraction_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        current_doc_id = current["document_id"] if current else None
+
         rows = conn.execute(
             """
             SELECT er.id, er.status, d.filename, el.subject, el.sender AS sender_email, el.received_date
@@ -78,9 +84,10 @@ def detect_vin_duplicates(run_id: int, vin: str) -> list[dict]:
             LEFT JOIN email_log el ON el.extraction_run_ids LIKE '%' || CAST(er.id AS TEXT) || '%'
             WHERE json_extract(er.outputs_json, '$.vehicle_vin') = ?
             AND er.id != ?
+            AND er.document_id != ?
             AND er.status NOT IN ('failed', 'cancelled')
             """,
-            (vin, run_id),
+            (vin, run_id, current_doc_id),
         ).fetchall()
 
         if not rows:
