@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import api from '../api'
 import ExportPreviewModal from '../components/ExportPreviewModal'
 
@@ -48,6 +48,10 @@ function Review() {
   const { runId } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
+
+  // If navigated from Documents/EmailLog with docId, preload PDF immediately
+  const preloadDocId = location.state?.docId
 
   // Mode: 'training' (from Test Lab) or 'production' (from Documents)
   const isTrainingMode = searchParams.get('mode') === 'training'
@@ -64,7 +68,9 @@ function Review() {
   // PDF viewer state
   const [showPdf, setShowPdf] = useState(true)
   const [pdfCollapsed, setPdfCollapsed] = useState(false)
-  const [pdfUrl, setPdfUrl] = useState(null)
+  const [pdfUrl, setPdfUrl] = useState(
+    preloadDocId ? `/api/documents/${preloadDocId}/file` : null
+  )
   const [viewingUrl, setViewingUrl] = useState(null) // for attachment switching
 
   // Resizable split pane state
@@ -235,7 +241,8 @@ function Review() {
       setRun(data.run)
 
       if (data.run?.document_id) {
-        setPdfUrl(`/api/documents/${data.run.document_id}/file`)
+        // Only set if not already preloaded from navigation state
+        setPdfUrl(prev => prev || `/api/documents/${data.run.document_id}/file`)
       }
 
       if (data.document) setDocument(data.document)
@@ -403,8 +410,9 @@ function Review() {
 
   // === STREAM 3: Pricing (INDEPENDENT — never blocks page) ===
   // Fires once when run loads. Urgency changes handled by handleUrgencyChange directly.
+  // Skip for exported loads — price is already finalized in outputs_json.
   useEffect(() => {
-    if (!run) return
+    if (!run || run.status === 'exported') return
     loadPricing()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run]) // Excludes loadPricing ref — avoids cascade reload when urgency changes
@@ -430,14 +438,15 @@ function Review() {
   }, [runId])
 
   // === STREAM 6: VIN Duplicate Detection (INDEPENDENT — non-blocking) ===
+  // Skip for exported loads — duplicates are irrelevant after export.
   useEffect(() => {
-    if (!runId) return
+    if (!run || run.status === 'exported') return
     let stale = false
     api.getRunDuplicates(runId)
       .then(data => { if (!stale) setDuplicates(data) })
       .catch(() => {})
     return () => { stale = true }
-  }, [runId])
+  }, [run, runId])
 
   // === STREAM 7: Reply Status (INDEPENDENT — loads when exported) ===
   useEffect(() => {
@@ -1381,12 +1390,14 @@ function Review() {
             updateField={updateField}
             runId={runId}
             onDistanceChange={setDistanceMiles}
+            isExported={isExported}
           />
 
           {/* Weather alerts along route */}
           <WeatherAlertsPanel
             runId={runId}
             warehouseId={selectedWarehouse}
+            isExported={isExported}
           />
 
           {/* Section 5: Dates */}

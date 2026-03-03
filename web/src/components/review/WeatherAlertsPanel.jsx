@@ -5,7 +5,7 @@ import api from '../../api'
  * Weather Alerts Panel — shows NWS alerts along transport route.
  * Placed under DeliverySection in Review page.
  */
-function WeatherAlertsPanel({ runId, warehouseId }) {
+function WeatherAlertsPanel({ runId, warehouseId, isExported }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -14,7 +14,7 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
   const [alertsExpanded, setAlertsExpanded] = useState(false) // NWS alert details collapsed
 
   const fetchAlerts = useCallback(async () => {
-    if (!runId || !warehouseId) return
+    if (!runId || !warehouseId || isExported) return
     setLoading(true)
     setError(null)
     setInfoMessage(null)
@@ -35,7 +35,7 @@ function WeatherAlertsPanel({ runId, warehouseId }) {
     } finally {
       setLoading(false)
     }
-  }, [runId, warehouseId])
+  }, [runId, warehouseId, isExported])
 
   useEffect(() => {
     fetchAlerts()

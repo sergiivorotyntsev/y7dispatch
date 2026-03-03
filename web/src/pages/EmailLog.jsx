@@ -775,7 +775,7 @@ function EmailLog() {
                                     {email.linked_documents.map((ld) => (
                                       <div key={ld.run_id} className="flex items-center gap-1.5">
                                         <button
-                                          onClick={() => navigate(`/review/${ld.run_id}`)}
+                                          onClick={() => navigate(`/review/${ld.run_id}`, { state: { docId: ld.document_id } })}
                                           className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
                                         >
                                           <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -252,7 +252,7 @@ export default function useDocuments() {
     const existingExtraction = docExtractions[docId]
     if (existingExtraction && !forceNew) {
       if (existingExtraction.status === 'needs_review') {
-        navigate(`/review/${existingExtraction.id}`)
+        navigate(`/review/${existingExtraction.id}`, { state: { docId } })
         return
       } else if (['reviewed', 'approved'].includes(existingExtraction.status)) {
         if (!confirm('Document already processed. Run extraction again?')) return
@@ -262,7 +262,7 @@ export default function useDocuments() {
     try {
       const result = await api.runExtraction(docId)
       if (result?.id) {
-        navigate(`/review/${result.id}`)
+        navigate(`/review/${result.id}`, { state: { docId } })
       } else {
         fetchDocuments()
       }
@@ -617,7 +617,7 @@ export default function useDocuments() {
   function handleRowClick(doc) {
     const extraction = docExtractions[doc.id]
     if (extraction) {
-      navigate(`/review/${extraction.id}`)
+      navigate(`/review/${extraction.id}`, { state: { docId: doc.id } })
     } else {
       handleRunExtraction(doc.id)
     }

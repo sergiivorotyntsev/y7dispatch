@@ -6,15 +6,16 @@ import api from '../../api'
  * Shows warehouse options with distance/price info.
  * Falls back to simple dropdown when no run context available.
  */
-function DeliverySection({ warehouses, selectedWarehouse, handleWarehouseChange, manualOverride, setManualOverride, fields, updateField, runId, onDistanceChange }) {
+function DeliverySection({ warehouses, selectedWarehouse, handleWarehouseChange, manualOverride, setManualOverride, fields, updateField, runId, onDistanceChange, isExported }) {
   const wh = warehouses.find(w => w.id.toString() === selectedWarehouse)
   const [options, setOptions] = useState(null)
   const [optionsLoading, setOptionsLoading] = useState(false)
   const [optionsError, setOptionsError] = useState(null)
 
   // Load distance options when runId is available
+  // Skip for exported loads — warehouse already selected, distance calculation unnecessary.
   useEffect(() => {
-    if (!runId) return
+    if (!runId || isExported) return
     let cancelled = false
 
     async function loadOptions() {
@@ -39,7 +40,7 @@ function DeliverySection({ warehouses, selectedWarehouse, handleWarehouseChange,
 
     loadOptions()
     return () => { cancelled = true }
-  }, [runId])
+  }, [runId, isExported])
 
   // Notify parent of distance for selected warehouse (for $/mile calc)
   useEffect(() => {

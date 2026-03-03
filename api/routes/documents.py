@@ -1082,12 +1082,15 @@ async def get_document_text(id: int):
 
 
 @router.get("/{id}/file")
-async def get_document_file(id: int):
+async def get_document_file(id: int, request: Request):
     """
     Get the PDF file for viewing/downloading.
 
     Returns the original PDF document for display in a PDF viewer.
+    Supports ETag/If-None-Match for conditional requests (304 Not Modified).
     """
+    from fastapi.responses import Response
+
     doc = DocumentRepository.get_by_id(id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -1098,12 +1101,27 @@ async def get_document_file(id: int):
     if not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="Document file not found on disk")
 
-    return FileResponse(
+    etag = doc.sha256 or None
+
+    # 304 Not Modified — browser already has this file
+    if etag:
+        if_none_match = request.headers.get("if-none-match", "").strip('"')
+        if if_none_match == etag:
+            return Response(status_code=304)
+
+    response = FileResponse(
         doc.file_path,
         media_type="application/pdf",
         filename=doc.filename,
         headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
     )
+
+    # PDF content is immutable (SHA256 tracked in DB) — safe to cache
+    response.headers["Cache-Control"] = "private, max-age=86400, immutable"
+    if etag:
+        response.headers["ETag"] = f'"{etag}"'
+
+    return response
 
 
 @router.get("/stats/by-auction-type", response_model=list[DocumentStatsResponse])

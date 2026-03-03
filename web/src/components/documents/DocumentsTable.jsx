@@ -394,7 +394,7 @@ function DocumentRow({
           {extRunId ? (
             <>
               <button
-                onClick={() => navigate(`/review/${extRunId}`)}
+                onClick={() => navigate(`/review/${extRunId}`, { state: { docId: doc.id } })}
                 className="text-sm text-blue-600 hover:text-blue-800"
               >
                 {extStatus === 'needs_review' || extStatus === 'manual_required' ? 'Review' : 'View'}
