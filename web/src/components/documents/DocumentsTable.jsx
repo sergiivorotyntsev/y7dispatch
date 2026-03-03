@@ -235,7 +235,12 @@ function DocumentRow({
         <CopyableCell value={loadId} mono />
       </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-        <CopyableCell value={vin} mono />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <CopyableCell value={vin} mono />
+          {doc.has_duplicate_vin && (
+            <span style={{padding:'1px 6px',fontSize:'11px',fontWeight:700,borderRadius:'4px',background:'#FEE2E2',color:'#991B1B'}} title="Duplicate VIN detected">DUP</span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col">

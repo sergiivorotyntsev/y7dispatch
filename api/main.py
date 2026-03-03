@@ -648,6 +648,10 @@ async def startup():
     from api.routes.validation import init_validation_schema
 
     init_validation_schema()
+    # Initialize VIN duplicates tracking table
+    from api.routes.extractions import init_vin_duplicates_schema
+
+    init_vin_duplicates_schema()
     # Wire DLQ alert callback for failed processing notifications
     from api.dlq import get_dlq_service
     from services.alerting import Severity, send_alert

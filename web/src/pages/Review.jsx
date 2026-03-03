@@ -114,6 +114,9 @@ function Review() {
   const [validation, setValidation] = useState(null)  // cached result from API
   const [validating, setValidating] = useState(false)
 
+  // VIN duplicate detection
+  const [duplicates, setDuplicates] = useState(null)
+
   // Hold state
   const [showHoldModal, setShowHoldModal] = useState(false)
   const [holdReason, setHoldReason] = useState('awaiting_gate_pass')
@@ -386,6 +389,16 @@ function Review() {
     api.getValidation(runId)
       .then(data => { if (!stale) setValidation(data) })
       .catch(() => {}) // 404 = not yet validated, that's fine
+    return () => { stale = true }
+  }, [runId])
+
+  // === STREAM 6: VIN Duplicate Detection (INDEPENDENT — non-blocking) ===
+  useEffect(() => {
+    if (!runId) return
+    let stale = false
+    api.getRunDuplicates(runId)
+      .then(data => { if (!stale) setDuplicates(data) })
+      .catch(() => {})
     return () => { stale = true }
   }, [runId])
 
@@ -934,6 +947,56 @@ function Review() {
             <div>
               <span className="font-medium text-yellow-800">Learning Limited</span>
               <p className="text-yellow-700 text-sm mt-1">{warning}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIN Duplicate Warning Banner */}
+      {duplicates?.has_duplicates && (
+        <div className="mx-6 mt-4 rounded-lg p-4" style={{
+          background: duplicates.duplicates.some(d => d.status === 'exported') ? '#FEF2F2' : '#FFFBEB',
+          border: `1px solid ${duplicates.duplicates.some(d => d.status === 'exported') ? '#FECACA' : '#FDE68A'}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <svg style={{ width: '20px', height: '20px', flexShrink: 0, marginTop: '2px', color: duplicates.duplicates.some(d => d.status === 'exported') ? '#DC2626' : '#D97706' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontWeight: 600, color: duplicates.duplicates.some(d => d.status === 'exported') ? '#991B1B' : '#92400E', margin: 0 }}>
+                Duplicate VIN Detected — {duplicates.vin}
+              </h3>
+              <p style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>
+                This VIN appears in {duplicates.duplicates.length} other extraction{duplicates.duplicates.length > 1 ? 's' : ''}:
+              </p>
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {duplicates.duplicates.map(dup => (
+                  <div key={dup.run_id} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+                    padding: '6px 10px', background: 'rgba(255,255,255,0.7)', borderRadius: '6px',
+                  }}>
+                    <span style={{
+                      padding: '1px 6px', fontSize: '11px', fontWeight: 700, borderRadius: '4px',
+                      background: dup.status === 'exported' ? '#FEE2E2' : dup.status === 'needs_review' ? '#FEF3C7' : '#DBEAFE',
+                      color: dup.status === 'exported' ? '#991B1B' : dup.status === 'needs_review' ? '#92400E' : '#1E40AF',
+                    }}>
+                      {dup.status}
+                    </span>
+                    {dup.sender_email && <span style={{ color: '#374151' }}>{dup.sender_email}</span>}
+                    {dup.received_date && <span style={{ color: '#9CA3AF' }}>{dup.received_date}</span>}
+                    {dup.subject && <span style={{ color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{dup.subject}</span>}
+                    <button
+                      onClick={() => navigate(`/review/${dup.run_id}`)}
+                      style={{
+                        marginLeft: 'auto', padding: '2px 8px', fontSize: '12px', fontWeight: 600,
+                        color: '#2563EB', background: 'none', border: '1px solid #BFDBFE', borderRadius: '4px', cursor: 'pointer',
+                      }}
+                    >
+                      View →
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

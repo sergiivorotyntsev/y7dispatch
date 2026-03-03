@@ -617,6 +617,9 @@ export const api = {
   getEmailContext: (runId) => request(`/extractions/${runId}/email-context`),
   visionExtract: (runId) => request(`/extractions/${runId}/vision-extract`, { method: 'POST' }),
 
+  // VIN Duplicate Detection
+  getRunDuplicates: (runId) => request(`/extractions/${runId}/duplicates`),
+
   // Warehouse Distance & Options
   getWarehouseOptions: (pickupZip, pickupCity = '', pickupState = '') => {
     const params = new URLSearchParams({ pickup_zip: pickupZip })

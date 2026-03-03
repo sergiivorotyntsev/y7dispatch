@@ -29,6 +29,106 @@ router = APIRouter(prefix="/api/extractions", tags=["Extractions"])
 
 
 # =============================================================================
+# VIN DUPLICATE DETECTION SCHEMA + HELPERS
+# =============================================================================
+
+
+def init_vin_duplicates_schema():
+    """Create vin_duplicates table for tracking duplicate VINs across runs."""
+    from api.database import get_connection
+
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS vin_duplicates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vin TEXT NOT NULL,
+                run_id INTEGER NOT NULL,
+                duplicate_run_ids TEXT NOT NULL,
+                detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(vin, run_id)
+            )
+        """)
+        conn.commit()
+
+
+def detect_vin_duplicates(run_id: int, vin: str) -> list[dict]:
+    """Find all other runs with same VIN. Store to vin_duplicates table.
+
+    Returns list of duplicate dicts with email context.
+    """
+    import json
+    import logging
+
+    from api.database import get_connection
+
+    logger = logging.getLogger(__name__)
+
+    if not vin or len(vin) < 10:
+        return []
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT er.id, er.status, d.filename, el.subject, el.sender AS sender_email, el.received_date
+            FROM extraction_runs er
+            JOIN documents d ON er.document_id = d.id
+            LEFT JOIN email_log el ON el.extraction_run_ids LIKE '%' || CAST(er.id AS TEXT) || '%'
+            WHERE json_extract(er.outputs_json, '$.vehicle_vin') = ?
+            AND er.id != ?
+            AND er.status NOT IN ('failed', 'cancelled')
+            """,
+            (vin, run_id),
+        ).fetchall()
+
+        if not rows:
+            return []
+
+        duplicates = []
+        dup_run_ids = []
+        for row in rows:
+            dup_run_ids.append(row["id"])
+            duplicates.append({
+                "run_id": row["id"],
+                "status": row["status"],
+                "filename": row["filename"],
+                "subject": row["subject"],
+                "sender_email": row["sender_email"],
+                "received_date": row["received_date"],
+            })
+
+        # Store for current run
+        dup_ids_json = json.dumps(dup_run_ids)
+        conn.execute(
+            "INSERT OR REPLACE INTO vin_duplicates (vin, run_id, duplicate_run_ids, detected_at) VALUES (?, ?, ?, datetime('now'))",
+            (vin, run_id, dup_ids_json),
+        )
+        # Also store reverse entries so each dup run knows about this one
+        for dup_id in dup_run_ids:
+            # Get existing duplicate_run_ids for the dup run and merge
+            existing = conn.execute(
+                "SELECT duplicate_run_ids FROM vin_duplicates WHERE vin = ? AND run_id = ?",
+                (vin, dup_id),
+            ).fetchone()
+            if existing:
+                existing_ids = json.loads(existing["duplicate_run_ids"])
+                if run_id not in existing_ids:
+                    existing_ids.append(run_id)
+                    conn.execute(
+                        "UPDATE vin_duplicates SET duplicate_run_ids = ?, detected_at = datetime('now') WHERE vin = ? AND run_id = ?",
+                        (json.dumps(existing_ids), vin, dup_id),
+                    )
+            else:
+                conn.execute(
+                    "INSERT OR REPLACE INTO vin_duplicates (vin, run_id, duplicate_run_ids, detected_at) VALUES (?, ?, ?, datetime('now'))",
+                    (vin, dup_id, json.dumps([run_id])),
+                )
+        conn.commit()
+
+        logger.info("VIN %s duplicate detected: run %d has %d duplicates", vin, run_id, len(duplicates))
+        return duplicates
+
+
+# =============================================================================
 # BLOCK EXTRACTION IMPORTS (M3.P0.1)
 # =============================================================================
 
@@ -1575,6 +1675,14 @@ def run_extraction(
         if True:  # Always create review items, even if outputs is empty
             _create_review_items_for_all_fields(run_id, auction_type_id, outputs or {})
 
+        # VIN duplicate detection (non-blocking)
+        if run_status == "needs_review" and outputs.get("vehicle_vin"):
+            try:
+                detect_vin_duplicates(run_id, str(outputs["vehicle_vin"]).strip())
+            except Exception as dup_err:
+                import logging as _log
+                _log.getLogger(__name__).warning("VIN duplicate check failed for run %d: %s", run_id, dup_err)
+
         # Auto-validate VIN + pickup address in background (non-blocking)
         if run_status == "needs_review" and outputs.get("vehicle_vin"):
             try:
@@ -2875,6 +2983,63 @@ async def get_email_context(run_id: int):
         attachments=email_attachments,
         source="email",
     )
+
+
+@router.get("/{run_id}/duplicates")
+async def get_run_duplicates(run_id: int):
+    """Get VIN duplicate info for a run, enriched with email context."""
+    import json
+
+    from api.database import get_connection
+
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Extraction run not found")
+
+    outputs = {}
+    if run.outputs_json:
+        try:
+            outputs = json.loads(run.outputs_json) if isinstance(run.outputs_json, str) else run.outputs_json
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    vin = outputs.get("vehicle_vin")
+    if not vin or len(str(vin)) < 10:
+        return {"vin": vin, "has_duplicates": False, "duplicates": []}
+
+    vin = str(vin).strip()
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT er.id, er.status, d.filename, el.subject, el.sender AS sender_email, el.received_date
+            FROM extraction_runs er
+            JOIN documents d ON er.document_id = d.id
+            LEFT JOIN email_log el ON el.extraction_run_ids LIKE '%' || CAST(er.id AS TEXT) || '%'
+            WHERE json_extract(er.outputs_json, '$.vehicle_vin') = ?
+            AND er.id != ?
+            AND er.status NOT IN ('failed', 'cancelled')
+            ORDER BY er.id DESC
+            """,
+            (vin, run_id),
+        ).fetchall()
+
+    duplicates = []
+    for row in rows:
+        duplicates.append({
+            "run_id": row["id"],
+            "status": row["status"],
+            "filename": row["filename"],
+            "subject": row["subject"],
+            "sender_email": row["sender_email"],
+            "received_date": row["received_date"],
+        })
+
+    return {
+        "vin": vin,
+        "has_duplicates": len(duplicates) > 0,
+        "duplicates": duplicates,
+    }
 
 
 class VisionExtractResponse(BaseModel):

@@ -222,6 +222,7 @@ class DocumentResponse(BaseModel):
     extraction_status: Optional[str] = None
     extraction_run_id: Optional[int] = None
     reply_status: Optional[str] = None  # 'sent' | 'not_sent' | None
+    has_duplicate_vin: Optional[bool] = None
 
     # Full extraction outputs for frontend (avoids separate extraction API call)
     outputs: Optional[dict] = None
@@ -946,7 +947,21 @@ async def list_documents(
             for rr in reply_rows:
                 reply_status_map[rr["run_id"]] = rr["status"]
 
-        # Finalize items with reply_status
+        # Batch-query vin_duplicates for DUP badge (avoids N+1)
+        all_vins = [it.get("vin") for it in items if it.get("vin")]
+        dup_vin_set = set()
+        if all_vins:
+            try:
+                ph = ",".join("?" * len(all_vins))
+                dup_rows = conn.execute(
+                    f"SELECT DISTINCT vin FROM vin_duplicates WHERE vin IN ({ph})",
+                    all_vins,
+                ).fetchall()
+                dup_vin_set = {r["vin"] for r in dup_rows}
+            except Exception:
+                pass  # Table may not exist yet on first run
+
+        # Finalize items with reply_status + has_duplicate_vin
         final_items = []
         for it in items:
             run_id = it.get("extraction_run_id")
@@ -954,6 +969,9 @@ async def list_documents(
                 it["reply_status"] = reply_status_map[run_id]
             elif run_id and it.get("extraction_status") == "exported" and it.get("source") == "email":
                 it["reply_status"] = "not_sent"
+            vin = it.get("vin")
+            if vin and vin in dup_vin_set:
+                it["has_duplicate_vin"] = True
             final_items.append(DocumentResponse(**it))
         items = final_items
 
