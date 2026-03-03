@@ -693,7 +693,7 @@ class ZoneExtractor:
                         ZoneField(
                             key="total_amount",
                             field_type=FieldType.CURRENCY,
-                            pattern=r"(?:Net\s*Due|Total\s*Due|Total)[:\s]*\$?([\d,]+\.?\d*)",
+                            pattern=r"Total\s*(?:Due|Charges|Amount).*?\$?([\d,]+\.?\d*)",
                         ),
                         ZoneField(
                             key="sale_date",
@@ -1075,7 +1075,12 @@ class ZoneExtractor:
             if match:
                 return match.group(1).strip()
 
-        # Strategy 4: Type-specific parsing
+        # Strategy 4: Type-specific parsing (only if no explicit pattern was defined —
+        # if a field has a specific pattern that didn't match, don't fall back to
+        # a generic parser that might grab the wrong value)
+        if field_def.pattern:
+            return None
+
         if field_def.field_type == FieldType.VIN:
             vin_match = re.search(r"\b([A-HJ-NPR-Z0-9]{17})\b", text_upper)
             if vin_match:
@@ -1085,7 +1090,8 @@ class ZoneExtractor:
             return self._parse_address_from_text(text)
 
         elif field_def.field_type == FieldType.CURRENCY:
-            currency_match = re.search(r"\$?([\d,]+\.?\d*)", text)
+            # Require $ sign to avoid matching bare numbers from dates (e.g. "03" from "03/03/2026")
+            currency_match = re.search(r"\$([\d,]+\.?\d*)", text)
             if currency_match:
                 return currency_match.group(1).replace(",", "")
 
@@ -1103,75 +1109,98 @@ class ZoneExtractor:
         Looks for patterns like:
         - "1234 N. MAIN STREET"
         - "4810 N. LAMB BLVD"
+        - "3100 POND STATION ROAD"
         - "123 US ROUTE 1"
-        """
-        # Street address pattern: number + street name + optional suffix
-        street_types = r"(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY|ROUTE|RT)"
 
-        # Pattern 1: Standard street address
-        pattern1 = rf"(\d{{1,5}}\s+[A-Z0-9\.\s]+?{street_types})"
+        Uses word-boundary before street type to avoid matching partial words
+        (e.g. "ST" inside "STATION").  Returns the address as-is (no title-case).
+        """
+        # Street type suffixes — require word boundary so "STATION" doesn't match "ST"
+        street_types = r"(?:ROAD|STREET|AVENUE|DRIVE|HIGHWAY|BOULEVARD|PARKWAY|ROUTE|BLVD|AVE|HWY|PKWY|LANE|COURT|WAY|LN|CT|DR|RD|ST)"
+
+        # Pattern 1: Standard street address (greedy match, word-boundary before suffix)
+        pattern1 = rf"(\d{{1,5}}\s+[A-Z0-9\.\s]+\b{street_types})\b"
         match = re.search(pattern1, text.upper())
         if match:
             addr = match.group(1).strip()
             # Clean up multiple spaces
             addr = re.sub(r"\s+", " ", addr)
-            return addr.title()
+            return addr
 
         # Pattern 2: US Route/Highway
         pattern2 = r"(\d+\s+(?:US\s+)?(?:ROUTE|RT|HWY|HIGHWAY)\s+\d+)"
         match = re.search(pattern2, text.upper())
         if match:
-            return match.group(1).title()
+            return match.group(1)
 
         return None
 
     def _parse_city_state_zip(
         self, text: str
     ) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """Parse city, state, ZIP from text"""
-        # Normalize whitespace - replace newlines with spaces
+        """Parse city, state, ZIP from text.
+
+        Parses per-line first to avoid mixing street address words into city.
+        For example, zone text may be:
+            3100 POND STATION ROAD
+            LOUISVILLE KY 40272
+        We must parse city="LOUISVILLE" from the second line, not
+        "POND STATION ROAD LOUISVILLE" from collapsed text.
+        """
+        state_zip_pattern = rf"({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
+
+        # --- Strategy 1: per-line parsing (preserves line boundaries) ---
+        lines = re.split(r"[\n\r]+", text)
+        for line in lines:
+            line_upper = line.strip().upper()
+            if not line_upper:
+                continue
+            match = re.search(state_zip_pattern, line_upper)
+            if not match:
+                continue
+            state = match.group(1).upper()
+            zip_code = match.group(2)
+            # City = text on this line before the state code (no street numbers)
+            before_state = line_upper[: match.start()].strip()
+            # Remove trailing commas
+            before_state = before_state.rstrip(",").strip()
+            if before_state:
+                # Strip leading digits (street number fragments) and clean up
+                city = re.sub(r"^\d+\s+", "", before_state)
+                # Remove common street suffixes that leaked in
+                city = re.sub(
+                    r"\b(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY)\b\s*",
+                    "", city
+                ).strip()
+                # Remove directionals
+                city = re.sub(r"^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+", "", city)
+                city = re.sub(r"\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$", "", city)
+                city = re.sub(r"\s+", " ", city).strip().title()
+                if len(city) >= 2:
+                    return city, state, zip_code
+
+        # --- Strategy 2: collapsed text fallback (single-line documents) ---
         text_normalized = re.sub(r"[\n\r]+", " ", text)
         text_normalized = re.sub(r"\s+", " ", text_normalized)
         text_upper = text_normalized.upper()
 
-        # Pattern 1: CITY STATE ZIP (standard format)
-        # Match city name (1-3 words), state code, and ZIP
-        pattern1 = rf"([A-Z][A-Z]+(?:\s+[A-Z]+)*?)\s+({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
-        match = re.search(pattern1, text_upper)
-
-        if match:
-            city = match.group(1).strip()
-            state = match.group(2).upper()
-            zip_code = match.group(3)
-
-            # Clean up city - remove leading/trailing directionals and numbers
-            city = re.sub(r"^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+", "", city)
-            city = re.sub(r"\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$", "", city)
-            city = re.sub(r"\s+\d+$", "", city)  # Remove trailing numbers
-            city = re.sub(r"^\d+\s+", "", city)  # Remove leading numbers
-            city = city.strip().title()
-
-            if len(city) >= 2:
-                return city, state, zip_code
-
-        # Pattern 2: Look for state-zip pattern and work backwards for city
-        pattern2 = rf"({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
-        match = re.search(pattern2, text_upper)
-
+        match = re.search(state_zip_pattern, text_upper)
         if match:
             state = match.group(1).upper()
             zip_code = match.group(2)
-
-            # Find text before state - look for city name
-            before_state = text_upper[: match.start()].strip()
-            # Get last word(s) that look like a city name (letters only)
-            city_match = re.search(r"([A-Z][A-Z]+(?:\s+[A-Z]+)*)$", before_state)
+            before_state = text_upper[: match.start()].strip().rstrip(",").strip()
+            # Take only the last 1-3 alphabetic words as city (skip street address)
+            city_match = re.search(r"([A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})$", before_state)
             if city_match:
                 city = city_match.group(1).strip()
-                # Clean up - remove directionals
                 city = re.sub(r"^(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)\s+", "", city)
                 city = re.sub(r"\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W)$", "", city)
-                city = city.strip().title()
+                # Remove street type words from city
+                city = re.sub(
+                    r"\b(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN|COURT|CT|PARKWAY|PKWY)\b\s*",
+                    "", city
+                ).strip()
+                city = re.sub(r"\s+", " ", city).strip().title()
                 if len(city) >= 2:
                     return city, state, zip_code
 
@@ -1224,21 +1253,23 @@ class ZoneExtractor:
                 if name_match:
                     result["pickup_name"] = name_match.group(1).strip()
 
-                # Extract street address
+                # Extract street address (word-boundary before suffix to avoid partial matches)
+                street_types = r"(?:ROAD|STREET|AVENUE|DRIVE|HIGHWAY|BOULEVARD|PARKWAY|ROUTE|BLVD|AVE|HWY|PKWY|LANE|COURT|WAY|LN|CT|DR|RD|ST)"
                 addr_match = re.search(
-                    r"(\d+\s+[A-Z0-9\.\s]+(?:ROAD|RD|STREET|ST|AVENUE|AVE|DRIVE|DR|HIGHWAY|HWY|BLVD|BOULEVARD|WAY|LANE|LN))",
+                    rf"(\d+\s+[A-Z0-9\.\s]+\b{street_types})\b",
                     text.upper(),
                 )
                 if addr_match:
-                    result["pickup_address"] = addr_match.group(1).strip().title()
+                    result["pickup_address"] = re.sub(r"\s+", " ", addr_match.group(1).strip())
 
-                # Extract city, state, zip
-                csz_pattern = rf"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,?\s*({self.US_STATES})\s+(\d{{5}}(?:-\d{{4}})?)"
-                csz_match = re.search(csz_pattern, text.upper())
-                if csz_match:
-                    result["pickup_city"] = csz_match.group(1).strip().title()
-                    result["pickup_state"] = csz_match.group(2).upper()
-                    result["pickup_zip"] = csz_match.group(3)
+                # Extract city, state, zip (reuse shared parser)
+                city, state, zip_code = self._parse_city_state_zip(text)
+                if city:
+                    result["pickup_city"] = city
+                if state:
+                    result["pickup_state"] = state
+                if zip_code:
+                    result["pickup_zip"] = zip_code
 
                 # Extract phone
                 phone_match = re.search(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}", text)
