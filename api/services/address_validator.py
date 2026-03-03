@@ -93,15 +93,27 @@ def _compare_field(extracted: str, directory: str) -> str:
 class PickupAddressValidator:
     """Validates pickup address against auction directory and ZIP database."""
 
-    def validate(self, auction_type: str, extracted_fields: dict) -> dict:
+    def validate(self, auction_type: str, extracted_fields: dict,
+                 original_pickup: dict = None) -> dict:
         """Validate pickup address fields.
 
         Args:
             auction_type: "COPART", "IAA", "MANHEIM", etc.
             extracted_fields: dict with pickup_name, pickup_address,
-                pickup_city, pickup_state, pickup_zip
+                pickup_city, pickup_state, pickup_zip (post-processed values)
+            original_pickup: Optional dict with Haiku's original extraction
+                BEFORE directory post-processing. Used to detect when directory
+                replaced Haiku's values (circular validation prevention).
 
         Returns dict with fields (per-field status), directory_match, zip_city_match.
+
+        Statuses:
+            "verified" — post-processed value matches directory AND original Haiku
+                extraction also matched (or no original available)
+            "corrected_by_directory" — post-processed value matches directory BUT
+                original Haiku extraction was different (directory replaced it)
+            "mismatch" — value doesn't match directory or has invalid format
+            "unverified" — no directory entry found for this ZIP
         """
         ext_name = str(extracted_fields.get("pickup_name") or "").strip()
         ext_addr = str(extracted_fields.get("pickup_address") or "").strip()
@@ -123,31 +135,41 @@ class PickupAddressValidator:
             dir_state = fac_data.get("state", "")
             dir_zip = fac_data.get("zip", "")
 
-            fields["pickup_name"] = {
-                "status": _compare_field(ext_name, fac_name),
-                "extracted": ext_name,
-                "directory": fac_name,
-            }
-            fields["pickup_address"] = {
-                "status": _compare_field(ext_addr, dir_addr),
-                "extracted": ext_addr,
-                "directory": dir_addr,
-            }
-            fields["pickup_city"] = {
-                "status": _compare_field(ext_city, dir_city),
-                "extracted": ext_city,
-                "directory": dir_city,
-            }
-            fields["pickup_state"] = {
-                "status": _compare_field(ext_state, dir_state),
-                "extracted": ext_state,
-                "directory": dir_state,
-            }
+            # Compare current (post-processed) values with directory
+            field_pairs = [
+                ("pickup_name", ext_name, fac_name),
+                ("pickup_address", ext_addr, dir_addr),
+                ("pickup_city", ext_city, dir_city),
+                ("pickup_state", ext_state, dir_state),
+            ]
+            for key, ext_val, dir_val in field_pairs:
+                status = _compare_field(ext_val, dir_val)
+                field_entry = {
+                    "status": status,
+                    "extracted": ext_val,
+                    "directory": dir_val,
+                }
+                # If original_pickup is available and field was "verified" against
+                # directory, check if original Haiku extraction was DIFFERENT.
+                # If so, directory replaced Haiku's value → "corrected_by_directory".
+                if status == "verified" and original_pickup:
+                    orig_val = str(original_pickup.get(key) or "").strip()
+                    if orig_val and _compare_field(orig_val, dir_val) != "verified":
+                        field_entry["status"] = "corrected_by_directory"
+                        field_entry["original"] = orig_val
+                fields[key] = field_entry
+
             fields["pickup_zip"] = {
                 "status": "verified",
                 "extracted": ext_zip,
                 "directory": dir_zip,
             }
+            # Check if original ZIP was different (directory replaced it)
+            if original_pickup:
+                orig_zip = str(original_pickup.get("pickup_zip") or "").strip()
+                if orig_zip and orig_zip != ext_zip:
+                    fields["pickup_zip"]["status"] = "corrected_by_directory"
+                    fields["pickup_zip"]["original"] = orig_zip
         else:
             # Not in directory — mark as unverified
             for key in ["pickup_name", "pickup_address", "pickup_city", "pickup_state", "pickup_zip"]:

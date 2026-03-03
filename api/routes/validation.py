@@ -70,6 +70,7 @@ def _build_summary(vehicle_result: dict, pickup_result: dict) -> dict:
         all_fields[k] = v.get("status", "unverified")
 
     verified = sum(1 for s in all_fields.values() if s == "verified")
+    corrected = sum(1 for s in all_fields.values() if s == "corrected_by_directory")
     mismatch = sum(1 for s in all_fields.values() if s == "mismatch")
     unverified = sum(1 for s in all_fields.values() if s == "unverified")
 
@@ -77,8 +78,10 @@ def _build_summary(vehicle_result: dict, pickup_result: dict) -> dict:
         v.get("status") in ("verified", "unverified")
         for v in vehicle_result.get("fields", {}).values()
     )
+    # "corrected_by_directory" is not a failure — directory replaced Haiku's value,
+    # but operator should review. Treat as non-blocking (pickup_ok = True).
     pickup_ok = all(
-        v.get("status") in ("verified", "unverified")
+        v.get("status") in ("verified", "unverified", "corrected_by_directory")
         for v in pickup_result.get("fields", {}).values()
     )
 
@@ -86,6 +89,7 @@ def _build_summary(vehicle_result: dict, pickup_result: dict) -> dict:
         "vehicle_ok": vehicle_ok,
         "pickup_ok": pickup_ok,
         "total_verified": verified,
+        "total_corrected": corrected,
         "total_mismatch": mismatch,
         "total_unverified": unverified,
     }
@@ -119,8 +123,12 @@ async def validate_run(run_id: int):
         "pickup_zip": outputs.get("pickup_zip", ""),
     }
 
+    # Pass original Haiku extraction (before directory post-processing) if available.
+    # This allows validation to distinguish "verified" from "corrected_by_directory".
+    original_pickup = outputs.get("_haiku_original_pickup")
+
     addr_validator = PickupAddressValidator()
-    pickup_result = addr_validator.validate(auction_type, pickup_fields)
+    pickup_result = addr_validator.validate(auction_type, pickup_fields, original_pickup=original_pickup)
 
     # ── Summary ──────────────────────────────────────────────────
     summary = _build_summary(vehicle_result, pickup_result)

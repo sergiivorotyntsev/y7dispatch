@@ -17,7 +17,7 @@ import DatesSection from '../components/review/DatesSection'
 import PricingPaymentSection from '../components/review/PricingPaymentSection'
 import AdditionalInfoSection from '../components/review/AdditionalInfoSection'
 import DocumentDetails from '../components/review/DocumentDetails'
-import ExportActions from '../components/review/ExportActions'
+import ExportActions, { ReplyPreviewModal } from '../components/review/ExportActions'
 
 /**
  * Format a field key into a human-readable label.
@@ -95,6 +95,12 @@ function Review() {
   const [exportResult, setExportResult] = useState(null)
   const [exportError, setExportError] = useState(null)
   const [isApproved, setIsApproved] = useState(false)
+
+  // Confirmation reply state (shared between top status bar and ExportActions)
+  const [replyStatus, setReplyStatus] = useState(null) // null | 'loading' | 'sent' | 'failed'
+  const [replyError, setReplyError] = useState(null)
+  const [repliedTo, setRepliedTo] = useState(null)
+  const [showReplyPreview, setShowReplyPreview] = useState(false)
 
   // Production mode fields
   const [loadSpecificTerms, setLoadSpecificTerms] = useState('')
@@ -408,6 +414,37 @@ function Review() {
       .catch(() => {})
     return () => { stale = true }
   }, [runId])
+
+  // === STREAM 7: Reply Status (INDEPENDENT — loads when exported) ===
+  useEffect(() => {
+    const exported = !!exportResult || run?.status === 'exported'
+    if (!exported || !runId) return
+    let stale = false
+    setReplyStatus('loading')
+    api.getReplyStatus(runId).then(data => {
+      if (stale) return
+      if (data.status === 'sent') {
+        setReplyStatus('sent')
+        if (data.replied_to) setRepliedTo(data.replied_to)
+      } else if (data.status === 'failed') {
+        setReplyStatus('failed')
+        setReplyError(data.error || 'Previous attempt failed')
+      } else {
+        setReplyStatus(null)
+      }
+    }).catch(() => { if (!stale) setReplyStatus(null) })
+    return () => { stale = true }
+  }, [runId, run?.status, exportResult])
+
+  function handleReplyClick() {
+    setShowReplyPreview(true)
+  }
+
+  function handleReplySent(result) {
+    setShowReplyPreview(false)
+    setReplyStatus('sent')
+    setRepliedTo(result.replied_to || null)
+  }
 
   const handleValidate = useCallback(async () => {
     if (!runId) return
@@ -1046,9 +1083,102 @@ function Review() {
         )}
 
         {/* Right: Fields pane — scrolls independently */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
 
-          {/* Banners (moved into scrollable fields pane) */}
+          {/* Export Status Bar — sticky at top of fields pane */}
+          {!isTrainingMode && (
+            <div style={{
+              position: 'sticky', top: 0, zIndex: 10,
+              background: '#fff', borderBottom: '1px solid #E5E7EB',
+              padding: '10px 24px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {isExported ? (
+                    <>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#15803D' }}>
+                        <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Exported to CD
+                      </span>
+                      {(exportResult?.cd_listing_id || loadId) && exportResult?.cd_listing_id !== 'unknown' && (
+                        <span style={{ fontSize: '13px', color: '#4B5563' }}>
+                          Load ID: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{exportResult?.cd_listing_id || loadId}</span>
+                        </span>
+                      )}
+                    </>
+                  ) : isApproved ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#15803D' }}>
+                      <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Approved — ready for export
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#6B7280' }}>
+                      <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Not yet exported
+                    </span>
+                  )}
+                </div>
+                {/* Send Confirmation button — only when exported */}
+                {isExported && (
+                  <div>
+                    {replyStatus === 'sent' ? (
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        padding: '4px 12px', fontSize: '12px', fontWeight: 600,
+                        color: '#15803D', background: '#F0FDF4', border: '1px solid #BBF7D0',
+                        borderRadius: '6px',
+                      }}>
+                        <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Confirmation sent{repliedTo ? ` to ${repliedTo}` : ''}
+                      </span>
+                    ) : replyStatus === 'loading' ? (
+                      <span style={{ fontSize: '12px', color: '#9CA3AF' }}>Loading...</span>
+                    ) : replyStatus === 'failed' ? (
+                      <button
+                        onClick={handleReplyClick}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          padding: '4px 12px', fontSize: '12px', fontWeight: 600,
+                          color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA',
+                          borderRadius: '6px', cursor: 'pointer',
+                        }}
+                      >
+                        Retry Send Email
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleReplyClick}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          padding: '4px 12px', fontSize: '12px', fontWeight: 600,
+                          color: '#2563EB', background: '#EFF6FF', border: '1px solid #BFDBFE',
+                          borderRadius: '6px', cursor: 'pointer',
+                        }}
+                      >
+                        <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Send Confirmation
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Scrollable content */}
+          <div style={{ padding: '24px' }}>
+
+          {/* Banners */}
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
               <strong>Error:</strong> {error}
@@ -1299,9 +1429,23 @@ function Review() {
             totalCount={fieldList.length}
             correctedCount={correctedCount}
             needsReviewCount={needsReviewCount}
+            replyStatus={replyStatus}
+            repliedTo={repliedTo}
+            replyError={replyError}
+            onReplyClick={handleReplyClick}
           />
-        </div>
-      </div>
+          </div>{/* end scrollable content */}
+        </div>{/* end fields pane */}
+      </div>{/* end split container */}
+
+      {/* Reply Preview Modal */}
+      {showReplyPreview && (
+        <ReplyPreviewModal
+          runId={runId}
+          onClose={() => setShowReplyPreview(false)}
+          onSent={handleReplySent}
+        />
+      )}
 
       {/* Hold Modal */}
       {showHoldModal && (

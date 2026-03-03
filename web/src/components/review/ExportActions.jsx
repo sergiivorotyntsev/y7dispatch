@@ -170,52 +170,11 @@ function ExportActions({
   exportResult, exportError, exporting,
   selectedWarehouse, isApproved, isExported, runStatus,
   correctCount, totalCount, correctedCount, needsReviewCount,
+  // Reply state — managed by parent (Review.jsx)
+  replyStatus, repliedTo, replyError, onReplyClick,
 }) {
-  // Reply button state
-  const [replyStatus, setReplyStatus] = useState(null) // null | 'loading' | 'sent' | 'failed' | 'unavailable'
-  const [replyError, setReplyError] = useState(null)
-  const [repliedTo, setRepliedTo] = useState(null)
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
-
-  // Load reply status when exported
-  useEffect(() => {
-    if (isExported && runId) {
-      setReplyStatus('loading')
-      api.getReplyStatus(runId).then(data => {
-        if (data.status === 'sent') {
-          setReplyStatus('sent')
-        } else if (data.status === 'failed') {
-          setReplyStatus('failed')
-          setReplyError(data.error || 'Previous attempt failed')
-        } else {
-          setReplyStatus(null)
-        }
-      }).catch(() => {
-        setReplyStatus(null)
-      })
-    }
-  }, [isExported, runId])
-
-  const handleReplyClick = () => {
-    setShowPreviewModal(true)
-  }
-
-  const handleReplySent = (result) => {
-    setShowPreviewModal(false)
-    setReplyStatus('sent')
-    setRepliedTo(result.replied_to || null)
-  }
-
   return (
     <div className="space-y-4">
-      {/* Preview modal */}
-      {showPreviewModal && (
-        <ReplyPreviewModal
-          runId={runId}
-          onClose={() => setShowPreviewModal(false)}
-          onSent={handleReplySent}
-        />
-      )}
 
       {/* Preflight Banner — hide after export, show "Exported" instead */}
       {isExported ? (
@@ -250,7 +209,7 @@ function ExportActions({
             ) : replyStatus === 'failed' ? (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleReplyClick}
+                  onClick={onReplyClick}
                   className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-md hover:bg-red-100"
                 >
                   Retry Send Email
@@ -259,7 +218,7 @@ function ExportActions({
               </div>
             ) : (
               <button
-                onClick={handleReplyClick}
+                onClick={onReplyClick}
                 className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-md hover:bg-blue-100"
               >
                 Send Confirmation Email
@@ -383,4 +342,5 @@ function ExportActions({
   )
 }
 
+export { ReplyPreviewModal }
 export default ExportActions

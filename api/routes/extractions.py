@@ -1003,7 +1003,7 @@ def run_extraction(
                     raise RuntimeError("ANTHROPIC_API_KEY not configured")
 
                 logger.info(f"HAIKU EXTRACTION: Running Claude Haiku for doc {document_id}")
-                haiku_result = haiku.extract(doc.file_path)
+                haiku_result = haiku.extract(doc.file_path, auction_type=auction_type.code)
 
                 if haiku_result.error:
                     raise RuntimeError(f"Haiku extraction error: {haiku_result.error}")

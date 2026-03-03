@@ -162,7 +162,10 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     delivery_address: { label: 'Delivery Address', category: 'cd_optional', group: 'Delivery/Warehouse' },
     delivery_zip: { label: 'Delivery ZIP', category: 'cd_optional', group: 'Delivery/Warehouse' },
     delivery_phone: { label: 'Delivery Phone', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    delivery_contact_phone: { label: 'Delivery Contact Phone', category: 'cd_optional', group: 'Delivery/Warehouse' },
     delivery_contact: { label: 'Delivery Contact', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    delivery_email: { label: 'Delivery Email', category: 'cd_optional', group: 'Delivery/Warehouse' },
+    delivery_location_type: { label: 'Delivery Location Type', category: 'cd_optional', group: 'Delivery/Warehouse' },
     warehouse_id: { label: 'Warehouse ID', category: 'internal', group: 'Delivery/Warehouse' },
 
     // Pricing
@@ -235,7 +238,10 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
       fields.push({ key: 'delivery_state', value: deliveryStop.state, category: 'cd_required', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_zip', value: deliveryStop.postalCode, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_phone', value: deliveryStop.phone, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_contact_phone', value: deliveryStop.contactPhone, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_contact', value: deliveryStop.contactName, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_email', value: deliveryStop.email, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_location_type', value: deliveryStop.locationType, category: 'cd_optional', group: 'Delivery/Warehouse' })
       if (deliveryStop.buyerReferenceNumber) {
         fields.push({ key: 'delivery_buyer_reference', value: deliveryStop.buyerReferenceNumber, category: 'cd_optional', group: 'Delivery/Warehouse' })
       }

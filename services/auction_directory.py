@@ -93,6 +93,7 @@ COPART_LOCATIONS = {
     # ── Kentucky ──
     "Copart Louisville": {"phone": "(502) 454-2080", "address": "3704 Bells Ln", "city": "Louisville", "state": "KY", "zip": "40211"},
     "Copart Lexington": {"phone": "(859) 263-6680", "address": "3550 Leestown Rd", "city": "Lexington", "state": "KY", "zip": "40511"},
+    "Copart Lexington East": {"phone": "(859) 264-7401", "address": "5921 Athens Boonesboro Rd", "city": "Lexington", "state": "KY", "zip": "40509"},
     # ── Louisiana ──
     "Copart New Orleans": {"phone": "(504) 466-0735", "address": "4701 Earhart Blvd", "city": "New Orleans", "state": "LA", "zip": "70125"},
     "Copart Baton Rouge": {"phone": "(225) 751-4243", "address": "2818 Plank Rd", "city": "Baton Rouge", "state": "LA", "zip": "70805"},
@@ -141,6 +142,7 @@ COPART_LOCATIONS = {
     "Copart Albany": {"phone": "(518) 465-3200", "address": "1604 State Route 9P", "city": "Saratoga Springs", "state": "NY", "zip": "12866"},
     "Copart Rochester": {"phone": "(585) 426-6300", "address": "1800 Scottsville Rd", "city": "Rochester", "state": "NY", "zip": "14623"},
     "Copart Buffalo": {"phone": "(716) 662-0600", "address": "3156 S Park Ave", "city": "Lackawanna", "state": "NY", "zip": "14218"},
+    "Copart Le Roy": {"phone": "(585) 768-8160", "address": "4 West Ave", "city": "LeRoy", "state": "NY", "zip": "14482"},
     "Copart Syracuse": {"phone": "(315) 437-2700", "address": "7500 E Taft Rd", "city": "Syracuse", "state": "NY", "zip": "13212"},
     # ── North Carolina ──
     "Copart Charlotte": {"phone": "(704) 391-4146", "address": "3425 Highway 601 S", "city": "Concord", "state": "NC", "zip": "28025"},

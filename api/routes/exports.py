@@ -475,7 +475,9 @@ def build_cd_payload(
         delivery_phone = warehouse_data.get("phone", "")
         delivery_contact_phone = warehouse_data.get("contact_phone", "")
         delivery_contact = warehouse_data.get("contact_name", "")
+        delivery_contact_email = warehouse_data.get("contact_email", "")
         delivery_location_type = warehouse_data.get("location_type", "BUSINESS")
+        delivery_notes = warehouse_data.get("notes", "")
     else:
         delivery_name = get_field("delivery_name") or get_field("dropoff_name") or ""
         delivery_address = get_field("delivery_address") or get_field("dropoff_address") or ""
@@ -485,7 +487,9 @@ def build_cd_payload(
         delivery_phone = get_field("delivery_phone") or ""
         delivery_contact_phone = ""
         delivery_contact = get_field("delivery_contact") or ""
+        delivery_contact_email = ""
         delivery_location_type = "BUSINESS"
+        delivery_notes = ""
 
     if not delivery_city or delivery_city in ("TBD", ""):
         errors.append("Missing delivery location: Please select a warehouse in Review before export")
@@ -578,15 +582,20 @@ def build_cd_payload(
     if delivery_contact_phone:
         dropoff_stop["contactPhone"] = delivery_contact_phone
     if delivery_contact:
-        # If contact looks like email, use email field instead of contactName
-        if "@" in delivery_contact and "." in delivery_contact:
-            dropoff_stop["email"] = delivery_contact
-        else:
-            dropoff_stop["contactName"] = delivery_contact
+        dropoff_stop["contactName"] = delivery_contact
+    # contact_email → email field (separate from contactName)
+    if delivery_contact_email:
+        dropoff_stop["email"] = delivery_contact_email
     # Buyer reference from warehouse (dropoff location)
     dropoff_buyer_ref = warehouse_data.get("buyer_reference") if warehouse_data else None
     if dropoff_buyer_ref:
         dropoff_stop["buyerReferenceNumber"] = str(dropoff_buyer_ref)
+
+    # Fallback: ensure contact_email from warehouse reaches delivery stop
+    if not dropoff_stop.get("email"):
+        delivery_email = warehouse_data.get("contact_email", "") if warehouse_data else ""
+        if delivery_email:
+            dropoff_stop["email"] = delivery_email
 
     # Build vehicle
     vehicle = {
@@ -753,6 +762,12 @@ def build_cd_payload(
         or get_field("special_instructions")
         or ""
     )
+    # Append warehouse notes to transport release notes if present
+    if delivery_notes:
+        if transport_release_notes:
+            transport_release_notes = f"{transport_release_notes}\n{delivery_notes}"
+        else:
+            transport_release_notes = delivery_notes
 
     requires_inspection = (overrides.requires_inspection if overrides and overrides.requires_inspection is not None else True)
 

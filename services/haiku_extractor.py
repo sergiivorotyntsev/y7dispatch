@@ -367,11 +367,16 @@ Vehicle operability detection:
                 raise RuntimeError("anthropic package not installed. Run: pip install anthropic")
         return self._client
 
-    def extract_text_from_pdf(self, pdf_path: str) -> tuple[str, int]:
+    def extract_text_from_pdf(self, pdf_path: str, use_layout: bool = False) -> tuple[str, int]:
         """
         Extract text from PDF using pdfplumber.
 
-        Returns: (text, page_count)
+        Args:
+            pdf_path: Path to PDF file
+            use_layout: If True, use layout-preserving extraction that maintains
+                column structure via whitespace (important for Copart 3-column invoices).
+
+        Returns: (text, page_count, original_length)
         """
         text_parts = []
         page_count = 0
@@ -380,7 +385,7 @@ Vehicle operability detection:
             with pdfplumber.open(pdf_path) as pdf:
                 page_count = len(pdf.pages)
                 for i, page in enumerate(pdf.pages):
-                    page_text = page.extract_text() or ""
+                    page_text = page.extract_text(layout=use_layout) or ""
                     if page_text.strip():
                         text_parts.append(f"--- Page {i + 1} ---\n{page_text}")
         except Exception as e:
@@ -400,7 +405,8 @@ Vehicle operability detection:
     def extract(
         self,
         pdf_path: str,
-        document_type: Literal["pdf", "email"] = "pdf"
+        document_type: Literal["pdf", "email"] = "pdf",
+        auction_type: Optional[str] = None,
     ) -> ExtractionResult:
         """
         Extract fields from a document.
@@ -408,15 +414,23 @@ Vehicle operability detection:
         Args:
             pdf_path: Path to PDF file
             document_type: Type of document (pdf or email)
+            auction_type: Known auction type code (e.g., "COPART"). When "COPART",
+                uses layout-preserving text extraction to handle 3-column PDF layout.
 
         Returns:
             ExtractionResult with fields, evidence, and cost
         """
         result = ExtractionResult()
 
+        # Copart invoices have a 3-column layout (MEMBER | LOT ADDRESS | SELLER).
+        # Standard extract_text() merges columns, making addresses indistinguishable.
+        # layout=True preserves column spacing so Haiku can identify the correct column.
+        use_layout = (auction_type or "").upper() == "COPART"
+
         # Extract text
         if document_type == "pdf":
-            text, page_count, original_length = self.extract_text_from_pdf(pdf_path)
+            text, page_count, original_length = self.extract_text_from_pdf(
+                pdf_path, use_layout=use_layout)
             if original_length > self.MAX_TEXT_LENGTH:
                 warning = (
                     f"PDF text truncated from {original_length} to {self.MAX_TEXT_LENGTH} chars. "
@@ -566,6 +580,18 @@ Vehicle operability detection:
                     and result.fields["vehicle_lot"].value.startswith("000-")
                 ):
                     result.fields["vehicle_lot"].value = result.fields["vehicle_lot"].value.replace("000-", "", 1)
+
+                # Save original Haiku pickup values BEFORE any post-processing.
+                # This allows validation to detect when directory replaced Haiku's values
+                # (circular validation prevention).
+                _pickup_keys = ["pickup_name", "pickup_address", "pickup_city",
+                                "pickup_state", "pickup_zip"]
+                original_pickup = {}
+                for pk in _pickup_keys:
+                    f = result.fields.get(pk)
+                    original_pickup[pk] = f.value if f else None
+                result.fields["_haiku_original_pickup"] = ExtractedField(
+                    value=original_pickup, confidence=1.0, source=FieldSource.EXTRACTED)
 
                 # Post-processing: Copart pickup location consistency
                 # Copart 3-column PDF layout often causes Haiku to pick up
