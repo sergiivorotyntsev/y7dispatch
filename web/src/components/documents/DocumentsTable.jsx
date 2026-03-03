@@ -49,11 +49,11 @@ export default function DocumentsTable({
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-lg shadow" style={{ overflowX: 'auto' }}>
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-3">
+              <th className="px-3 py-3" style={{ width: '40px', flexShrink: 0 }}>
                 <input
                   type="checkbox"
                   checked={selectedDocs.size === documents.length && documents.length > 0}
@@ -61,19 +61,19 @@ export default function DocumentsTable({
                   className="form-checkbox h-4 w-4 text-primary-600"
                 />
               </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Load ID</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">VIN</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Auction</th>
+              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase" style={{ minWidth: 100 }}>Load ID</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style={{ minWidth: 180 }}>VIN</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style={{ minWidth: 120 }}>Vehicle</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hide-narrow">Auction</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pickup</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warehouse</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Auction Cost</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Transport</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">$/mile</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style={{ minWidth: 100 }}>Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hide-narrow">Source</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style={{ whiteSpace: 'nowrap' }}>Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -85,7 +85,7 @@ export default function DocumentsTable({
                     className="bg-gray-100 cursor-pointer hover:bg-gray-200"
                     onClick={() => onToggleDate(date)}
                   >
-                    <td colSpan={13} className="px-4 py-2">
+                    <td colSpan={14} className="px-4 py-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-semibold text-gray-700">
                           {date} <span className="font-normal text-gray-500">({dateDocs.length} {dateDocs.length === 1 ? 'load' : 'loads'})</span>
@@ -223,7 +223,7 @@ function DocumentRow({
       className={`hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : isExported ? 'bg-green-50' : ''}`}
       onClick={() => onRowClick(doc)}
     >
-      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+      <td className="px-3 py-3" style={{ width: '40px' }} onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
           checked={isSelected}
@@ -253,7 +253,7 @@ function DocumentRow({
           )}
         </div>
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 hide-narrow">
         <span className={`px-2 py-1 text-xs font-medium rounded ${
           doc.auction_type_code === 'COPART' ? 'bg-blue-100 text-blue-800' :
           doc.auction_type_code === 'IAA' ? 'bg-purple-100 text-purple-800' :
@@ -330,7 +330,7 @@ function DocumentRow({
       <td className="px-4 py-3 text-right text-sm text-gray-500">
         {ratePerMile != null ? `$${ratePerMile}` : '\u2014'}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3" style={{ whiteSpace: 'nowrap' }}>
         {isOnHold && (
           <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800 mr-1" title={`${doc.hold_reason}${doc.hold_note ? ': ' + doc.hold_note : ''}`}>
             HOLD
@@ -369,7 +369,7 @@ function DocumentRow({
           </button>
         )}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 hide-narrow">
         <span className={`px-2 py-1 text-xs font-medium rounded ${sourceDisplay.color}`}>
           {sourceDisplay.label}
         </span>
@@ -389,7 +389,7 @@ function DocumentRow({
           )
         })()}
       </td>
-      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+      <td className="px-4 py-3 text-right" style={{ whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-end items-center space-x-2">
           {extRunId ? (
             <>

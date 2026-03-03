@@ -152,3 +152,10 @@ body {
 .nav-link-inactive {
   @apply text-gray-600 hover:bg-gray-100 hover:text-gray-900;
 }
+
+/* Responsive: hide less-important columns on narrow screens */
+@media (max-width: 1279px) {
+  .hide-narrow {
+    display: none;
+  }
+}

@@ -10,6 +10,17 @@ import Login from './pages/Login'
 function App() {
   const [authState, setAuthState] = useState('loading') // 'loading' | 'authenticated' | 'unauthenticated'
   const [username, setUsername] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebarCollapsed') === 'true'
+  })
+
+  function toggleSidebar() {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('sidebarCollapsed', String(next))
+      return next
+    })
+  }
 
   // Check auth on mount
   useEffect(() => {
@@ -66,15 +77,29 @@ function App() {
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div
+        className="bg-white border-r border-gray-200 flex flex-col"
+        style={{
+          width: sidebarCollapsed ? 60 : 220,
+          transition: 'width 200ms ease',
+          overflow: 'hidden',
+          flexShrink: 0,
+        }}
+      >
         {/* Logo */}
-        <div className="p-4 border-b border-gray-200">
-          <h1 className="text-lg font-bold text-gray-900">Vehicle Transport</h1>
-          <p className="text-xs text-gray-500">Control Panel</p>
+        <div className="border-b border-gray-200" style={{ padding: sidebarCollapsed ? '16px 8px' : '16px' }}>
+          {sidebarCollapsed ? (
+            <h1 className="text-lg font-bold text-gray-900" style={{ textAlign: 'center' }}>VT</h1>
+          ) : (
+            <>
+              <h1 className="text-lg font-bold text-gray-900">Vehicle Transport</h1>
+              <p className="text-xs text-gray-500">Control Panel</p>
+            </>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 space-y-1" style={{ padding: sidebarCollapsed ? '16px 6px' : '16px' }}>
           {navItems.map((item) => (
             <NavLink
               key={item.path}
@@ -83,45 +108,83 @@ function App() {
               className={({ isActive }) =>
                 `nav-link ${isActive ? 'nav-link-active' : 'nav-link-inactive'}`
               }
+              title={sidebarCollapsed ? item.label : undefined}
+              style={sidebarCollapsed ? { justifyContent: 'center', padding: '8px' } : undefined}
             >
-              <item.icon className="w-5 h-5 mr-3" />
-              {item.label}
+              <item.icon className={sidebarCollapsed ? 'w-5 h-5' : 'w-5 h-5 mr-3'} />
+              {!sidebarCollapsed && item.label}
             </NavLink>
           ))}
         </nav>
 
+        {/* Toggle button */}
+        <div style={{ padding: sidebarCollapsed ? '8px 6px' : '8px 16px' }}>
+          <button
+            onClick={toggleSidebar}
+            className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+              padding: '6px 8px',
+              borderRadius: '6px',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? '\u00BB' : '\u00AB Collapse'}
+          </button>
+        </div>
+
         {/* Footer with user + logout */}
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-600 font-medium">{username}</span>
-            <button
-              onClick={handleLogout}
-              className="text-xs text-gray-400 hover:text-red-600 transition-colors"
-              title="Sign out"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </button>
-          </div>
-          <div className="text-xs text-gray-500">
-            <p>API: <a href="/api/docs" target="_blank" className="text-primary-600 hover:underline">Swagger Docs</a></p>
-            <p className="mt-1">v1.0.0</p>
-          </div>
+        <div className="border-t border-gray-200" style={{ padding: sidebarCollapsed ? '12px 8px' : '16px' }}>
+          {sidebarCollapsed ? (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button
+                onClick={handleLogout}
+                className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+                title="Sign out"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-600 font-medium">{username}</span>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+                  title="Sign out"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
+              </div>
+              <div className="text-xs text-gray-500">
+                <p>API: <a href="/api/docs" target="_blank" className="text-primary-600 hover:underline">Swagger Docs</a></p>
+                <p className="mt-1">v1.0.0</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Main content */}
       <div className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto">
-          <Routes>
-            <Route path="/" element={<Documents />} />
-            <Route path="/review/:runId" element={<Review />} />
-            <Route path="/email-log" element={<EmailLog />} />
-            <Route path="/test-lab" element={<TestLab />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </div>
+        <Routes>
+          <Route path="/" element={<Documents />} />
+          <Route path="/review/:runId" element={<Review />} />
+          <Route path="/email-log" element={<EmailLog />} />
+          <Route path="/test-lab" element={<TestLab />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
       </div>
     </div>
   )
