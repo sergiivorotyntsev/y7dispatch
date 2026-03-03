@@ -267,21 +267,21 @@ class TestTagsArray:
         """Tags include automationVersion."""
         payload, _ = self._build_payload()
         tags = payload.get("tags", [])
-        tag_keys = {t["key"] for t in tags}
-        assert "automationVersion" in tag_keys
+        tag_names = {t["name"] for t in tags}
+        assert "automationVersion" in tag_names
 
     def test_tags_has_source_system(self):
         """Tags include sourceSystem."""
         payload, _ = self._build_payload()
         tags = payload.get("tags", [])
-        tag_keys = {t["key"] for t in tags}
-        assert "sourceSystem" in tag_keys
+        tag_names = {t["name"] for t in tags}
+        assert "sourceSystem" in tag_names
 
     def test_tags_has_auction_source(self):
         """Tags include auctionSource with correct value."""
         payload, _ = self._build_payload("COPART")
         tags = payload.get("tags", [])
-        auction_tag = next((t for t in tags if t["key"] == "auctionSource"), None)
+        auction_tag = next((t for t in tags if t["name"] == "auctionSource"), None)
         assert auction_tag is not None
         assert auction_tag["value"] == "COPART"
 
@@ -289,7 +289,7 @@ class TestTagsArray:
         """Tags reflect correct auction source for IAA."""
         payload, _ = self._build_payload("IAA")
         tags = payload.get("tags", [])
-        auction_tag = next((t for t in tags if t["key"] == "auctionSource"), None)
+        auction_tag = next((t for t in tags if t["name"] == "auctionSource"), None)
         assert auction_tag is not None
         assert auction_tag["value"] == "IAA"
 

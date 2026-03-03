@@ -125,11 +125,11 @@ Grant Type: client_credentials
   ],
 
   "tags": [
-    {"key": "automationVersion", "value": "v2.0"},
-    {"key": "sourceSystem", "value": "y7dispatch"},
-    {"key": "auctionSource", "value": "COPART"},
-    {"key": "gatePass", "value": "ABC123"},
-    {"key": "warehouseId", "value": "BOS1"}
+    {"name": "automationVersion", "value": "v2.0"},
+    {"name": "sourceSystem", "value": "y7dispatch"},
+    {"name": "auctionSource", "value": "COPART"},
+    {"name": "gatePass", "value": "ABC123"},
+    {"name": "warehouseId", "value": "BOS1"}
   ],
 
   "loadSpecificTerms": "TEXT 857-895-8777 (ZELLE AVAILABLE THE DAY AFTER DELIVERY). Pick-up location - Copart North Boston, Delivery - Y7 Warehouse Boston",

@@ -796,15 +796,15 @@ def build_cd_payload(
     # =================================================================
     auction_code = at.code.upper() if at and at.code else "UNKNOWN"
     tags = [
-        {"key": "automationVersion", "value": "v2.0"},
-        {"key": "sourceSystem", "value": "y7dispatch"},
-        {"key": "auctionSource", "value": auction_code},
+        {"name": "automationVersion", "value": "v2.0"},
+        {"name": "sourceSystem", "value": "y7dispatch"},
+        {"name": "auctionSource", "value": auction_code},
     ]
     gate_pass = get_field("gate_pass")
     if gate_pass:
-        tags.append({"key": "gatePass", "value": str(gate_pass)[:100]})
+        tags.append({"name": "gatePass", "value": str(gate_pass)[:100]})
     if warehouse_code:
-        tags.append({"key": "warehouseId", "value": warehouse_code})
+        tags.append({"name": "warehouseId", "value": warehouse_code})
 
     # =================================================================
     # FULL PAYLOAD (CD Listings API V2)
