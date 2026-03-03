@@ -51,7 +51,7 @@ Production workflow hub. Lists documents with extraction status, warehouse assig
 |-----------|---------|
 | DocumentsHeader | Stats chips (total, ready, needs_review) + upload button |
 | DocumentsFilters | Search, status/auction filter, sort, pagination |
-| DocumentsTable | Date-grouped rows, warehouse selector, price editor, actions |
+| DocumentsTable | Date-grouped rows, warehouse selector, price editor, actions. Passes `docId` via navigation state to Review page (enables PDF preloading) |
 | DocumentsBatchBar | Batch approve/hold/archive/auto-assign/post |
 | UploadModal | PDF upload with auction type selection |
 | ExportPreviewModal | Full CD payload preview |
@@ -77,6 +77,32 @@ const [finalPrice, setFinalPrice] = useState(null)
 5. `getRunDuplicates(runId)` → VIN duplicate warnings
 
 > **Note:** `getReviewCore()` replaced 3 separate calls (`getExtraction` + `getDocument` + `getReviewItems`) via the combined `/review/{runId}/core` endpoint.
+
+### Performance: Exported Load Optimization
+
+When opening an already-exported load (`run.status === 'exported'`), Review page skips unnecessary API calls:
+
+| Stream | Non-exported | Exported | Reason |
+|--------|-------------|----------|--------|
+| getReviewCore | YES | YES | Core data always needed |
+| listWarehouses | YES | YES | Warehouse display |
+| getFullPricing | YES | **SKIP** | Price already finalized in export |
+| listAttachments | YES | YES | Email context display |
+| getValidation | YES | YES | Validation badges |
+| getRunDuplicates | YES | **SKIP** | Already exported, duplicates irrelevant |
+| DeliverySection → getWarehouseOptionsForRun | YES | **SKIP** | Warehouse already selected |
+| WeatherAlertsPanel → getRouteAlertsForRun | YES | **SKIP** | Weather info not needed post-export |
+| PreflightBanner → getRunPreflight | YES | **SKIP** | Preflight not needed post-export |
+
+Result: ~13 API calls → ~6 for exported loads, zero loading spinners.
+
+### PDF Preloading
+
+PDF loading is optimized via two mechanisms:
+
+1. **Navigation state:** Documents page and EmailLog pass `docId` via `navigate(url, { state: { docId } })`. Review page uses `useLocation()` to start PDF iframe loading at mount — parallel with `getReviewCore()` instead of waiting for it.
+
+2. **Browser caching:** `GET /api/documents/{id}/file` returns `Cache-Control: private, max-age=86400, immutable` with ETag (document SHA256). Repeat visits serve PDF from browser cache (0 bytes transferred). Supports `If-None-Match` → 304 Not Modified.
 
 **Field Update:**
 ```javascript

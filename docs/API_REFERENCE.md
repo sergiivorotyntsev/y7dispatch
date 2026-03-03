@@ -33,7 +33,7 @@ All endpoints require JWT auth via httpOnly cookie (except `/auth/login`, `/heal
 | GET | `/documents/stats` | Document count by status |
 | GET | `/documents/{id}` | Get document details |
 | GET | `/documents/{id}/text` | Get extracted text |
-| GET | `/documents/{id}/file` | Download PDF file |
+| GET | `/documents/{id}/file` | Download PDF file (Cache-Control: immutable, ETag: SHA256) |
 | GET | `/documents/{id}/page/{n}/image` | Render page as image (DPI configurable) |
 | GET | `/documents/{id}/export-preview` | Quick export preview |
 | DELETE | `/documents/{id}` | Delete document |
