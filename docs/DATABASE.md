@@ -147,7 +147,7 @@ CREATE TABLE warehouses (
     phone TEXT,                    -- Facility phone → stops[1].phone
     contact_name TEXT,
     contact_phone TEXT,            -- Contact phone → stops[1].contactPhone
-    contact_email TEXT,            -- → stops[1].email
+    contact_email TEXT,            -- → stops[1].contactEmailAddress
     location_type TEXT,
     transport_special_instructions TEXT,
     buyer_reference TEXT,          -- → stops[1].buyerNumber

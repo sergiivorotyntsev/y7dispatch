@@ -95,7 +95,7 @@ Grant Type: client_credentials
       "phone": "(508) 555-1234",
       "contactPhone": "(508) 555-5678",
       "contactName": "Jane Smith",
-      "email": "warehouse@y7.com",
+      "contactEmailAddress": "warehouse@y7.com",
       "buyerNumber": "REF-001"
     }
   ],
@@ -169,7 +169,7 @@ Grant Type: client_credentials
 | `phone` | Auction directory phone | `warehouse.phone` |
 | `contactPhone` | — | `warehouse.contact_phone` |
 | `contactName` | `pickup_contact` | `warehouse.contact_name` |
-| `email` | — | `warehouse.contact_email` |
+| `contactEmailAddress` | — | `warehouse.contact_email` |
 | `buyerNumber` | `buyer_id` | `warehouse.buyer_reference` |
 
 ### Vehicle Fields
@@ -248,6 +248,31 @@ class CDExportRequest:
 5. Handle: 201 Created, 204 No Content, 409 Conflict, 412 ETag mismatch, 429 Rate Limit
 6. Save to `export_jobs` table + `cd_listings` table
 7. Persist field_overrides to `review_items.corrected_value`
+
+---
+
+## 5a. CD API V2 Stops Schema Reference
+
+Fields accepted by the CD API V2 `stops[]` object:
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `stopNumber` | integer | YES | 1=pickup, 2=delivery |
+| `locationName` | string | NO | Facility/business name |
+| `address` | string | YES | Street address |
+| `city` | string | YES | City |
+| `state` | string | YES | 2-letter state code |
+| `postalCode` | string | YES | 5-digit ZIP |
+| `country` | string | NO | Default: "US" |
+| `locationType` | string | NO | See Section 6 for valid values |
+| `phone` | string | NO | Facility main phone |
+| `contactName` | string | NO | Contact person name |
+| `contactPhone` | string | NO | Contact person phone |
+| `contactEmailAddress` | string | NO | Contact email (NOT "email") |
+| `buyerNumber` | string | NO | Buyer reference / member ID (NOT "buyerReferenceNumber") |
+| `operatingHours` | string | NO | Facility operating hours |
+
+> **Important:** CD API V2 silently ignores unknown fields (returns 201 even with invalid field names). Always verify field names against this schema.
 
 ---
 

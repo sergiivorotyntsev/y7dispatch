@@ -240,7 +240,7 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
       fields.push({ key: 'delivery_phone', value: deliveryStop.phone, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_contact_phone', value: deliveryStop.contactPhone, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_contact', value: deliveryStop.contactName, category: 'cd_optional', group: 'Delivery/Warehouse' })
-      fields.push({ key: 'delivery_email', value: deliveryStop.email, category: 'cd_optional', group: 'Delivery/Warehouse' })
+      fields.push({ key: 'delivery_email', value: deliveryStop.contactEmailAddress, category: 'cd_optional', group: 'Delivery/Warehouse' })
       fields.push({ key: 'delivery_location_type', value: deliveryStop.locationType, category: 'cd_optional', group: 'Delivery/Warehouse' })
       if (deliveryStop.buyerNumber) {
         fields.push({ key: 'delivery_buyer_reference', value: deliveryStop.buyerNumber, category: 'cd_optional', group: 'Delivery/Warehouse' })

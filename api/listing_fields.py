@@ -435,7 +435,7 @@ LISTING_FIELDS: list[ListingField] = [
         key="pickup_email",
         label="Email",
         section=FieldSection.PICKUP,
-        cd_api_key="stops[0].email",
+        cd_api_key="stops[0].contactEmailAddress",
         field_type=FieldType.TEXT,
         required=False,
         display_order=10,
@@ -615,7 +615,7 @@ LISTING_FIELDS: list[ListingField] = [
         key="delivery_email",
         label="Email",
         section=FieldSection.DELIVERY,
-        cd_api_key="stops[1].email",
+        cd_api_key="stops[1].contactEmailAddress",
         field_type=FieldType.TEXT,
         required=False,
         display_order=9,
@@ -1884,7 +1884,7 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     if data.get("pickup_hours"):
         pickup_stop["operatingHours"] = data["pickup_hours"]
     if data.get("pickup_email"):
-        pickup_stop["email"] = data["pickup_email"]
+        pickup_stop["contactEmailAddress"] = data["pickup_email"]
     if data.get("pickup_buyer_number"):
         pickup_stop["buyerNumber"] = data["pickup_buyer_number"]
     # Notes include operating hours as special instructions per V2 spec
@@ -1923,7 +1923,7 @@ def build_cd_payload(data: dict[str, Any], run_id: int = None) -> tuple[dict[str
     if data.get("delivery_hours"):
         delivery_stop["operatingHours"] = data["delivery_hours"]
     if data.get("delivery_email"):
-        delivery_stop["email"] = data["delivery_email"]
+        delivery_stop["contactEmailAddress"] = data["delivery_email"]
     if data.get("delivery_buyer_number"):
         delivery_stop["buyerNumber"] = data["delivery_buyer_number"]
     # Notes include operating hours as special instructions

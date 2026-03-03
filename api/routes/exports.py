@@ -583,19 +583,19 @@ def build_cd_payload(
         dropoff_stop["contactPhone"] = delivery_contact_phone
     if delivery_contact:
         dropoff_stop["contactName"] = delivery_contact
-    # contact_email → email field (separate from contactName)
+    # contact_email → contactEmailAddress (CD API V2 stops schema)
     if delivery_contact_email:
-        dropoff_stop["email"] = delivery_contact_email
+        dropoff_stop["contactEmailAddress"] = delivery_contact_email
     # Buyer reference from warehouse (dropoff location)
     dropoff_buyer_ref = warehouse_data.get("buyer_reference") if warehouse_data else None
     if dropoff_buyer_ref:
         dropoff_stop["buyerNumber"] = str(dropoff_buyer_ref)
 
     # Fallback: ensure contact_email from warehouse reaches delivery stop
-    if not dropoff_stop.get("email"):
+    if not dropoff_stop.get("contactEmailAddress"):
         delivery_email = warehouse_data.get("contact_email", "") if warehouse_data else ""
         if delivery_email:
-            dropoff_stop["email"] = delivery_email
+            dropoff_stop["contactEmailAddress"] = delivery_email
 
     # Build vehicle
     vehicle = {
