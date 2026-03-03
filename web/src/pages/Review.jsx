@@ -1249,6 +1249,11 @@ function Review() {
             vehicle_color: fields.vehicle_color?.corrected || null,
             vehicle_additional_info: fields.vehicle_additional_info?.corrected || null,
           }}
+          fieldOverrides={Object.fromEntries(
+            Object.entries(fields)
+              .filter(([, f]) => f.corrected != null && f.corrected !== '' && f.corrected !== f.predicted)
+              .map(([k, f]) => [k, String(f.corrected)])
+          )}
         />
       )}
     </div>

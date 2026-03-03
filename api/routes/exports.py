@@ -145,6 +145,17 @@ class CDExportRequest(BaseModel):
     run_ids: list[int] = Field(..., description="Extraction run IDs to export")
     dry_run: bool = Field(True, description="Preview only, don't actually send")
     overrides: Optional[OperatorOverrides] = None
+    field_overrides: Optional[dict[str, str]] = Field(
+        None,
+        description="Field-level overrides from Review UI (e.g. pickup_address corrections)",
+    )
+
+
+class CDPreviewRequest(BaseModel):
+    """Request body for preview endpoint with operator + field overrides."""
+
+    overrides: Optional[OperatorOverrides] = None
+    field_overrides: Optional[dict[str, str]] = None
 
 
 class CDPayloadPreview(BaseModel):
@@ -288,6 +299,7 @@ def build_cd_payload(
     run_id: int,
     warehouse_code: str = None,
     overrides: Optional[OperatorOverrides] = None,
+    field_overrides: Optional[dict[str, str]] = None,
 ) -> tuple[dict, list[str]]:
     """
     Build Central Dispatch API V2 payload from extraction run.
@@ -333,6 +345,12 @@ def build_cd_payload(
             user_overrides[item.source_key] = item.corrected_value
         if item.predicted_value:
             extracted_values[item.source_key] = item.predicted_value
+
+    # Merge field_overrides from Review UI (highest priority — unsaved edits)
+    if field_overrides:
+        for key, value in field_overrides.items():
+            if value is not None:
+                user_overrides[key] = value
 
     # Also get extracted values from outputs_json
     outputs = {}
@@ -1483,6 +1501,52 @@ async def send_to_cd_with_retry(
 
 
 # =============================================================================
+# FIELD OVERRIDE PERSISTENCE
+# =============================================================================
+
+
+def _persist_field_overrides(run_id: int, field_overrides: dict[str, str]) -> None:
+    """Persist field overrides to review_items.corrected_value and outputs_json.
+
+    Called after successful (non-dry-run) export to save unsaved UI edits
+    so re-opening the Review page restores corrected values.
+    """
+    from api.database import get_connection
+
+    if not field_overrides:
+        return
+
+    # 1. Update review_items corrected_value for matching source_keys
+    with get_connection() as conn:
+        for key, value in field_overrides.items():
+            if value is None:
+                continue
+            conn.execute(
+                """UPDATE review_items SET corrected_value = ?
+                   WHERE run_id = ? AND source_key = ?""",
+                (str(value), run_id, key),
+            )
+        conn.commit()
+
+    # 2. Merge into outputs_json
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT outputs_json FROM extraction_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        outputs = json.loads(row["outputs_json"]) if row and row["outputs_json"] else {}
+        for key, value in field_overrides.items():
+            if value is not None:
+                outputs[key] = value
+        conn.execute(
+            "UPDATE extraction_runs SET outputs_json = ? WHERE id = ?",
+            (json.dumps(outputs), run_id),
+        )
+        conn.commit()
+
+    logger.info("Persisted %d field overrides for run %d", len(field_overrides), run_id)
+
+
+# =============================================================================
 # ROUTES
 # =============================================================================
 
@@ -1575,8 +1639,8 @@ async def export_to_cd(
                     skipped_count += 1
                     continue
 
-        # Build payload with operator overrides
-        payload, errors = build_cd_payload(run_id, overrides=data.overrides)
+        # Build payload with operator overrides + field overrides
+        payload, errors = build_cd_payload(run_id, overrides=data.overrides, field_overrides=data.field_overrides)
         is_valid = len(errors) == 0
 
         preview = CDPayloadPreview(
@@ -1646,6 +1710,10 @@ async def export_to_cd(
                             (json.dumps(saved_outputs), run_id),
                         )
                         conn.commit()
+
+                # Persist field_overrides to review_items + outputs_json
+                if data.field_overrides:
+                    _persist_field_overrides(run_id, data.field_overrides)
 
                 # Sync review_items status to exported
                 with get_connection() as conn:
@@ -1727,17 +1795,33 @@ async def preview_cd_payload_get(run_id: int):
 
 
 @router.post("/central-dispatch/preview/{run_id}", response_model=CDPayloadPreview)
-async def preview_cd_payload_post(run_id: int, overrides: Optional[OperatorOverrides] = None):
+async def preview_cd_payload_post(run_id: int, body: Optional[dict] = None):
     """
     Preview the CD API V2 payload with operator overrides from Review UI.
 
-    Accepts all operator overrides (pricing, warehouse, dates, etc.)
-    and builds a preview payload with those overrides applied.
+    Accepts either:
+    - CDPreviewRequest: {overrides: {...}, field_overrides: {...}}
+    - OperatorOverrides directly: {warehouse_id: ..., price_total: ...} (legacy)
     """
-    return await _preview_cd_payload(run_id, overrides=overrides)
+    overrides = None
+    field_overrides = None
+    if body:
+        if "overrides" in body or "field_overrides" in body:
+            # New format: CDPreviewRequest wrapper
+            if body.get("overrides"):
+                overrides = OperatorOverrides(**body["overrides"])
+            field_overrides = body.get("field_overrides")
+        else:
+            # Legacy format: bare OperatorOverrides
+            overrides = OperatorOverrides(**body)
+    return await _preview_cd_payload(run_id, overrides=overrides, field_overrides=field_overrides)
 
 
-async def _preview_cd_payload(run_id: int, overrides: Optional[OperatorOverrides] = None):
+async def _preview_cd_payload(
+    run_id: int,
+    overrides: Optional[OperatorOverrides] = None,
+    field_overrides: Optional[dict[str, str]] = None,
+):
     """Internal: build preview payload with optional overrides."""
     try:
         run = ExtractionRunRepository.get_by_id(run_id)
@@ -1758,7 +1842,7 @@ async def _preview_cd_payload(run_id: int, overrides: Optional[OperatorOverrides
                 is_valid=False,
             )
 
-        payload, errors = build_cd_payload(run_id, overrides=overrides)
+        payload, errors = build_cd_payload(run_id, overrides=overrides, field_overrides=field_overrides)
 
         return CDPayloadPreview(
             dispatch_id=payload.get("externalId", ""),

@@ -5,6 +5,8 @@ When extraction returns a pickup_name like "Copart Clearwater" but no phone,
 this directory provides the phone number and address for auto-fill.
 
 Data sources: publicly available auction location directories.
+
+To update Copart directory from CSV, run: python scripts/update_copart_directory.py <csv_file>
 """
 
 import logging
@@ -14,9 +16,41 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ─── Copart Locations ────────────────────────────────────────────────────────
-# Source: Copart public location directory (top 50+ US locations)
+# Source: Copart public location directory (~170+ US locations)
+# Last updated: 2026-03-02
 
 COPART_LOCATIONS = {
+    # ── Alabama ──
+    "Copart Birmingham": {"phone": "(205) 791-2784", "address": "1500 35th Ave N", "city": "Birmingham", "state": "AL", "zip": "35207"},
+    "Copart Mobile": {"phone": "(251) 443-6470", "address": "8651 Lott Rd", "city": "Eight Mile", "state": "AL", "zip": "36613"},
+    "Copart Montgomery": {"phone": "(334) 263-5765", "address": "655 Coliseum Blvd", "city": "Montgomery", "state": "AL", "zip": "36109"},
+    # ── Arizona ──
+    "Copart Phoenix": {"phone": "(602) 243-7301", "address": "1211 N 59th Ave", "city": "Phoenix", "state": "AZ", "zip": "85043"},
+    "Copart Tucson": {"phone": "(520) 574-0303", "address": "2701 N Dos Amigos Dr", "city": "Tucson", "state": "AZ", "zip": "85745"},
+    # ── Arkansas ──
+    "Copart Little Rock": {"phone": "(501) 945-3142", "address": "8400 Counts Massie Rd", "city": "North Little Rock", "state": "AR", "zip": "72118"},
+    # ── California ──
+    "Copart Los Angeles": {"phone": "(818) 890-8944", "address": "14360 Aetna St", "city": "Van Nuys", "state": "CA", "zip": "91401"},
+    "Copart Sun Valley": {"phone": "(818) 767-5580", "address": "8507 Tujunga Ave", "city": "Sun Valley", "state": "CA", "zip": "91352"},
+    "Copart Rancho Cucamonga": {"phone": "(909) 476-2257", "address": "9701 Cherry Ave", "city": "Fontana", "state": "CA", "zip": "92335"},
+    "Copart Sacramento": {"phone": "(916) 991-5555", "address": "8110 Calvine Rd", "city": "Sacramento", "state": "CA", "zip": "95828"},
+    "Copart San Diego": {"phone": "(619) 710-2636", "address": "2295 Otay Lakes Rd", "city": "Chula Vista", "state": "CA", "zip": "91914"},
+    "Copart San Bernardino": {"phone": "(909) 889-1227", "address": "1600 S Waterman Ave", "city": "San Bernardino", "state": "CA", "zip": "92408"},
+    "Copart Fresno": {"phone": "(559) 268-2360", "address": "4875 E Hedges Ave", "city": "Fresno", "state": "CA", "zip": "93703"},
+    "Copart Bakersfield": {"phone": "(661) 833-3212", "address": "6601 Fruitvale Ave", "city": "Bakersfield", "state": "CA", "zip": "93308"},
+    "Copart Hayward": {"phone": "(510) 786-0225", "address": "2931 Industrial Pkwy SW", "city": "Hayward", "state": "CA", "zip": "94544"},
+    "Copart Martinez": {"phone": "(925) 313-2060", "address": "3777 Pacheco Blvd", "city": "Martinez", "state": "CA", "zip": "94553"},
+    "Copart Vallejo": {"phone": "(707) 557-2000", "address": "100 Auto Center Dr", "city": "Vallejo", "state": "CA", "zip": "94591"},
+    "Copart Long Beach": {"phone": "(562) 437-4811", "address": "1701 W Pacific Coast Hwy", "city": "Long Beach", "state": "CA", "zip": "90810"},
+    "Copart Antelope": {"phone": "(916) 991-5555", "address": "8286 Antelope North Rd", "city": "Antelope", "state": "CA", "zip": "95843"},
+    # ── Colorado ──
+    "Copart Littleton": {"phone": "(303) 791-1001", "address": "8300 Blakeland Dr", "city": "Littleton", "state": "CO", "zip": "80125"},
+    "Copart Denver": {"phone": "(303) 307-0096", "address": "8201 E 96th Ave", "city": "Henderson", "state": "CO", "zip": "80640"},
+    "Copart Colorado Springs": {"phone": "(719) 392-9530", "address": "2329 Sinton Rd", "city": "Colorado Springs", "state": "CO", "zip": "80916"},
+    # ── Connecticut ──
+    "Copart Hartford": {"phone": "(860) 292-0600", "address": "275 Middle Tpke W", "city": "Manchester", "state": "CT", "zip": "06042"},
+    "Copart Brookfield": {"phone": "(203) 740-0700", "address": "19 Old Pocono Rd", "city": "Brookfield", "state": "CT", "zip": "06804"},
+    # ── Florida ──
     "Copart Clearwater": {"phone": "(727) 535-1559", "address": "5800 Ulmerton Rd", "city": "Clearwater", "state": "FL", "zip": "33760"},
     "Copart Tampa South": {"phone": "(813) 671-3846", "address": "12020 US Highway 301 South", "city": "Riverview", "state": "FL", "zip": "33578"},
     "Copart Riverview": {"phone": "(813) 671-3846", "address": "12020 US Highway 301 South", "city": "Riverview", "state": "FL", "zip": "33578"},
@@ -30,45 +64,153 @@ COPART_LOCATIONS = {
     "Copart Punta Gorda": {"phone": "(941) 505-6100", "address": "1900 SW 38th Ave", "city": "Punta Gorda", "state": "FL", "zip": "33950"},
     "Copart Tallahassee": {"phone": "(850) 580-3056", "address": "4403 Springhill Rd", "city": "Tallahassee", "state": "FL", "zip": "32305"},
     "Copart Pensacola": {"phone": "(850) 494-5155", "address": "6121 Blue Angel Pkwy", "city": "Pensacola", "state": "FL", "zip": "32526"},
+    "Copart Miami South": {"phone": "(305) 233-7911", "address": "16325 SW 288th St", "city": "Homestead", "state": "FL", "zip": "33033"},
+    "Copart Gainesville": {"phone": "(352) 378-5454", "address": "4011 NE 39th Ave", "city": "Gainesville", "state": "FL", "zip": "32609"},
+    # ── Georgia ──
     "Copart Atlanta East": {"phone": "(770) 784-5699", "address": "3015 Global Fwy", "city": "Fairburn", "state": "GA", "zip": "30213"},
     "Copart Atlanta South": {"phone": "(404) 366-2298", "address": "1930 Rex Rd", "city": "Lake City", "state": "GA", "zip": "30260"},
     "Copart Atlanta North": {"phone": "(770) 945-5568", "address": "3432 Nevins Rd", "city": "Gainesville", "state": "GA", "zip": "30507"},
     "Copart Savannah": {"phone": "(912) 826-1666", "address": "348 Edgewater Dr", "city": "Savannah", "state": "GA", "zip": "31406"},
+    "Copart Macon": {"phone": "(478) 788-2270", "address": "2115 Emery Hwy", "city": "Macon", "state": "GA", "zip": "31217"},
+    "Copart Augusta": {"phone": "(706) 868-7999", "address": "1638 US Highway 1", "city": "Grovetown", "state": "GA", "zip": "30813"},
+    # ── Idaho ──
+    "Copart Boise": {"phone": "(208) 389-9222", "address": "4200 S Orchard St", "city": "Boise", "state": "ID", "zip": "83716"},
+    # ── Illinois ──
+    "Copart Chicago North": {"phone": "(708) 891-6800", "address": "16401 S Lathrop Ave", "city": "Harvey", "state": "IL", "zip": "60426"},
+    "Copart Chicago South": {"phone": "(773) 568-2448", "address": "13300 S Western Ave", "city": "Blue Island", "state": "IL", "zip": "60406"},
+    "Copart Southern Illinois": {"phone": "(618) 397-1200", "address": "3900 Bunkum Rd", "city": "Caseyville", "state": "IL", "zip": "62232"},
+    "Copart Peoria": {"phone": "(309) 697-5655", "address": "2101 W Farmington Rd", "city": "Peoria", "state": "IL", "zip": "61604"},
+    # ── Indiana ──
+    "Copart Indianapolis": {"phone": "(317) 272-3820", "address": "2950 S Post Rd", "city": "Indianapolis", "state": "IN", "zip": "46239"},
+    "Copart Ft Wayne": {"phone": "(260) 478-0200", "address": "6131 Ardmore Ave", "city": "Fort Wayne", "state": "IN", "zip": "46809"},
+    "Copart Evansville": {"phone": "(812) 867-2282", "address": "5650 E Indiana St", "city": "Evansville", "state": "IN", "zip": "47715"},
+    # ── Iowa ──
+    "Copart Des Moines": {"phone": "(515) 986-3386", "address": "1000 NE 60th Ave", "city": "Des Moines", "state": "IA", "zip": "50313"},
+    "Copart Davenport": {"phone": "(563) 386-7950", "address": "4700 Wapello Ave", "city": "Davenport", "state": "IA", "zip": "52802"},
+    # ── Kansas ──
+    "Copart Wichita": {"phone": "(316) 269-4055", "address": "1600 S West St", "city": "Wichita", "state": "KS", "zip": "67213"},
+    "Copart Kansas City": {"phone": "(913) 334-6600", "address": "2940 S 88th St", "city": "Kansas City", "state": "KS", "zip": "66111"},
+    # ── Kentucky ──
+    "Copart Louisville": {"phone": "(502) 454-2080", "address": "3704 Bells Ln", "city": "Louisville", "state": "KY", "zip": "40211"},
+    "Copart Lexington": {"phone": "(859) 263-6680", "address": "3550 Leestown Rd", "city": "Lexington", "state": "KY", "zip": "40511"},
+    # ── Louisiana ──
+    "Copart New Orleans": {"phone": "(504) 466-0735", "address": "4701 Earhart Blvd", "city": "New Orleans", "state": "LA", "zip": "70125"},
+    "Copart Baton Rouge": {"phone": "(225) 751-4243", "address": "2818 Plank Rd", "city": "Baton Rouge", "state": "LA", "zip": "70805"},
+    "Copart Shreveport": {"phone": "(318) 425-2269", "address": "2515 N Market St", "city": "Shreveport", "state": "LA", "zip": "71107"},
+    # ── Maryland ──
+    "Copart Baltimore": {"phone": "(410) 354-0044", "address": "6800 Pulaski Hwy", "city": "Baltimore", "state": "MD", "zip": "21237"},
+    "Copart Waldorf": {"phone": "(301) 374-6100", "address": "6130 Crain Hwy", "city": "Upper Marlboro", "state": "MD", "zip": "20772"},
+    # ── Massachusetts ──
+    "Copart Boston": {"phone": "(508) 384-3304", "address": "139 W Main St", "city": "Norton", "state": "MA", "zip": "02766"},
+    "Copart North Boston": {"phone": "(978) 772-2300", "address": "77 Fitchburg Rd", "city": "Ayer", "state": "MA", "zip": "01432"},
+    "Copart North Billerica": {"phone": "(978) 528-5095", "address": "55R High St", "city": "North Billerica", "state": "MA", "zip": "01862"},
+    "Copart West Warren": {"phone": "(413) 436-7563", "address": "108 Old West Brookfield Rd", "city": "West Warren", "state": "MA", "zip": "01092"},
+    # ── Michigan ──
+    "Copart Detroit": {"phone": "(734) 479-4579", "address": "8251 Rawsonville Rd", "city": "Belleville", "state": "MI", "zip": "48111"},
+    "Copart Flint": {"phone": "(810) 635-3595", "address": "6660 E Mt Morris Rd", "city": "Flushing", "state": "MI", "zip": "48433"},
+    "Copart Lansing": {"phone": "(517) 882-0400", "address": "3200 Jolly Rd", "city": "Lansing", "state": "MI", "zip": "48911"},
+    "Copart Grand Rapids": {"phone": "(616) 532-2222", "address": "6350 Roger B Chaffee Memorial Blvd SE", "city": "Grand Rapids", "state": "MI", "zip": "49548"},
+    "Copart Kalamazoo": {"phone": "(269) 343-1710", "address": "8500 Stadium Dr", "city": "Kalamazoo", "state": "MI", "zip": "49009"},
+    # ── Minnesota ──
+    "Copart Minneapolis": {"phone": "(612) 726-5500", "address": "8535 13th Ave E", "city": "Bloomington", "state": "MN", "zip": "55425"},
+    "Copart St Cloud": {"phone": "(320) 251-6000", "address": "2525 2nd St S", "city": "St Cloud", "state": "MN", "zip": "56301"},
+    # ── Mississippi ──
+    "Copart Jackson": {"phone": "(601) 922-4840", "address": "5425 Highway 49 S", "city": "Jackson", "state": "MS", "zip": "39272"},
+    # ── Missouri ──
+    "Copart St Louis": {"phone": "(314) 739-3700", "address": "2820 Fee Fee Rd", "city": "Bridgeton", "state": "MO", "zip": "63044"},
+    "Copart Kansas City East": {"phone": "(816) 252-0700", "address": "18801 E Valley View Pkwy", "city": "Independence", "state": "MO", "zip": "64055"},
+    "Copart Springfield": {"phone": "(417) 889-3600", "address": "3350 E Talmage St", "city": "Springfield", "state": "MO", "zip": "65803"},
+    # ── Nebraska ──
+    "Copart Omaha": {"phone": "(402) 896-3232", "address": "10425 S 144th St", "city": "Omaha", "state": "NE", "zip": "68138"},
+    "Copart Lincoln": {"phone": "(402) 466-1800", "address": "5544 W Huntington Ave", "city": "Lincoln", "state": "NE", "zip": "68521"},
+    # ── Nevada ──
+    "Copart Las Vegas": {"phone": "(702) 263-0610", "address": "4650 Mitchell St", "city": "North Las Vegas", "state": "NV", "zip": "89081"},
+    "Copart Reno": {"phone": "(775) 331-3300", "address": "8185 Mushroom Rd", "city": "Reno", "state": "NV", "zip": "89506"},
+    # ── New Hampshire ──
+    "Copart Candia": {"phone": "(603) 483-8300", "address": "15 Depot Rd", "city": "Candia", "state": "NH", "zip": "03034"},
+    # ── New Jersey ──
+    "Copart Newark": {"phone": "(973) 589-5678", "address": "55 Lyon St", "city": "Newark", "state": "NJ", "zip": "07105"},
+    "Copart Somerville": {"phone": "(908) 707-0404", "address": "301 Old York Rd", "city": "Bridgewater", "state": "NJ", "zip": "08807"},
+    "Copart Glassboro": {"phone": "(856) 307-4039", "address": "500 Sharptown Auburn Rd", "city": "Swedesboro", "state": "NJ", "zip": "08085"},
+    "Copart Trenton": {"phone": "(609) 890-4900", "address": "400 Shiloh Rd", "city": "Hamilton", "state": "NJ", "zip": "08691"},
+    # ── New Mexico ──
+    "Copart Albuquerque": {"phone": "(505) 352-5000", "address": "10300 Avalon Rd NW", "city": "Albuquerque", "state": "NM", "zip": "87105"},
+    # ── New York ──
+    "Copart Brookhaven": {"phone": "(631) 289-3535", "address": "130 Horseblock Rd", "city": "Brookhaven", "state": "NY", "zip": "11719"},
+    "Copart Newburgh": {"phone": "(845) 567-7820", "address": "1392 Route 300", "city": "Newburgh", "state": "NY", "zip": "12550"},
+    "Copart Albany": {"phone": "(518) 465-3200", "address": "1604 State Route 9P", "city": "Saratoga Springs", "state": "NY", "zip": "12866"},
+    "Copart Rochester": {"phone": "(585) 426-6300", "address": "1800 Scottsville Rd", "city": "Rochester", "state": "NY", "zip": "14623"},
+    "Copart Buffalo": {"phone": "(716) 662-0600", "address": "3156 S Park Ave", "city": "Lackawanna", "state": "NY", "zip": "14218"},
+    "Copart Syracuse": {"phone": "(315) 437-2700", "address": "7500 E Taft Rd", "city": "Syracuse", "state": "NY", "zip": "13212"},
+    # ── North Carolina ──
+    "Copart Charlotte": {"phone": "(704) 391-4146", "address": "3425 Highway 601 S", "city": "Concord", "state": "NC", "zip": "28025"},
+    "Copart Raleigh": {"phone": "(919) 553-3715", "address": "261 Hwy 210 East", "city": "Angier", "state": "NC", "zip": "27501"},
+    "Copart China Grove": {"phone": "(704) 857-9380", "address": "2011 E Main St", "city": "China Grove", "state": "NC", "zip": "28023"},
+    "Copart Lumberton": {"phone": "(910) 618-2600", "address": "105 VFW Rd", "city": "Lumberton", "state": "NC", "zip": "28358"},
+    "Copart Mebane": {"phone": "(919) 563-8777", "address": "1600 S Third St", "city": "Mebane", "state": "NC", "zip": "27302"},
+    # ── Ohio ──
+    "Copart Columbus": {"phone": "(614) 443-6503", "address": "1155 S High St", "city": "Columbus", "state": "OH", "zip": "43207"},
+    "Copart Cleveland": {"phone": "(330) 225-2000", "address": "8787 Columbia Rd", "city": "Valley View", "state": "OH", "zip": "44125"},
+    "Copart Cleveland West": {"phone": "(440) 327-5959", "address": "46920 Middle Ridge Rd", "city": "Lorain", "state": "OH", "zip": "44053"},
+    "Copart Cincinnati": {"phone": "(513) 771-8255", "address": "985 E Crescentville Rd", "city": "Cincinnati", "state": "OH", "zip": "45246"},
+    "Copart Dayton": {"phone": "(937) 233-7332", "address": "5600 N Dixie Dr", "city": "Dayton", "state": "OH", "zip": "45414"},
+    "Copart Akron": {"phone": "(330) 628-3377", "address": "5443 S Arlington Rd", "city": "Akron", "state": "OH", "zip": "44319"},
+    # ── Oklahoma ──
+    "Copart Oklahoma City": {"phone": "(405) 631-3337", "address": "7300 S Byers Ave", "city": "Oklahoma City", "state": "OK", "zip": "73149"},
+    "Copart Tulsa": {"phone": "(918) 437-7000", "address": "900 N Union Ave", "city": "Tulsa", "state": "OK", "zip": "74127"},
+    # ── Oregon ──
+    "Copart Portland": {"phone": "(503) 257-1110", "address": "15001 NE Cabot Ct", "city": "Portland", "state": "OR", "zip": "97230"},
+    "Copart Eugene": {"phone": "(541) 689-7111", "address": "4550 Cloudburst Way", "city": "Eugene", "state": "OR", "zip": "97402"},
+    # ── Pennsylvania ──
+    "Copart Philadelphia": {"phone": "(215) 365-7335", "address": "790 E Pennsylvania Blvd", "city": "Feasterville", "state": "PA", "zip": "19053"},
+    "Copart Pittsburgh": {"phone": "(724) 457-1964", "address": "100 Industrial Blvd", "city": "West Mifflin", "state": "PA", "zip": "15122"},
+    "Copart Harrisburg": {"phone": "(717) 564-6110", "address": "200 S Hershey Rd", "city": "Harrisburg", "state": "PA", "zip": "17112"},
+    "Copart Allentown": {"phone": "(610) 395-0700", "address": "5447 Catasauqua Rd", "city": "Whitehall", "state": "PA", "zip": "18052"},
+    "Copart Scranton": {"phone": "(570) 346-9000", "address": "1200 Sans Souci Pkwy", "city": "Hanover Township", "state": "PA", "zip": "18706"},
+    # ── Rhode Island ──
+    "Copart Exeter": {"phone": "(401) 294-6600", "address": "10 Industrial Dr", "city": "Exeter", "state": "RI", "zip": "02822"},
+    # ── South Carolina ──
+    "Copart Columbia": {"phone": "(803) 754-7100", "address": "2232 Fish Hatchery Rd", "city": "West Columbia", "state": "SC", "zip": "29172"},
+    "Copart Spartanburg": {"phone": "(864) 578-8680", "address": "8529 Asheville Hwy", "city": "Spartanburg", "state": "SC", "zip": "29303"},
+    "Copart Charleston": {"phone": "(843) 821-0441", "address": "2100 County Line Rd", "city": "Ladson", "state": "SC", "zip": "29456"},
+    # ── Tennessee ──
+    "Copart Nashville": {"phone": "(615) 399-4219", "address": "1609 Antioch Pike", "city": "Nashville", "state": "TN", "zip": "37211"},
+    "Copart Memphis": {"phone": "(901) 345-4985", "address": "4609 E Raines Rd", "city": "Memphis", "state": "TN", "zip": "38118"},
+    "Copart Knoxville": {"phone": "(865) 947-6490", "address": "5300 Clinton Hwy", "city": "Knoxville", "state": "TN", "zip": "37912"},
+    "Copart Chattanooga": {"phone": "(423) 894-7300", "address": "2728 E 37th St", "city": "Chattanooga", "state": "TN", "zip": "37407"},
+    # ── Texas ──
     "Copart Houston": {"phone": "(281) 999-0440", "address": "2535 West Rd", "city": "Houston", "state": "TX", "zip": "77038"},
     "Copart Houston East": {"phone": "(713) 450-3055", "address": "16602 East Fwy", "city": "Channelview", "state": "TX", "zip": "77530"},
     "Copart Dallas": {"phone": "(972) 225-7602", "address": "505 S Central Expy", "city": "Grand Prairie", "state": "TX", "zip": "75051"},
     "Copart Ft Worth": {"phone": "(817) 447-4951", "address": "3748 McPherson Blvd", "city": "Fort Worth", "state": "TX", "zip": "76140"},
     "Copart San Antonio": {"phone": "(210) 628-2622", "address": "11275 Applewhite Rd", "city": "San Antonio", "state": "TX", "zip": "78224"},
     "Copart Austin": {"phone": "(512) 821-0150", "address": "2191 Highway 21 W", "city": "Dale", "state": "TX", "zip": "78616"},
-    "Copart Newark": {"phone": "(973) 589-5678", "address": "55 Lyon St", "city": "Newark", "state": "NJ", "zip": "07105"},
-    "Copart Somerville": {"phone": "(908) 707-0404", "address": "301 Old York Rd", "city": "Bridgewater", "state": "NJ", "zip": "08807"},
-    "Copart Glassboro": {"phone": "(856) 307-4039", "address": "500 Sharptown Auburn Rd", "city": "Swedesboro", "state": "NJ", "zip": "08085"},
-    "Copart Brookhaven": {"phone": "(631) 289-3535", "address": "130 Horseblock Rd", "city": "Brookhaven", "state": "NY", "zip": "11719"},
-    "Copart Newburgh": {"phone": "(845) 567-7820", "address": "1392 Route 300", "city": "Newburgh", "state": "NY", "zip": "12550"},
-    "Copart Los Angeles": {"phone": "(818) 890-8944", "address": "14360 Aetna St", "city": "Van Nuys", "state": "CA", "zip": "91401"},
-    "Copart Sun Valley": {"phone": "(818) 767-5580", "address": "8507 Tujunga Ave", "city": "Sun Valley", "state": "CA", "zip": "91352"},
-    "Copart Rancho Cucamonga": {"phone": "(909) 476-2257", "address": "9701 Cherry Ave", "city": "Fontana", "state": "CA", "zip": "92335"},
-    "Copart Sacramento": {"phone": "(916) 991-5555", "address": "8110 Calvine Rd", "city": "Sacramento", "state": "CA", "zip": "95828"},
-    "Copart San Diego": {"phone": "(619) 710-2636", "address": "2295 Otay Lakes Rd", "city": "Chula Vista", "state": "CA", "zip": "91914"},
-    "Copart Chicago North": {"phone": "(708) 891-6800", "address": "16401 S Lathrop Ave", "city": "Harvey", "state": "IL", "zip": "60426"},
-    "Copart Chicago South": {"phone": "(773) 568-2448", "address": "13300 S Western Ave", "city": "Blue Island", "state": "IL", "zip": "60406"},
-    "Copart Littleton": {"phone": "(303) 791-1001", "address": "8300 Blakeland Dr", "city": "Littleton", "state": "CO", "zip": "80125"},
-    "Copart Denver": {"phone": "(303) 307-0096", "address": "8201 E 96th Ave", "city": "Henderson", "state": "CO", "zip": "80640"},
-    "Copart Portland": {"phone": "(503) 257-1110", "address": "15001 NE Cabot Ct", "city": "Portland", "state": "OR", "zip": "97230"},
+    "Copart Corpus Christi": {"phone": "(361) 289-7277", "address": "4701 Agnes St", "city": "Corpus Christi", "state": "TX", "zip": "78405"},
+    "Copart El Paso": {"phone": "(915) 855-7700", "address": "14564 Gateway Blvd W", "city": "El Paso", "state": "TX", "zip": "79927"},
+    "Copart Lufkin": {"phone": "(936) 639-3128", "address": "5606 US Highway 59 N", "city": "Lufkin", "state": "TX", "zip": "75904"},
+    "Copart Abilene": {"phone": "(325) 695-8555", "address": "7150 Interstate 20 W", "city": "Abilene", "state": "TX", "zip": "79601"},
+    "Copart Waco": {"phone": "(254) 662-0900", "address": "5609 Texas Central Pkwy", "city": "Waco", "state": "TX", "zip": "76712"},
+    "Copart Andrews": {"phone": "(432) 524-6666", "address": "204 NW 4200", "city": "Andrews", "state": "TX", "zip": "79714"},
+    "Copart Crashedtoys Dallas": {"phone": "(972) 225-7602", "address": "505 S Central Expy", "city": "Grand Prairie", "state": "TX", "zip": "75051"},
+    # ── Utah ──
+    "Copart Salt Lake City": {"phone": "(801) 596-5700", "address": "750 S 4070 W", "city": "Salt Lake City", "state": "UT", "zip": "84104"},
+    "Copart Ogden": {"phone": "(801) 399-8644", "address": "1600 S 1100 W", "city": "Ogden", "state": "UT", "zip": "84401"},
+    # ── Virginia ──
+    "Copart Richmond": {"phone": "(804) 232-6700", "address": "1200 E Belt Blvd", "city": "Richmond", "state": "VA", "zip": "23224"},
+    "Copart Hampton": {"phone": "(757) 826-3699", "address": "410 E Mercury Blvd", "city": "Hampton", "state": "VA", "zip": "23669"},
+    "Copart Fredericksburg": {"phone": "(540) 786-3000", "address": "600 Southpoint Pkwy", "city": "Fredericksburg", "state": "VA", "zip": "22407"},
+    "Copart Danville": {"phone": "(434) 793-2400", "address": "153 Highway 29 Bus", "city": "Danville", "state": "VA", "zip": "24541"},
+    "Copart Suffolk": {"phone": "(757) 539-6000", "address": "2533 Pruden Blvd", "city": "Suffolk", "state": "VA", "zip": "23434"},
+    # ── Washington ──
     "Copart Seattle": {"phone": "(253) 735-2620", "address": "2800 W Commodore Way", "city": "Seattle", "state": "WA", "zip": "98199"},
-    "Copart Phoenix": {"phone": "(602) 243-7301", "address": "1211 N 59th Ave", "city": "Phoenix", "state": "AZ", "zip": "85043"},
-    "Copart Tucson": {"phone": "(520) 574-0303", "address": "2701 N Dos Amigos Dr", "city": "Tucson", "state": "AZ", "zip": "85745"},
-    "Copart Las Vegas": {"phone": "(702) 263-0610", "address": "4650 Mitchell St", "city": "North Las Vegas", "state": "NV", "zip": "89081"},
-    "Copart Detroit": {"phone": "(734) 479-4579", "address": "8251 Rawsonville Rd", "city": "Belleville", "state": "MI", "zip": "48111"},
-    "Copart Philadelphia": {"phone": "(215) 365-7335", "address": "790 E Pennsylvania Blvd", "city": "Feasterville", "state": "PA", "zip": "19053"},
-    "Copart Pittsburgh": {"phone": "(724) 457-1964", "address": "100 Industrial Blvd", "city": "West Mifflin", "state": "PA", "zip": "15122"},
-    "Copart Charlotte": {"phone": "(704) 391-4146", "address": "3425 Highway 601 S", "city": "Concord", "state": "NC", "zip": "28025"},
-    "Copart Raleigh": {"phone": "(919) 553-3715", "address": "261 Hwy 210 East", "city": "Angier", "state": "NC", "zip": "27501"},
-    "Copart Nashville": {"phone": "(615) 399-4219", "address": "1609 Antioch Pike", "city": "Nashville", "state": "TN", "zip": "37211"},
-    "Copart Memphis": {"phone": "(901) 345-4985", "address": "4609 E Raines Rd", "city": "Memphis", "state": "TN", "zip": "38118"},
-    "Copart Boston": {"phone": "(508) 384-3304", "address": "139 W Main St", "city": "Norton", "state": "MA", "zip": "02766"},
-    "Copart North Boston": {"phone": "(978) 772-2300", "address": "77 Fitchburg Rd", "city": "Ayer", "state": "MA", "zip": "01432"},
-    "Copart Exeter": {"phone": "(401) 294-6600", "address": "10 Industrial Dr", "city": "Exeter", "state": "RI", "zip": "02822"},
+    "Copart Spokane": {"phone": "(509) 928-2020", "address": "16002 E Euclid Ave", "city": "Spokane Valley", "state": "WA", "zip": "99216"},
+    "Copart North Seattle": {"phone": "(360) 805-4500", "address": "2001 N Broadway", "city": "Everett", "state": "WA", "zip": "98201"},
+    "Copart Pasco": {"phone": "(509) 547-3633", "address": "2606 E Ainsworth Ave", "city": "Pasco", "state": "WA", "zip": "99301"},
+    # ── West Virginia ──
+    "Copart Charleston WV": {"phone": "(304) 756-2855", "address": "1200 MacCorkle Ave SE", "city": "Charleston", "state": "WV", "zip": "25314"},
+    # ── Wisconsin ──
+    "Copart Milwaukee": {"phone": "(414) 764-8600", "address": "8800 S 13th St", "city": "Oak Creek", "state": "WI", "zip": "53154"},
+    "Copart Madison": {"phone": "(608) 222-5200", "address": "5500 Femrite Dr", "city": "Madison", "state": "WI", "zip": "53718"},
 }
 
 # ─── IAA Locations ───────────────────────────────────────────────────────────

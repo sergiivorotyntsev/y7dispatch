@@ -575,17 +575,19 @@ Vehicle operability detection:
                 if result.auction_type == "COPART" and ("pickup_city" in result.fields or "pickup_zip" in result.fields):
                     city = str(result.fields.get("pickup_city", ExtractedField(value="")).value or "").strip()
                     new_name = _copart_name_from_city(city, result.fields) if city else None
+                    directory_matched = new_name and not new_name.startswith("COPART - ")
                     # If directory match found, correct ALL pickup fields from directory
-                    if new_name and not new_name.startswith("COPART - "):
+                    if directory_matched:
                         try:
                             from services.auction_directory import COPART_LOCATIONS
                             loc = COPART_LOCATIONS.get(new_name, {})
+                            verified_source = FieldSource.VALIDATED
                             # Correct pickup_city
                             dir_city = loc.get("city", "")
                             if dir_city and dir_city.upper() != city.upper():
                                 logger.info("Copart pickup_city corrected: %r -> %r (via directory)", city, dir_city.upper())
                                 result.fields["pickup_city"] = ExtractedField(
-                                    value=dir_city.upper(), confidence=0.95, source=FieldSource.EXTRACTED)
+                                    value=dir_city.upper(), confidence=0.95, source=verified_source)
                             # Correct pickup_state
                             dir_state = loc.get("state", "")
                             if dir_state:
@@ -593,7 +595,7 @@ Vehicle operability detection:
                                 if dir_state.upper() != old_state.upper():
                                     logger.info("Copart pickup_state corrected: %r -> %r (via directory)", old_state, dir_state.upper())
                                 result.fields["pickup_state"] = ExtractedField(
-                                    value=dir_state.upper(), confidence=0.95, source=FieldSource.EXTRACTED)
+                                    value=dir_state.upper(), confidence=0.95, source=verified_source)
                             # Correct pickup_zip
                             dir_zip = loc.get("zip", "")
                             if dir_zip:
@@ -601,7 +603,7 @@ Vehicle operability detection:
                                 if dir_zip != old_zip:
                                     logger.info("Copart pickup_zip corrected: %r -> %r (via directory)", old_zip, dir_zip)
                                 result.fields["pickup_zip"] = ExtractedField(
-                                    value=dir_zip, confidence=0.95, source=FieldSource.EXTRACTED)
+                                    value=dir_zip, confidence=0.95, source=verified_source)
                             # Correct pickup_address
                             dir_address = loc.get("address", "")
                             if dir_address:
@@ -609,7 +611,7 @@ Vehicle operability detection:
                                 if dir_address.upper() != old_addr.upper():
                                     logger.info("Copart pickup_address corrected: %r -> %r (via directory)", old_addr, dir_address.upper())
                                 result.fields["pickup_address"] = ExtractedField(
-                                    value=dir_address.upper(), confidence=0.95, source=FieldSource.EXTRACTED)
+                                    value=dir_address.upper(), confidence=0.95, source=verified_source)
                         except Exception:
                             pass
                     if new_name:
@@ -623,8 +625,19 @@ Vehicle operability detection:
                             result.fields["pickup_name"] = ExtractedField(
                                 value=new_name,
                                 confidence=0.95,
-                                source=FieldSource.EXTRACTED,
+                                source=FieldSource.VALIDATED if directory_matched else FieldSource.EXTRACTED,
                             )
+                    # Set pickup_verified flag — flows into outputs_json automatically
+                    if directory_matched:
+                        result.fields["pickup_verified"] = ExtractedField(
+                            value=True, confidence=1.0, source=FieldSource.VALIDATED)
+                    else:
+                        logger.warning(
+                            "Copart pickup address UNVERIFIED: city=%r not in directory (name=%r)",
+                            city, new_name,
+                        )
+                        result.fields["pickup_verified"] = ExtractedField(
+                            value=False, confidence=1.0, source=FieldSource.EXTRACTED)
 
                 # Calculate overall confidence
                 if result.fields:

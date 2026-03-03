@@ -60,7 +60,7 @@ function FieldRow({ field, value, source, category, isValid, error }) {
   )
 }
 
-export default function ExportPreviewModal({ extractionId, documentId, onClose, onExport, overrides }) {
+export default function ExportPreviewModal({ extractionId, documentId, onClose, onExport, overrides, fieldOverrides }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [previewData, setPreviewData] = useState(null)
@@ -77,7 +77,7 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     setError(null)
     try {
       // Load preview data from API with operator overrides
-      const preview = await api.previewCDPayload(extractionId, overrides || null)
+      const preview = await api.previewCDPayload(extractionId, overrides || null, fieldOverrides || null)
       setPreviewData(preview)
 
       // Try to get field sources from extraction
@@ -105,7 +105,7 @@ export default function ExportPreviewModal({ extractionId, documentId, onClose, 
     const wasRetry = retryMode || !!exportError
     setExportError(null)
     try {
-      const result = await api.exportToCD([extractionId], dryRun, true, wasRetry, overrides || null)
+      const result = await api.exportToCD([extractionId], dryRun, true, wasRetry, overrides || null, fieldOverrides || null)
       if (dryRun) {
         // Show dry run results in modal — don't close
         setDryRunResult(result)

@@ -404,15 +404,15 @@ export const api = {
   getAttachmentUrl: (runId, filename) => `${BASE_URL}/documents/${runId}/attachments/${encodeURIComponent(filename)}`,
 
   // Exports
-  exportToCD: (runIds, dryRun = true, sandbox = true, force = false, overrides = null) => request(`/exports/central-dispatch?force=${force}`, {
+  exportToCD: (runIds, dryRun = true, sandbox = true, force = false, overrides = null, fieldOverrides = null) => request(`/exports/central-dispatch?force=${force}`, {
     method: 'POST',
-    body: JSON.stringify({ run_ids: runIds, dry_run: dryRun, sandbox, overrides }),
+    body: JSON.stringify({ run_ids: runIds, dry_run: dryRun, sandbox, overrides, field_overrides: fieldOverrides || null }),
   }),
-  previewCDPayload: (runId, overrides = null) => {
-    if (overrides) {
+  previewCDPayload: (runId, overrides = null, fieldOverrides = null) => {
+    if (overrides || fieldOverrides) {
       return request(`/exports/central-dispatch/preview/${runId}`, {
         method: 'POST',
-        body: JSON.stringify(overrides),
+        body: JSON.stringify({ overrides: overrides || null, field_overrides: fieldOverrides || null }),
       })
     }
     return request(`/exports/central-dispatch/preview/${runId}`)
