@@ -2261,18 +2261,22 @@ async def get_extraction_run(id: int):
     """Get detailed extraction run with field-level outputs."""
     import logging
 
+    from api.database import get_connection
+
     logger = logging.getLogger(__name__)
 
     try:
-        run = ExtractionRunRepository.get_by_id(id)
-        if not run:
-            raise HTTPException(status_code=404, detail="Extraction run not found")
+        # Single connection for all Repository calls (thread-local reuse)
+        with get_connection():
+            run = ExtractionRunRepository.get_by_id(id)
+            if not run:
+                raise HTTPException(status_code=404, detail="Extraction run not found")
 
-        doc = DocumentRepository.get_by_id(run.document_id)
-        at = AuctionTypeRepository.get_by_id(run.auction_type_id)
+            doc = DocumentRepository.get_by_id(run.document_id)
+            at = AuctionTypeRepository.get_by_id(run.auction_type_id)
 
-        # Get review items (extracted fields) with safe type conversion
-        review_items = ReviewItemRepository.get_by_run(run.id)
+            # Get review items (extracted fields) with safe type conversion
+            review_items = ReviewItemRepository.get_by_run(run.id)
         fields = []
         for item in review_items:
             try:

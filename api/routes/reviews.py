@@ -98,6 +98,28 @@ class ReviewRunResponse(BaseModel):
     total_count: int
 
 
+class ReviewCoreDocumentInfo(BaseModel):
+    """Document info subset for Review page core endpoint."""
+
+    id: int
+    source: str = "upload"
+    email_metadata_json: Optional[str] = None
+    hold_reason: Optional[str] = None
+    hold_note: Optional[str] = None
+
+
+class ReviewCoreResponse(BaseModel):
+    """Combined response for Review page Stream 1.
+
+    Returns extraction run + document info + enriched review items in one request.
+    Replaces 3 separate API calls (getExtraction + getDocument + getReviewItems).
+    """
+
+    run: dict
+    document: Optional[ReviewCoreDocumentInfo] = None
+    items: list[ReviewItemResponse]
+
+
 class ReviewItemUpdate(BaseModel):
     """Update a single review item. Item_id is REQUIRED for proper binding."""
 
@@ -237,6 +259,102 @@ class PreflightResponse(BaseModel):
 # =============================================================================
 
 
+@router.get("/{run_id}/core", response_model=ReviewCoreResponse)
+async def get_review_core(run_id: int):
+    """Combined endpoint for Review page Stream 1.
+
+    Returns extraction run + document + enriched review items in one request.
+    Replaces 3 separate API calls (getExtraction + getDocument + getReviewItems).
+    Uses a single DB connection for all 4 repository calls.
+    """
+    import json
+
+    from api.database import get_connection
+    from api.listing_fields import get_registry
+
+    with get_connection():
+        run = ExtractionRunRepository.get_by_id(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Extraction run not found")
+
+        doc = DocumentRepository.get_by_id(run.document_id)
+        at = AuctionTypeRepository.get_by_id(run.auction_type_id)
+        items = ReviewItemRepository.get_by_run(run_id)
+
+    # Build run dict (same shape as ExtractionRunResponse from extractions.py)
+    outputs = run.outputs_json
+    if outputs is None:
+        outputs = {}
+    elif isinstance(outputs, str):
+        try:
+            outputs = json.loads(outputs)
+        except json.JSONDecodeError:
+            outputs = {}
+
+    run_dict = {
+        "id": run.id,
+        "uuid": run.uuid,
+        "document_id": run.document_id,
+        "document_filename": doc.filename if doc else None,
+        "auction_type_id": run.auction_type_id,
+        "auction_type_code": at.code if at else None,
+        "extractor_kind": run.extractor_kind,
+        "model_version_id": run.model_version_id,
+        "status": run.status,
+        "extraction_score": run.extraction_score,
+        "outputs": outputs,
+        "errors": run.errors_json,
+        "processing_time_ms": run.processing_time_ms,
+        "created_at": run.created_at,
+        "completed_at": run.completed_at,
+        "processing_step": run.processing_step,
+        "processing_message": run.processing_message,
+    }
+
+    # Build document info
+    doc_info = None
+    if doc:
+        doc_info = ReviewCoreDocumentInfo(
+            id=doc.id,
+            source=doc.source,
+            email_metadata_json=doc.email_metadata_json,
+            hold_reason=doc.hold_reason,
+            hold_note=doc.hold_note,
+        )
+
+    # Enrich review items with field metadata (same logic as get_review_for_run)
+    registry = get_registry()
+    item_responses = []
+    for item in items:
+        field_def = registry.get_field(item.source_key)
+        item_responses.append(
+            ReviewItemResponse(
+                id=item.id,
+                run_id=item.run_id,
+                source_key=item.source_key,
+                internal_key=item.internal_key,
+                cd_key=item.cd_key,
+                display_name=field_def.label if field_def else _format_field_label(item.source_key),
+                predicted_value=item.predicted_value,
+                corrected_value=item.corrected_value,
+                is_match_ok=item.is_match_ok,
+                export_field=item.export_field,
+                confidence=item.confidence,
+                section=field_def.section.value if field_def else None,
+                field_type=field_def.field_type.value if field_def else "text",
+                required=field_def.required if field_def else False,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+        )
+
+    return ReviewCoreResponse(
+        run=run_dict,
+        document=doc_info,
+        items=item_responses,
+    )
+
+
 @router.get("/{run_id}", response_model=ReviewRunResponse)
 async def get_review_for_run(run_id: int):
     """
@@ -245,16 +363,19 @@ async def get_review_for_run(run_id: int):
     Returns the extraction run info and all review items to be reviewed.
     Enriches items with field metadata (display_name, section, etc.) from ListingFieldRegistry.
     """
+    from api.database import get_connection
     from api.listing_fields import get_registry
 
-    run = ExtractionRunRepository.get_by_id(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Extraction run not found")
+    # Single connection for all Repository calls (thread-local reuse)
+    with get_connection():
+        run = ExtractionRunRepository.get_by_id(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Extraction run not found")
 
-    doc = DocumentRepository.get_by_id(run.document_id)
-    at = AuctionTypeRepository.get_by_id(run.auction_type_id)
+        doc = DocumentRepository.get_by_id(run.document_id)
+        at = AuctionTypeRepository.get_by_id(run.auction_type_id)
 
-    items = ReviewItemRepository.get_by_run(run_id)
+        items = ReviewItemRepository.get_by_run(run_id)
 
     # Get field registry for metadata enrichment
     registry = get_registry()

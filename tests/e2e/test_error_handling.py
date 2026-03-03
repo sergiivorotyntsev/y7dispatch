@@ -780,6 +780,38 @@ class TestReviewErrors:
         resp = client.get("/api/review/999999")
         assert resp.status_code == 404
 
+    def test_get_review_core_not_found(self, client):
+        resp = client.get("/api/review/999999/core")
+        assert resp.status_code == 404
+
+    def test_get_review_core_returns_combined_data(self, client, sample_pdf_bytes):
+        """Review core endpoint returns run + document + items in one response."""
+        at_id = _get_auction_type_id(client)
+        doc_id, run_id = _upload_document(client, sample_pdf_bytes, at_id)
+        if not run_id:
+            run_id = _ensure_run(client, doc_id, at_id)
+        assert run_id is not None
+
+        resp = client.get(f"/api/review/{run_id}/core")
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # Verify run structure
+        assert "run" in data
+        assert data["run"]["id"] == run_id
+        assert data["run"]["document_id"] == doc_id
+        assert "outputs" in data["run"]
+        assert "status" in data["run"]
+
+        # Verify document info
+        assert "document" in data
+        assert data["document"]["id"] == doc_id
+        assert "source" in data["document"]
+
+        # Verify items list exists
+        assert "items" in data
+        assert isinstance(data["items"], list)
+
     def test_submit_review_invalid_run(self, client):
         resp = client.post(
             "/api/review/submit",

@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,6 +13,22 @@ from typing import Any, Optional
 # Database path - can be overridden via DATABASE_PATH environment variable
 _default_db_path = Path(__file__).parent.parent / "data" / "control_panel.db"
 DB_PATH = Path(os.environ.get("DATABASE_PATH", str(_default_db_path)))
+
+# Thread-local storage for connection reuse.
+# Each thread gets at most one open connection. Nested get_connection() calls
+# within the same thread reuse the existing connection instead of opening a new one.
+# This reduces connection overhead from ~9 per Review page request to 1.
+_local = threading.local()
+
+
+def _apply_pragmas(conn):
+    """Apply SQLite performance PRAGMAs to a new connection."""
+    conn.execute("PRAGMA journal_mode=WAL")         # Concurrent reads during writes
+    conn.execute("PRAGMA busy_timeout=5000")         # 5s wait instead of instant SQLITE_BUSY
+    conn.execute("PRAGMA synchronous=NORMAL")        # Safe with WAL, ~2x faster than FULL
+    conn.execute("PRAGMA cache_size=-8000")           # 8MB cache (default 2MB)
+    conn.execute("PRAGMA temp_store=MEMORY")          # Temp tables in RAM
+    # conn.execute("PRAGMA foreign_keys=ON")           # Enable after data cleanup — tests have orphan rows
 
 
 def init_db():
@@ -37,13 +54,36 @@ def init_db():
 
 @contextmanager
 def get_connection():
-    """Get a database connection."""
+    """Get a database connection, reusing within the same thread.
+
+    Thread-local connection reuse: the first call in a thread creates a connection
+    and applies PRAGMAs. Nested calls (e.g. Repository methods called within a
+    route handler's ``with get_connection()`` block) reuse the same connection.
+    The connection is closed only when the outermost context manager exits.
+    """
+    # Nested call — reuse existing connection
+    if getattr(_local, 'conn', None) is not None:
+        _local.depth += 1
+        try:
+            yield _local.conn
+        finally:
+            _local.depth -= 1
+        return
+
+    # First call in this thread — create new connection
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
+    _apply_pragmas(conn)
+
+    _local.conn = conn
+    _local.depth = 1
     try:
         yield conn
     finally:
-        conn.close()
+        _local.depth -= 1
+        if _local.depth == 0:
+            _local.conn = None
+            conn.close()
 
 
 

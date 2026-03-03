@@ -235,6 +235,7 @@ export const api = {
   }),
 
   // Reviews (endpoint is /api/review, not /api/reviews)
+  getReviewCore: (runId) => request(`/review/${runId}/core`),
   getReviewItems: async (runId) => {
     // Backend returns { items: [...], run_id, ... } at /api/review/{run_id}
     const response = await request(`/review/${runId}`)

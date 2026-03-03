@@ -198,7 +198,8 @@ function Review() {
   // LOADING ARCHITECTURE — 5 INDEPENDENT STREAMS
   //
   // Stream 1 (FAST, <500ms): Core data — ONLY thing that blocks page render
-  //   → extraction + document + review items → setLoading(false) → RENDER
+  //   → api.getReviewCore(runId) → run + document + review items (1 API call)
+  //   → setLoading(false) → RENDER
   //
   // Stream 2: Warehouses — independent, populates DeliverySection dropdown
   //   → api.listWarehouses() → setWarehouses (DeliverySection fetches distance internally)
@@ -223,35 +224,28 @@ function Review() {
   // ═══════════════════════════════════════════════════════════════
 
   // === STREAM 1: Core data (FAST — the ONLY thing that blocks page render) ===
+  // Single API call replaces 3 (getExtraction + getDocument + getReviewItems)
   const fetchData = useCallback(async () => {
     if (!runId) return
 
     setLoading(true)
     setError(null)
     try {
-      const runData = await api.getExtraction(runId)
-      setRun(runData.run)
+      const data = await api.getReviewCore(runId)
+      setRun(data.run)
 
-      if (runData.run?.document_id) {
-        setPdfUrl(`/api/documents/${runData.run.document_id}/file`)
+      if (data.run?.document_id) {
+        setPdfUrl(`/api/documents/${data.run.document_id}/file`)
       }
 
-      // Parallelize document metadata + review items (both independent after extraction)
-      const [docResult, itemsData] = await Promise.all([
-        runData.run?.document_id
-          ? api.getDocument(runData.run.document_id).catch(err => {
-              console.debug('Could not load document details:', err.message)
-              return null
-            })
-          : Promise.resolve(null),
-        api.getReviewItems(runId),
-      ])
-      if (docResult) setDocument(docResult)
-      setItems(itemsData.items || [])
+      if (data.document) setDocument(data.document)
+
+      const reviewItems = data.items || []
+      setItems(reviewItems)
 
       // Initialize field values with enriched metadata from API
       const initialFields = {}
-      for (const item of (itemsData.items || [])) {
+      for (const item of reviewItems) {
         const fieldKey = item.source_key || item.cd_key
         initialFields[fieldKey] = {
           id: item.id,
@@ -270,13 +264,13 @@ function Review() {
       }
       // Inject gate_pass from outputs_json if review_items has no value for it.
       const existingGatePass = initialFields.gate_pass?.corrected || initialFields.gate_pass?.predicted
-      if (!existingGatePass && runData.run?.outputs?.gate_pass) {
+      if (!existingGatePass && data.run?.outputs?.gate_pass) {
         initialFields.gate_pass = {
           ...initialFields.gate_pass,
           key: 'gate_pass',
           label: 'Gate Pass',
-          predicted: runData.run.outputs.gate_pass,
-          corrected: runData.run.outputs.gate_pass,
+          predicted: data.run.outputs.gate_pass,
+          corrected: data.run.outputs.gate_pass,
           confidence: 1.0,
           status: 'correct',
           export: true,
@@ -288,7 +282,7 @@ function Review() {
 
       // Inject VIN from outputs_json (e.g. extracted from email subject) if review_items has no VIN
       const existingVin = initialFields.vin?.corrected || initialFields.vehicle_vin?.corrected
-      const outputVin = runData.run?.outputs?.vin || runData.run?.outputs?.vehicle_vin
+      const outputVin = data.run?.outputs?.vin || data.run?.outputs?.vehicle_vin
       if (!existingVin && outputVin) {
         initialFields.vin = {
           key: 'vin',
@@ -308,7 +302,7 @@ function Review() {
       setFields(initialFields)
 
       // Restore saved operator overrides from outputs_json
-      const out = runData.run?.outputs || {}
+      const out = data.run?.outputs || {}
       if (out.load_id) setLoadId(out.load_id)
       if (out.price_total != null && out.price_total !== '') setFinalPrice(String(out.price_total))
       else if (out.final_price != null && out.final_price !== '') setFinalPrice(String(out.final_price))
@@ -325,7 +319,7 @@ function Review() {
       if (out.warehouse_id) setSelectedWarehouse(String(out.warehouse_id))
 
       // Detect if already approved/exported
-      if (['approved', 'exported'].includes(runData.run?.status)) {
+      if (['approved', 'exported'].includes(data.run?.status)) {
         setIsApproved(true)
       }
 
@@ -340,12 +334,12 @@ function Review() {
         }
         if (out.desired_delivery_date) setDesiredDeliveryDate(out.desired_delivery_date)
       } else {
-        initializeDates(initialFields, runData.run?.auction_type_code)
+        initializeDates(initialFields, data.run?.auction_type_code)
       }
 
       // Set initial Load-Specific Terms for production mode
-      if (!isTrainingMode && runData.run?.auction_type_code) {
-        setLoadSpecificTerms(generateLoadSpecificTerms(runData.run.auction_type_code, null))
+      if (!isTrainingMode && data.run?.auction_type_code) {
+        setLoadSpecificTerms(generateLoadSpecificTerms(data.run.auction_type_code, null))
       }
     } catch (err) {
       setError(err.message)

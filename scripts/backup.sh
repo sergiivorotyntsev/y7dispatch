@@ -29,9 +29,18 @@ mkdir -p "$BACKUP_PATH"
 # Database (use SQLite online backup for safety)
 DB_PATH="$PROJECT_DIR/data/control_panel.db"
 if [ -f "$DB_PATH" ]; then
-    sqlite3 "$DB_PATH" ".backup '$BACKUP_PATH/control_panel.db'" 2>/dev/null || \
+    # Primary: online backup API (handles WAL correctly, produces clean single-file DB)
+    if sqlite3 "$DB_PATH" ".backup '$BACKUP_PATH/control_panel.db'" 2>/dev/null; then
+        echo "  DB: $(du -h "$BACKUP_PATH/control_panel.db" | cut -f1) (online backup)"
+    else
+        # Fallback: checkpoint WAL into main DB, then copy all DB files
+        sqlite3 "$DB_PATH" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
         cp "$DB_PATH" "$BACKUP_PATH/control_panel.db"
-    echo "  DB: $(du -h "$BACKUP_PATH/control_panel.db" | cut -f1)"
+        for ext in -wal -shm; do
+            [ -f "${DB_PATH}${ext}" ] && cp "${DB_PATH}${ext}" "$BACKUP_PATH/control_panel.db${ext}"
+        done
+        echo "  DB: $(du -h "$BACKUP_PATH/control_panel.db" | cut -f1) (file copy)"
+    fi
 else
     echo "  DB: not found (skipped)"
 fi

@@ -2408,4 +2408,23 @@ def _run_migrations():
         except Exception:
             pass  # Column already exists
 
+        # --- Performance indexes (Étap 3) ---
+
+        # 3.1: Covering index for correlated MAX(id) subquery in Documents list/stats/count
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_extraction_runs_doc_id_desc
+            ON extraction_runs(document_id, id DESC)
+        """)
+
+        # 3.2: Expression indexes on json_extract for exact-match queries (VIN duplicate detection)
+        # Note: LIKE '%x%' queries (documents search) cannot use indexes regardless of approach.
+        # Expression indexes require the query to use the EXACT same expression to benefit.
+        try:
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_runs_vin_expr
+                ON extraction_runs(json_extract(outputs_json, '$.vehicle_vin'))
+            """)
+        except Exception:
+            pass  # May fail on tables without outputs_json column (test fixtures)
+
         conn.commit()
