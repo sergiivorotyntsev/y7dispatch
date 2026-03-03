@@ -200,7 +200,7 @@ class TestOriginalPickupSaved:
         assert original["pickup_state"] == "MA"
         assert original["pickup_zip"] == "01432"
 
-        # Post-processed values should be from Copart North Boston directory
+        # Document values are preserved (not overwritten by directory)
         outputs, _ = normalize_haiku_result(result)
         assert outputs["pickup_city"] == "AYER"  # Ayer is correct city for 01432
         assert outputs["pickup_zip"] == "01432"
@@ -210,6 +210,10 @@ class TestOriginalPickupSaved:
         # _haiku_original_pickup should flow into outputs
         assert "_haiku_original_pickup" in outputs
         assert outputs["_haiku_original_pickup"]["pickup_address"] == "77 FITCHBURG ROAD"
+
+        # _directory_match_status should be set (confirmed or mismatch)
+        assert "_directory_match_status" in outputs
+        assert outputs["_directory_match_status"] in ("confirmed", "mismatch")
 
     def test_original_pickup_saved_for_iaa(self):
         """_haiku_original_pickup is saved for IAA too (no post-processing changes it)."""

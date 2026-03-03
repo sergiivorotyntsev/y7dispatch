@@ -358,6 +358,36 @@ function Review() {
     fetchData()
   }, [fetchData])
 
+  // === Async extraction polling ===
+  const [processingStep, setProcessingStep] = useState(null)
+  const [processingMessage, setProcessingMessage] = useState(null)
+
+  useEffect(() => {
+    if (!run || run.status !== 'processing') {
+      setProcessingStep(null)
+      setProcessingMessage(null)
+      return
+    }
+    setProcessingStep(run.processing_step || 'starting')
+    setProcessingMessage(run.processing_message || 'Starting extraction...')
+
+    const interval = setInterval(async () => {
+      try {
+        const status = await api.getRunStatus(runId)
+        setProcessingStep(status.processing_step)
+        setProcessingMessage(status.processing_message)
+        if (status.status !== 'processing' && status.status !== 'pending') {
+          clearInterval(interval)
+          fetchData()
+        }
+      } catch (err) {
+        console.error('Status poll error:', err)
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [run?.status, runId, fetchData])
+
   // === STREAM 2: Warehouses (INDEPENDENT — never blocks page) ===
   useEffect(() => {
     if (!run) return
@@ -879,6 +909,19 @@ function Review() {
     )
   }
 
+  if (run?.status === 'processing' || run?.status === 'pending') {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="spinner mx-auto mb-4" style={{width:48,height:48,border:'3px solid #bfdbfe',borderTopColor:'#3b82f6',borderRadius:'50%'}} />
+          <h2 style={{fontSize:18,fontWeight:600,color:'#1e40af',marginBottom:8}}>Extraction in Progress</h2>
+          <p style={{fontSize:14,color:'#3b82f6',marginBottom:4}}>{processingMessage || 'Processing...'}</p>
+          <p style={{fontSize:12,color:'#9ca3af'}}>Step: {processingStep || 'starting'}</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!run) {
     return (
       <div className="p-6">
@@ -1329,6 +1372,8 @@ function Review() {
             fields={fields}
             updateField={updateField}
             validation={validation}
+            directorySuggestion={run?.outputs?._directory_suggestion}
+            directoryMatchStatus={run?.outputs?._directory_match_status}
           />
 
           {/* Section 4: Delivery Location */}

@@ -602,42 +602,32 @@ Vehicle operability detection:
                     city = str(result.fields.get("pickup_city", ExtractedField(value="")).value or "").strip()
                     new_name = _copart_name_from_city(city, result.fields) if city else None
                     directory_matched = new_name and not new_name.startswith("COPART - ")
-                    # If directory match found, correct ALL pickup fields from directory
+                    # Compare document values against directory (advisory only — never overwrite)
                     if directory_matched:
                         try:
                             from services.auction_directory import COPART_LOCATIONS
                             loc = COPART_LOCATIONS.get(new_name, {})
-                            verified_source = FieldSource.VALIDATED
-                            # Correct pickup_city
-                            dir_city = loc.get("city", "")
-                            if dir_city and dir_city.upper() != city.upper():
-                                logger.info("Copart pickup_city corrected: %r -> %r (via directory)", city, dir_city.upper())
-                                result.fields["pickup_city"] = ExtractedField(
-                                    value=dir_city.upper(), confidence=0.95, source=verified_source)
-                            # Correct pickup_state
-                            dir_state = loc.get("state", "")
-                            if dir_state:
-                                old_state = str(result.fields.get("pickup_state", ExtractedField(value="")).value or "")
-                                if dir_state.upper() != old_state.upper():
-                                    logger.info("Copart pickup_state corrected: %r -> %r (via directory)", old_state, dir_state.upper())
-                                result.fields["pickup_state"] = ExtractedField(
-                                    value=dir_state.upper(), confidence=0.95, source=verified_source)
-                            # Correct pickup_zip
-                            dir_zip = loc.get("zip", "")
-                            if dir_zip:
-                                old_zip = str(result.fields.get("pickup_zip", ExtractedField(value="")).value or "")
-                                if dir_zip != old_zip:
-                                    logger.info("Copart pickup_zip corrected: %r -> %r (via directory)", old_zip, dir_zip)
-                                result.fields["pickup_zip"] = ExtractedField(
-                                    value=dir_zip, confidence=0.95, source=verified_source)
-                            # Correct pickup_address
-                            dir_address = loc.get("address", "")
-                            if dir_address:
-                                old_addr = str(result.fields.get("pickup_address", ExtractedField(value="")).value or "")
-                                if dir_address.upper() != old_addr.upper():
-                                    logger.info("Copart pickup_address corrected: %r -> %r (via directory)", old_addr, dir_address.upper())
-                                result.fields["pickup_address"] = ExtractedField(
-                                    value=dir_address.upper(), confidence=0.95, source=verified_source)
+                            dir_data = {
+                                "name": new_name,
+                                "address": loc.get("address", ""),
+                                "city": loc.get("city", ""),
+                                "state": loc.get("state", ""),
+                                "zip": loc.get("zip", ""),
+                            }
+                            all_match = True
+                            for key in ["address", "city", "state", "zip"]:
+                                doc_val = str(result.fields.get(f"pickup_{key}",
+                                              ExtractedField(value="")).value or "").strip().upper()
+                                dir_val = str(dir_data.get(key, "")).strip().upper()
+                                if dir_val and doc_val != dir_val:
+                                    all_match = False
+                            match_status = "confirmed" if all_match else "mismatch"
+                            if match_status == "mismatch":
+                                logger.info("Copart directory mismatch for %r: document values differ from directory", new_name)
+                            result.fields["_directory_match_status"] = ExtractedField(
+                                value=match_status, confidence=1.0, source=FieldSource.EXTRACTED)
+                            result.fields["_directory_suggestion"] = ExtractedField(
+                                value=dir_data, confidence=1.0, source=FieldSource.EXTRACTED)
                         except Exception:
                             pass
                     if new_name:
@@ -655,13 +645,18 @@ Vehicle operability detection:
                             )
                     # Set pickup_verified flag — flows into outputs_json automatically
                     if directory_matched:
+                        ms = result.fields.get("_directory_match_status")
+                        is_confirmed = ms and ms.value == "confirmed"
                         result.fields["pickup_verified"] = ExtractedField(
-                            value=True, confidence=1.0, source=FieldSource.VALIDATED)
+                            value=is_confirmed, confidence=1.0,
+                            source=FieldSource.VALIDATED if is_confirmed else FieldSource.EXTRACTED)
                     else:
                         logger.warning(
                             "Copart pickup address UNVERIFIED: city=%r not in directory (name=%r)",
                             city, new_name,
                         )
+                        result.fields["_directory_match_status"] = ExtractedField(
+                            value="not_found", confidence=1.0, source=FieldSource.EXTRACTED)
                         result.fields["pickup_verified"] = ExtractedField(
                             value=False, confidence=1.0, source=FieldSource.EXTRACTED)
 

@@ -123,12 +123,17 @@ async def validate_run(run_id: int):
         "pickup_zip": outputs.get("pickup_zip", ""),
     }
 
-    # Pass original Haiku extraction (before directory post-processing) if available.
-    # This allows validation to distinguish "verified" from "corrected_by_directory".
+    # Pass original Haiku extraction and pre-computed directory data if available.
     original_pickup = outputs.get("_haiku_original_pickup")
+    dir_match_status = outputs.get("_directory_match_status")
+    dir_suggestion = outputs.get("_directory_suggestion")
 
     addr_validator = PickupAddressValidator()
-    pickup_result = addr_validator.validate(auction_type, pickup_fields, original_pickup=original_pickup)
+    pickup_result = addr_validator.validate(
+        auction_type, pickup_fields,
+        original_pickup=original_pickup,
+        directory_match_status=dir_match_status,
+        directory_suggestion=dir_suggestion)
 
     # ── Summary ──────────────────────────────────────────────────
     summary = _build_summary(vehicle_result, pickup_result)

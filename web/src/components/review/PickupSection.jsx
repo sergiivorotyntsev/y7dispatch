@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import api from '../../api'
 
-function PickupSection({ fields, updateField, highlightedField, setHighlightedField, validation }) {
+function PickupSection({ fields, updateField, highlightedField, setHighlightedField, validation, directorySuggestion, directoryMatchStatus }) {
   const [phoneLookupStatus, setPhoneLookupStatus] = useState(null) // null | 'loading' | 'found' | 'not_found'
 
   const handlePhoneLookup = async () => {
@@ -63,17 +63,25 @@ function PickupSection({ fields, updateField, highlightedField, setHighlightedFi
         )}
       </h3>
 
+      {/* Directory match banner */}
+      <DirectoryBanner status={directoryMatchStatus} suggestion={directorySuggestion} />
+
       {/* Location Name */}
-      <FieldRow field={fields.pickup_name} fieldKey="pickup_name" updateField={updateField} vInfo={pFields.pickup_name} />
+      <FieldRow field={fields.pickup_name} fieldKey="pickup_name" updateField={updateField} vInfo={pFields.pickup_name}
+        dirHint={directoryMatchStatus === 'mismatch' ? directorySuggestion : null} dirField="name" />
 
       {/* Address */}
-      <FieldRow field={fields.pickup_address} fieldKey="pickup_address" updateField={updateField} vInfo={pFields.pickup_address} />
+      <FieldRow field={fields.pickup_address} fieldKey="pickup_address" updateField={updateField} vInfo={pFields.pickup_address}
+        dirHint={directoryMatchStatus === 'mismatch' ? directorySuggestion : null} dirField="address" />
 
       {/* City / State / ZIP */}
       <div className="grid grid-cols-3 gap-3 mb-3">
-        <FieldInput field={fields.pickup_city} fieldKey="pickup_city" label="City" updateField={updateField} required vInfo={pFields.pickup_city} />
-        <FieldInput field={fields.pickup_state} fieldKey="pickup_state" label="State" updateField={updateField} required maxLength={2} placeholder="XX" vInfo={pFields.pickup_state} />
-        <FieldInput field={fields.pickup_zip} fieldKey="pickup_zip" label="ZIP" updateField={updateField} required maxLength={10} placeholder="12345" vInfo={pFields.pickup_zip} />
+        <FieldInput field={fields.pickup_city} fieldKey="pickup_city" label="City" updateField={updateField} required vInfo={pFields.pickup_city}
+          dirHint={directoryMatchStatus === 'mismatch' ? directorySuggestion : null} dirField="city" />
+        <FieldInput field={fields.pickup_state} fieldKey="pickup_state" label="State" updateField={updateField} required maxLength={2} placeholder="XX" vInfo={pFields.pickup_state}
+          dirHint={directoryMatchStatus === 'mismatch' ? directorySuggestion : null} dirField="state" />
+        <FieldInput field={fields.pickup_zip} fieldKey="pickup_zip" label="ZIP" updateField={updateField} required maxLength={10} placeholder="12345" vInfo={pFields.pickup_zip}
+          dirHint={directoryMatchStatus === 'mismatch' ? directorySuggestion : null} dirField="zip" />
       </div>
 
       {/* Phone / Location Type */}
@@ -133,7 +141,7 @@ function PickupSection({ fields, updateField, highlightedField, setHighlightedFi
 }
 
 /** Simple field input with label and optional validation badge */
-function FieldInput({ field, fieldKey, label, updateField, required, maxLength, placeholder, vInfo }) {
+function FieldInput({ field, fieldKey, label, updateField, required, maxLength, placeholder, vInfo, dirHint, dirField }) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -151,13 +159,14 @@ function FieldInput({ field, fieldKey, label, updateField, required, maxLength, 
         placeholder={placeholder || label || fieldKey}
         maxLength={maxLength}
       />
+      <DirectoryFieldHint dirHint={dirHint} dirField={dirField} fieldKey={fieldKey} currentValue={field?.corrected} updateField={updateField} />
       <MismatchHint info={vInfo} fieldKey={fieldKey} updateField={updateField} />
     </div>
   )
 }
 
 /** Full-width field row with label and validation badge */
-function FieldRow({ field, fieldKey, updateField, vInfo }) {
+function FieldRow({ field, fieldKey, updateField, vInfo, dirHint, dirField }) {
   if (!field) return null
   return (
     <div className="mb-3">
@@ -175,6 +184,7 @@ function FieldRow({ field, fieldKey, updateField, vInfo }) {
         }`}
         placeholder={field.label}
       />
+      <DirectoryFieldHint dirHint={dirHint} dirField={dirField} fieldKey={fieldKey} currentValue={field.corrected} updateField={updateField} />
       <MismatchHint info={vInfo} fieldKey={fieldKey} updateField={updateField} />
     </div>
   )
@@ -197,6 +207,50 @@ function InlineBadge({ info }) {
     return <span className="ml-1.5 text-yellow-600 text-xs font-normal">Unverified</span>
   }
   return null
+}
+
+/** Directory match status banner */
+function DirectoryBanner({ status, suggestion }) {
+  if (!status) return null
+  if (status === 'confirmed') {
+    return (
+      <div className="mb-3 px-3 py-1.5 text-xs rounded bg-green-50 text-green-700 border border-green-200">
+        Confirmed by directory ({suggestion?.name})
+      </div>
+    )
+  }
+  if (status === 'not_found') {
+    return (
+      <div className="mb-3 px-3 py-1.5 text-xs rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
+        Not in directory — verify manually
+      </div>
+    )
+  }
+  if (status === 'mismatch') {
+    return (
+      <div className="mb-3 px-3 py-1.5 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200">
+        Directory differs ({suggestion?.name}) — review highlighted fields
+      </div>
+    )
+  }
+  return null
+}
+
+/** Per-field directory suggestion hint (shown on mismatch) */
+function DirectoryFieldHint({ dirHint, dirField, fieldKey, currentValue, updateField }) {
+  if (!dirHint || !dirField) return null
+  const dirVal = dirHint[dirField]
+  if (!dirVal) return null
+  // Only show hint if values actually differ
+  if ((currentValue || '').trim().toUpperCase() === dirVal.trim().toUpperCase()) return null
+  return (
+    <button
+      onClick={() => updateField(fieldKey, dirVal.toUpperCase())}
+      className="text-xs text-blue-600 hover:text-blue-800 mt-0.5 block"
+    >
+      Directory: "{dirVal}" — use this
+    </button>
+  )
 }
 
 /** Clickable mismatch hint: "Use {directory value}" or directory correction info */

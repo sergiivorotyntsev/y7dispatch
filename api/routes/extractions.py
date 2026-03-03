@@ -4,10 +4,13 @@ Extractions API Routes
 Run and manage extraction runs on documents.
 """
 
+import logging
 import re
 import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
@@ -583,6 +586,8 @@ class ExtractionRunResponse(BaseModel):
     processing_time_ms: Optional[int] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
+    processing_step: Optional[str] = None
+    processing_message: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -854,6 +859,11 @@ def _enrich_location_name(outputs: dict) -> None:
                 ]
 
 
+def _update_processing_step(run_id: int, step: str, message: str):
+    """Update extraction run processing step for async progress tracking."""
+    ExtractionRunRepository.update(run_id, processing_step=step, processing_message=message)
+
+
 def run_extraction(
     run_id: int,
     document_id: int,
@@ -917,6 +927,7 @@ def run_extraction(
 
     # Update status to processing
     ExtractionRunRepository.update(run_id, status="processing")
+    _update_processing_step(run_id, "extracting_text", "Extracting text from PDF...")
 
     try:
         # Get raw text from document
@@ -1002,6 +1013,7 @@ def run_extraction(
                 if not haiku.api_key:
                     raise RuntimeError("ANTHROPIC_API_KEY not configured")
 
+                _update_processing_step(run_id, "calling_haiku", "Running AI extraction...")
                 logger.info(f"HAIKU EXTRACTION: Running Claude Haiku for doc {document_id}")
                 haiku_result = haiku.extract(doc.file_path, auction_type=auction_type.code)
 
@@ -1307,16 +1319,25 @@ def run_extraction(
         # 2. BLOCK_EXTRACTED - Fallback layout-aware extraction
         # 3. PATTERN_EXTRACTED - Last resort regex patterns
         # =================================================================
+        _update_processing_step(run_id, "post_processing", "Post-processing fields...")
         if zone_outputs:
-            import logging
             merge_logger = logging.getLogger(__name__)
-            merge_logger.info(f"MERGE: Zone outputs override - {len(zone_outputs)} fields")
+            merge_logger.info(f"MERGE: Zone outputs override - {len(zone_outputs)} fields (method={extraction_method})")
+
+            # When Haiku is primary (authoritative), always override pattern/block values.
+            # When zone is a fallback (Haiku failed), only fill empty/missing values —
+            # pattern extraction may have correct values that zone would overwrite with garbage.
+            zone_is_fallback = extraction_method == "zone_fallback"
 
             for field_key, zone_value in zone_outputs.items():
                 if zone_value is not None and str(zone_value).strip():
                     old_value = outputs.get(field_key)
 
-                    # Zone extraction ALWAYS overrides pattern/block for ALL fields
+                    # Zone fallback: only fill gaps (don't overwrite existing values)
+                    if zone_is_fallback and old_value is not None and str(old_value).strip():
+                        merge_logger.info(f"  {field_key}: keeping existing '{old_value}' (zone fallback skipped '{zone_value}')")
+                        continue
+
                     outputs[field_key] = zone_value
 
                     # Update field_sources if zone value is different from pattern value
@@ -1370,6 +1391,7 @@ def run_extraction(
         # PIPELINE INVARIANT CHECKS (M0.2)
         # Must pass for extraction to be considered valid for review
         # =================================================================
+        _update_processing_step(run_id, "validating", "Validating results...")
         invariant_errors = []
 
         # Invariant 1: Text extraction must succeed
@@ -1642,6 +1664,7 @@ def run_extraction(
                     pass  # Don't fail extraction if load_id generation fails
 
         # Update run with results including metrics and field sources
+        _update_processing_step(run_id, "completing", "Saving results...")
         update_kwargs = {
             "status": run_status,
             "extraction_score": extraction_score,
@@ -1707,7 +1730,14 @@ def run_extraction(
                 }
                 addr_validator = PickupAddressValidator()
                 at_code = auction_type.code if auction_type else "UNKNOWN"
-                pickup_result = addr_validator.validate(at_code, pickup_fields)
+                dir_match_status = outputs.get("_directory_match_status")
+                dir_suggestion = outputs.get("_directory_suggestion")
+                original_pickup = outputs.get("_haiku_original_pickup")
+                pickup_result = addr_validator.validate(
+                    at_code, pickup_fields,
+                    original_pickup=original_pickup,
+                    directory_match_status=dir_match_status,
+                    directory_suggestion=dir_suggestion)
 
                 summary = _build_summary(vehicle_result, pickup_result)
 
@@ -1924,17 +1954,50 @@ def _link_rerun_to_email_log(document_id: int, new_run_id: int):
 # =============================================================================
 
 
+async def _async_run_extraction(run_id, document_id, auction_type_id, extractor_kind, model_version_id):
+    """Wraps synchronous run_extraction in executor to avoid blocking event loop."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(None, run_extraction,
+            run_id, document_id, auction_type_id, extractor_kind, model_version_id)
+    except Exception as e:
+        logger.error("Background extraction failed for run %d: %s", run_id, e)
+        try:
+            ExtractionRunRepository.update(run_id,
+                status="failed", error_message=str(e),
+                processing_step="error", processing_message=f"Failed: {str(e)[:200]}",
+                completed_at=time.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        except Exception:
+            pass
+
+
+@router.get("/status/{run_id}")
+async def get_run_status(run_id: int):
+    """Get extraction run processing status (lightweight polling endpoint)."""
+    run = ExtractionRunRepository.get_by_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {
+        "id": run.id,
+        "status": run.status,
+        "processing_step": run.processing_step,
+        "processing_message": run.processing_message,
+        "processing_time_ms": run.processing_time_ms,
+    }
+
+
 @router.post("/run", response_model=ExtractionRunResponse, status_code=201)
 async def run_extraction_endpoint(
     data: ExtractionRunRequest,
     background_tasks: BackgroundTasks,
-    sync: bool = Query(True, description="Run synchronously (wait for result)"),
+    sync: bool = Query(False, description="Run synchronously (wait for result). Default: async."),
 ):
     """
     Run extraction on a document.
 
     Creates an extraction run and executes the extraction.
-    By default runs synchronously. Set sync=false for background execution.
+    By default runs asynchronously. Set sync=true for synchronous execution.
     """
     # Validate document
     doc = DocumentRepository.get_by_id(data.document_id)
@@ -1973,15 +2036,11 @@ async def run_extraction_endpoint(
             run_id, data.document_id, doc.auction_type_id, extractor_kind, model_version_id
         )
     else:
-        # Run in background
-        background_tasks.add_task(
-            run_extraction,
-            run_id,
-            data.document_id,
-            doc.auction_type_id,
-            extractor_kind,
-            model_version_id,
-        )
+        # Run in background via asyncio executor
+        import asyncio
+        asyncio.create_task(_async_run_extraction(
+            run_id, data.document_id, doc.auction_type_id, extractor_kind, model_version_id
+        ))
 
     # Get result
     run = ExtractionRunRepository.get_by_id(run_id)
@@ -2002,6 +2061,8 @@ async def run_extraction_endpoint(
         processing_time_ms=run.processing_time_ms,
         created_at=run.created_at,
         completed_at=run.completed_at,
+        processing_step=run.processing_step,
+        processing_message=run.processing_message,
     )
 
 
