@@ -216,10 +216,11 @@ export const api = {
   },
   getExtraction: (id) => request(`/extractions/${id}`),
   getExtractionStats: () => request('/extractions/stats'),
-  runExtraction: (documentId, forceMl = false) => request('/extractions/run', {
+  runExtraction: (documentId, forceMl = false) => request('/extractions/run?sync=false', {
     method: 'POST',
     body: JSON.stringify({ document_id: documentId, force_ml: forceMl }),
   }),
+  getRunStatus: (runId) => request(`/extractions/status/${runId}`),
   updateExtraction: (id, data) => request(`/extractions/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),

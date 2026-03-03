@@ -688,6 +688,8 @@ class ExtractionRun:
     completed_at: Optional[str] = None
     error_message: Optional[str] = None
     attachments_json: Optional[str] = None
+    processing_step: Optional[str] = None
+    processing_message: Optional[str] = None
 
 
 @dataclass
@@ -2363,6 +2365,16 @@ def _run_migrations():
             conn.execute("ALTER TABLE extraction_runs ADD COLUMN attachments_json TEXT DEFAULT '[]'")
         except Exception:
             pass  # Column already exists
+
+        # Migration: Add processing_step and processing_message to extraction_runs
+        try:
+            conn.execute("ALTER TABLE extraction_runs ADD COLUMN processing_step TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE extraction_runs ADD COLUMN processing_message TEXT")
+        except Exception:
+            pass
 
         # Migration: Add pending_reason to documents (for PENDING status)
         try:
