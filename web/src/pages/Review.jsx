@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api'
 import ExportPreviewModal from '../components/ExportPreviewModal'
@@ -66,6 +66,13 @@ function Review() {
   const [pdfCollapsed, setPdfCollapsed] = useState(false)
   const [pdfUrl, setPdfUrl] = useState(null)
   const [viewingUrl, setViewingUrl] = useState(null) // for attachment switching
+
+  // Resizable split pane state
+  const [pdfWidthPct, setPdfWidthPct] = useState(() => {
+    try { return parseInt(localStorage.getItem('review-pdf-width')) || 50 } catch { return 50 }
+  })
+  const resizing = useRef(false)
+  const splitContainerRef = useRef(null)
 
   // Field values and status
   const [fields, setFields] = useState({})
@@ -788,6 +795,38 @@ function Review() {
     }
   }
 
+  // Resize handle drag handlers
+  function handleResizeStart(e) {
+    e.preventDefault()
+    resizing.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    function onMouseMove(ev) {
+      if (!resizing.current || !splitContainerRef.current) return
+      const rect = splitContainerRef.current.getBoundingClientRect()
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100
+      const clamped = Math.min(75, Math.max(25, pct))
+      setPdfWidthPct(clamped)
+    }
+
+    function onMouseUp() {
+      resizing.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      // Persist width
+      setPdfWidthPct(prev => {
+        try { localStorage.setItem('review-pdf-width', String(Math.round(prev))) } catch {}
+        return prev
+      })
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }
+
   // ═══ PAGE RENDER GATE — Stream 1 ONLY ═══
   // This checks ONLY the core loading state (extraction + document + review items).
   // NEVER add checks for warehouse/pricing/weather/distance/attachments here.
@@ -826,9 +865,9 @@ function Review() {
   const needsReviewCount = fieldList.filter(f => f.status === 'review').length
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#F9FAFB' }}>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4" style={{ flexShrink: 0 }}>
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-gray-900">
@@ -914,168 +953,52 @@ function Review() {
         </div>
       </div>
 
-      {/* Messages */}
-      {error && (
-        <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-      {success && (
-        <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="font-medium text-green-800">
-              {isTrainingMode ? 'Training Updated!' : isExported ? 'Exported!' : 'Approved for Export!'}
-            </span>
-          </div>
-          <p className="text-green-700 mt-1 ml-7">{success}</p>
-          {isTrainingMode && (
-            <p className="text-green-600 text-sm mt-2 ml-7">
-              Redirecting to Test Lab...
-            </p>
-          )}
-        </div>
-      )}
-      {warning && (
-        <div className="mx-6 mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-start">
-            <svg className="w-5 h-5 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div>
-              <span className="font-medium text-yellow-800">Learning Limited</span>
-              <p className="text-yellow-700 text-sm mt-1">{warning}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Split Pane Container */}
+      <div ref={splitContainerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
-      {/* VIN Duplicate Warning Banner */}
-      {duplicates?.has_duplicates && (
-        <div className="mx-6 mt-4 rounded-lg p-4" style={{
-          background: duplicates.duplicates.some(d => d.status === 'exported') ? '#FEF2F2' : '#FFFBEB',
-          border: `1px solid ${duplicates.duplicates.some(d => d.status === 'exported') ? '#FECACA' : '#FDE68A'}`,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-            <svg style={{ width: '20px', height: '20px', flexShrink: 0, marginTop: '2px', color: duplicates.duplicates.some(d => d.status === 'exported') ? '#DC2626' : '#D97706' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div style={{ flex: 1 }}>
-              <h3 style={{ fontWeight: 600, color: duplicates.duplicates.some(d => d.status === 'exported') ? '#991B1B' : '#92400E', margin: 0 }}>
-                Duplicate VIN Detected — {duplicates.vin}
-              </h3>
-              <p style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>
-                This VIN appears in {duplicates.duplicates.length} other extraction{duplicates.duplicates.length > 1 ? 's' : ''}:
-              </p>
-              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {duplicates.duplicates.map(dup => (
-                  <div key={dup.run_id} style={{
-                    display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
-                    padding: '6px 10px', background: 'rgba(255,255,255,0.7)', borderRadius: '6px',
-                  }}>
-                    <span style={{
-                      padding: '1px 6px', fontSize: '11px', fontWeight: 700, borderRadius: '4px',
-                      background: dup.status === 'exported' ? '#FEE2E2' : dup.status === 'needs_review' ? '#FEF3C7' : '#DBEAFE',
-                      color: dup.status === 'exported' ? '#991B1B' : dup.status === 'needs_review' ? '#92400E' : '#1E40AF',
-                    }}>
-                      {dup.status}
-                    </span>
-                    {dup.sender_email && <span style={{ color: '#374151' }}>{dup.sender_email}</span>}
-                    {dup.received_date && <span style={{ color: '#9CA3AF' }}>{dup.received_date}</span>}
-                    {dup.subject && <span style={{ color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{dup.subject}</span>}
+        {/* Left: PDF pane (expanded) */}
+        {showPdf && pdfUrl && !pdfCollapsed && (
+          <>
+            <div style={{ width: `${pdfWidthPct}%`, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #E5E7EB', background: '#fff' }}>
+              {/* PDF header bar */}
+              <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center" style={{ flexShrink: 0 }}>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm text-gray-700">
+                    {viewingUrl && viewingUrl !== pdfUrl ? 'Attachment' : 'Original Document'}
+                  </span>
+                  {viewingUrl && viewingUrl !== pdfUrl && (
                     <button
-                      onClick={() => navigate(`/review/${dup.run_id}`)}
-                      style={{
-                        marginLeft: 'auto', padding: '2px 8px', fontSize: '12px', fontWeight: 600,
-                        color: '#2563EB', background: 'none', border: '1px solid #BFDBFE', borderRadius: '4px', cursor: 'pointer',
-                      }}
+                      onClick={() => setViewingUrl(null)}
+                      className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                     >
-                      View →
+                      Back to main
                     </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Hold Banner */}
-      {document?.hold_reason && (
-        <div className="mx-6 mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-medium text-amber-800">Document On Hold</h3>
-              <p className="text-sm text-amber-700 mt-1">
-                Reason: <span className="font-medium">{document.hold_reason.replace(/_/g, ' ')}</span>
-                {document.hold_note && <span className="ml-2">— {document.hold_note}</span>}
-              </p>
-            </div>
-            <button
-              onClick={handleReleaseHold}
-              className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-md hover:bg-amber-100"
-            >
-              Release Hold
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Failed Extraction Notice */}
-      {run.status === 'failed' && (
-        <div className="mx-6 mt-4 bg-orange-50 border border-orange-200 rounded-lg p-4">
-          <h3 className="font-medium text-orange-800 mb-1">Manual Entry Required</h3>
-          <p className="text-sm text-orange-700">
-            Automatic extraction failed. Enter values manually - your corrections will train the system.
-          </p>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="p-6">
-        <div className="flex gap-6">
-          {/* PDF Viewer (Left Panel) — collapsible + attachment switching */}
-          {showPdf && pdfUrl && (
-            <div className={`flex-shrink-0 sticky top-6 ${pdfCollapsed ? '' : 'w-1/2'}`} style={{ maxHeight: pdfCollapsed ? 'auto' : 'calc(100vh - 4rem)' }}>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm text-gray-700">
-                      {viewingUrl && viewingUrl !== pdfUrl ? 'Attachment' : 'Original Document'}
-                    </span>
-                    {viewingUrl && viewingUrl !== pdfUrl && (
-                      <button
-                        onClick={() => setViewingUrl(null)}
-                        className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                      >
-                        Back to main
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPdfCollapsed(!pdfCollapsed)}
-                      className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
-                    >
-                      {pdfCollapsed ? 'Expand' : 'Minimize'}
-                    </button>
-                    <button
-                      onClick={() => window.open(viewingUrl || pdfUrl, '_blank')}
-                      className="text-xs px-2 py-1 bg-gray-100 text-primary-600 rounded hover:bg-gray-200 font-medium"
-                    >
-                      New tab
-                    </button>
-                  </div>
+                  )}
                 </div>
-                {!pdfCollapsed && (() => {
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPdfCollapsed(true)}
+                    className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
+                  >
+                    Minimize
+                  </button>
+                  <button
+                    onClick={() => window.open(viewingUrl || pdfUrl, '_blank')}
+                    className="text-xs px-2 py-1 bg-gray-100 text-primary-600 rounded hover:bg-gray-200 font-medium"
+                  >
+                    New tab
+                  </button>
+                </div>
+              </div>
+              {/* PDF content — fills remaining height, scrolls independently */}
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                {(() => {
                   const activeUrl = viewingUrl || pdfUrl
                   const ext = activeUrl.split('.').pop().toLowerCase()
                   const isImageUrl = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'].includes(ext)
                   if (isImageUrl) {
                     return (
-                      <div className="w-full bg-gray-100 flex items-center justify-center" style={{ height: 'calc(100vh - 8rem)', overflow: 'auto' }}>
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F3F4F6' }}>
                         <img
                           src={activeUrl}
                           alt="Attachment"
@@ -1088,152 +1011,295 @@ function Review() {
                     <iframe
                       src={activeUrl}
                       title="Document PDF"
-                      className="w-full border-0"
-                      style={{ height: 'calc(100vh - 8rem)' }}
+                      style={{ width: '100%', height: '100%', border: 0 }}
                     />
                   )
                 })()}
               </div>
             </div>
+            {/* Resize handle */}
+            <div
+              onMouseDown={handleResizeStart}
+              style={{ width: '5px', cursor: 'col-resize', background: '#E5E7EB', flexShrink: 0 }}
+              onMouseEnter={e => e.target.style.background = '#93C5FD'}
+              onMouseLeave={e => { if (!resizing.current) e.target.style.background = '#E5E7EB' }}
+            />
+          </>
+        )}
+
+        {/* Left: PDF pane (collapsed — thin sidebar) */}
+        {showPdf && pdfUrl && pdfCollapsed && (
+          <div style={{ width: '40px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '12px', borderRight: '1px solid #E5E7EB', background: '#F9FAFB' }}>
+            <button
+              onClick={() => setPdfCollapsed(false)}
+              title="Expand PDF"
+              style={{
+                writingMode: 'vertical-rl', textOrientation: 'mixed',
+                padding: '8px 4px', fontSize: '11px', fontWeight: 600,
+                color: '#6B7280', background: '#E5E7EB', border: 'none',
+                borderRadius: '4px', cursor: 'pointer',
+              }}
+            >
+              Expand
+            </button>
+          </div>
+        )}
+
+        {/* Right: Fields pane — scrolls independently */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+
+          {/* Banners (moved into scrollable fields pane) */}
+          {error && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+              <strong>Error:</strong> {error}
+            </div>
+          )}
+          {success && (
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="font-medium text-green-800">
+                  {isTrainingMode ? 'Training Updated!' : isExported ? 'Exported!' : 'Approved for Export!'}
+                </span>
+              </div>
+              <p className="text-green-700 mt-1 ml-7">{success}</p>
+              {isTrainingMode && (
+                <p className="text-green-600 text-sm mt-2 ml-7">
+                  Redirecting to Test Lab...
+                </p>
+              )}
+            </div>
+          )}
+          {warning && (
+            <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <span className="font-medium text-yellow-800">Learning Limited</span>
+                  <p className="text-yellow-700 text-sm mt-1">{warning}</p>
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* Fields Panel (Right Panel) — 9 CD-Aligned Sections */}
-          <div className={showPdf && pdfUrl && !pdfCollapsed ? 'w-1/2' : 'w-full'}>
+          {/* VIN Duplicate Warning Banner */}
+          {duplicates?.has_duplicates && (
+            <div className="mb-4 rounded-lg p-4" style={{
+              background: duplicates.duplicates.some(d => d.status === 'exported') ? '#FEF2F2' : '#FFFBEB',
+              border: `1px solid ${duplicates.duplicates.some(d => d.status === 'exported') ? '#FECACA' : '#FDE68A'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <svg style={{ width: '20px', height: '20px', flexShrink: 0, marginTop: '2px', color: duplicates.duplicates.some(d => d.status === 'exported') ? '#DC2626' : '#D97706' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontWeight: 600, color: duplicates.duplicates.some(d => d.status === 'exported') ? '#991B1B' : '#92400E', margin: 0 }}>
+                    Duplicate VIN Detected — {duplicates.vin}
+                  </h3>
+                  <p style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>
+                    This VIN appears in {duplicates.duplicates.length} other extraction{duplicates.duplicates.length > 1 ? 's' : ''}:
+                  </p>
+                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {duplicates.duplicates.map(dup => (
+                      <div key={dup.run_id} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+                        padding: '6px 10px', background: 'rgba(255,255,255,0.7)', borderRadius: '6px',
+                      }}>
+                        <span style={{
+                          padding: '1px 6px', fontSize: '11px', fontWeight: 700, borderRadius: '4px',
+                          background: dup.status === 'exported' ? '#FEE2E2' : dup.status === 'needs_review' ? '#FEF3C7' : '#DBEAFE',
+                          color: dup.status === 'exported' ? '#991B1B' : dup.status === 'needs_review' ? '#92400E' : '#1E40AF',
+                        }}>
+                          {dup.status}
+                        </span>
+                        {dup.sender_email && <span style={{ color: '#374151' }}>{dup.sender_email}</span>}
+                        {dup.received_date && <span style={{ color: '#9CA3AF' }}>{dup.received_date}</span>}
+                        {dup.subject && <span style={{ color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{dup.subject}</span>}
+                        <button
+                          onClick={() => navigate(`/review/${dup.run_id}`)}
+                          style={{
+                            marginLeft: 'auto', padding: '2px 8px', fontSize: '12px', fontWeight: 600,
+                            color: '#2563EB', background: 'none', border: '1px solid #BFDBFE', borderRadius: '4px', cursor: 'pointer',
+                          }}
+                        >
+                          View →
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-            {/* Section 1: Extraction Info Bar */}
-            <ExtractionInfoBar run={run} />
+          {/* Hold Banner */}
+          {document?.hold_reason && (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-amber-800">Document On Hold</h3>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Reason: <span className="font-medium">{document.hold_reason.replace(/_/g, ' ')}</span>
+                    {document.hold_note && <span className="ml-2">— {document.hold_note}</span>}
+                  </p>
+                </div>
+                <button
+                  onClick={handleReleaseHold}
+                  className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-md hover:bg-amber-100"
+                >
+                  Release Hold
+                </button>
+              </div>
+            </div>
+          )}
 
-            {/* Email Context + Attachments (unified panel) */}
-            <EmailContextPanel
-              runId={runId}
-              document={document}
-              runAttachments={attachments}
-              onViewAttachment={(url) => setViewingUrl(url)}
-            />
+          {/* Failed Extraction Notice */}
+          {run.status === 'failed' && (
+            <div className="mb-4 bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <h3 className="font-medium text-orange-800 mb-1">Manual Entry Required</h3>
+              <p className="text-sm text-orange-700">
+                Automatic extraction failed. Enter values manually - your corrections will train the system.
+              </p>
+            </div>
+          )}
 
-            {/* Manual Entry Banner — Vision OCR for scanned/failed PDFs */}
-            {(run.status === 'manual_required' || run.status === 'failed') && (
-              <ManualEntryBanner runId={runId} onVisionResult={handleVisionResult} />
-            )}
+          {/* Section 1: Extraction Info Bar */}
+          <ExtractionInfoBar run={run} />
 
-            {/* Section 2: Vehicle Information */}
-            <VehicleSection
-              fields={fields}
-              updateField={updateField}
-              trailerType={trailerType}
-              setTrailerType={setTrailerType}
-              validation={validation}
-              validating={validating}
-              onValidate={handleValidate}
-            />
+          {/* Email Context + Attachments (unified panel) */}
+          <EmailContextPanel
+            runId={runId}
+            document={document}
+            runAttachments={attachments}
+            onViewAttachment={(url) => setViewingUrl(url)}
+          />
 
-            {/* Section 3: Pick-Up Location */}
-            <PickupSection
-              fields={fields}
-              updateField={updateField}
-              validation={validation}
-            />
+          {/* Manual Entry Banner — Vision OCR for scanned/failed PDFs */}
+          {(run.status === 'manual_required' || run.status === 'failed') && (
+            <ManualEntryBanner runId={runId} onVisionResult={handleVisionResult} />
+          )}
 
-            {/* Section 4: Delivery Location */}
-            <DeliverySection
-              warehouses={warehouses}
-              selectedWarehouse={selectedWarehouse}
-              handleWarehouseChange={handleWarehouseChange}
-              manualOverride={manualDeliveryOverride}
-              setManualOverride={setManualDeliveryOverride}
-              fields={fields}
-              updateField={updateField}
-              runId={runId}
-              onDistanceChange={setDistanceMiles}
-            />
+          {/* Section 2: Vehicle Information */}
+          <VehicleSection
+            fields={fields}
+            updateField={updateField}
+            trailerType={trailerType}
+            setTrailerType={setTrailerType}
+            validation={validation}
+            validating={validating}
+            onValidate={handleValidate}
+          />
 
-            {/* Weather alerts along route */}
-            <WeatherAlertsPanel
-              runId={runId}
-              warehouseId={selectedWarehouse}
-            />
+          {/* Section 3: Pick-Up Location */}
+          <PickupSection
+            fields={fields}
+            updateField={updateField}
+            validation={validation}
+          />
 
-            {/* Section 5: Dates */}
-            <DatesSection
-              availableDate={availableDate}
-              setAvailableDate={setAvailableDate}
-              expirationDate={expirationDate}
-              setExpirationDate={setExpirationDate}
-              desiredDeliveryDate={desiredDeliveryDate}
-              setDesiredDeliveryDate={setDesiredDeliveryDate}
-              manheimReleaseDate={fields.manheim_release_date?.corrected}
-              auctionType={run?.auction_type_code}
-            />
+          {/* Section 4: Delivery Location */}
+          <DeliverySection
+            warehouses={warehouses}
+            selectedWarehouse={selectedWarehouse}
+            handleWarehouseChange={handleWarehouseChange}
+            manualOverride={manualDeliveryOverride}
+            setManualOverride={setManualDeliveryOverride}
+            fields={fields}
+            updateField={updateField}
+            runId={runId}
+            onDistanceChange={setDistanceMiles}
+          />
 
-            {/* Section 6: Pricing and Payment */}
-            <PricingPaymentSection
-              pricing={pricing}
-              pricingLoading={pricingLoading}
-              urgency={urgency}
-              handleUrgencyChange={handleUrgencyChange}
-              finalPrice={finalPrice}
-              setFinalPrice={setFinalPrice}
-              codAmount={codAmount}
-              setCodAmount={setCodAmount}
-              codPaymentMethod={codPaymentMethod}
-              setCodPaymentMethod={setCodPaymentMethod}
-              codPaymentLocation={codPaymentLocation}
-              setCodPaymentLocation={setCodPaymentLocation}
-              balancePaymentMethod={balancePaymentMethod}
-              setBalancePaymentMethod={setBalancePaymentMethod}
-              balancePaymentTime={balancePaymentTime}
-              setBalancePaymentTime={setBalancePaymentTime}
-              balanceTermsBeginOn={balanceTermsBeginOn}
-              setBalanceTermsBeginOn={setBalanceTermsBeginOn}
-              runId={runId}
-              warehouseId={selectedWarehouse ? parseInt(selectedWarehouse) : null}
-              distanceMiles={distanceMiles}
-            />
+          {/* Weather alerts along route */}
+          <WeatherAlertsPanel
+            runId={runId}
+            warehouseId={selectedWarehouse}
+          />
 
-            {/* Section 7: Additional Info */}
-            {!isTrainingMode && (
-              <AdditionalInfoSection
-                loadId={loadId}
-                setLoadId={setLoadId}
-                isApproved={isApproved}
-                exportResult={exportResult}
-                fields={fields}
-                updateField={updateField}
-                loadSpecificTerms={loadSpecificTerms}
-                setLoadSpecificTerms={setLoadSpecificTerms}
-                transportSpecialInstructions={transportSpecialInstructions}
-                setTransportSpecialInstructions={setTransportSpecialInstructions}
-                requiresInspection={requiresInspection}
-                setRequiresInspection={setRequiresInspection}
-              />
-            )}
+          {/* Section 5: Dates */}
+          <DatesSection
+            availableDate={availableDate}
+            setAvailableDate={setAvailableDate}
+            expirationDate={expirationDate}
+            setExpirationDate={setExpirationDate}
+            desiredDeliveryDate={desiredDeliveryDate}
+            setDesiredDeliveryDate={setDesiredDeliveryDate}
+            manheimReleaseDate={fields.manheim_release_date?.corrected}
+            auctionType={run?.auction_type_code}
+          />
 
-            {/* Section 8: Document Details (collapsible) */}
-            <DocumentDetails fields={fields} run={run} document={document} />
+          {/* Section 6: Pricing and Payment */}
+          <PricingPaymentSection
+            pricing={pricing}
+            pricingLoading={pricingLoading}
+            urgency={urgency}
+            handleUrgencyChange={handleUrgencyChange}
+            finalPrice={finalPrice}
+            setFinalPrice={setFinalPrice}
+            codAmount={codAmount}
+            setCodAmount={setCodAmount}
+            codPaymentMethod={codPaymentMethod}
+            setCodPaymentMethod={setCodPaymentMethod}
+            codPaymentLocation={codPaymentLocation}
+            setCodPaymentLocation={setCodPaymentLocation}
+            balancePaymentMethod={balancePaymentMethod}
+            setBalancePaymentMethod={setBalancePaymentMethod}
+            balancePaymentTime={balancePaymentTime}
+            setBalancePaymentTime={setBalancePaymentTime}
+            balanceTermsBeginOn={balanceTermsBeginOn}
+            setBalanceTermsBeginOn={setBalanceTermsBeginOn}
+            runId={runId}
+            warehouseId={selectedWarehouse ? parseInt(selectedWarehouse) : null}
+            distanceMiles={distanceMiles}
+          />
 
-            {/* Section 9: Export Actions */}
-            <ExportActions
-              runId={runId}
-              isTrainingMode={isTrainingMode}
-              saving={saving}
-              handleSubmitTraining={handleSubmitTraining}
-              handleSubmitProduction={handleSubmitProduction}
-              handleSaveChanges={handleSaveChanges}
-              showExportModal={showExportModal}
-              setShowExportModal={setShowExportModal}
-              exportResult={exportResult}
-              exportError={exportError}
-              exporting={exporting}
-              selectedWarehouse={selectedWarehouse}
+          {/* Section 7: Additional Info */}
+          {!isTrainingMode && (
+            <AdditionalInfoSection
+              loadId={loadId}
+              setLoadId={setLoadId}
               isApproved={isApproved}
-              isExported={isExported}
-              runStatus={run?.status}
-              correctCount={correctCount}
-              totalCount={fieldList.length}
-              correctedCount={correctedCount}
-              needsReviewCount={needsReviewCount}
+              exportResult={exportResult}
+              fields={fields}
+              updateField={updateField}
+              loadSpecificTerms={loadSpecificTerms}
+              setLoadSpecificTerms={setLoadSpecificTerms}
+              transportSpecialInstructions={transportSpecialInstructions}
+              setTransportSpecialInstructions={setTransportSpecialInstructions}
+              requiresInspection={requiresInspection}
+              setRequiresInspection={setRequiresInspection}
             />
-          </div>
+          )}
+
+          {/* Section 8: Document Details (collapsible) */}
+          <DocumentDetails fields={fields} run={run} document={document} />
+
+          {/* Section 9: Export Actions */}
+          <ExportActions
+            runId={runId}
+            isTrainingMode={isTrainingMode}
+            saving={saving}
+            handleSubmitTraining={handleSubmitTraining}
+            handleSubmitProduction={handleSubmitProduction}
+            handleSaveChanges={handleSaveChanges}
+            showExportModal={showExportModal}
+            setShowExportModal={setShowExportModal}
+            exportResult={exportResult}
+            exportError={exportError}
+            exporting={exporting}
+            selectedWarehouse={selectedWarehouse}
+            isApproved={isApproved}
+            isExported={isExported}
+            runStatus={run?.status}
+            correctCount={correctCount}
+            totalCount={fieldList.length}
+            correctedCount={correctedCount}
+            needsReviewCount={needsReviewCount}
+          />
         </div>
       </div>
 
