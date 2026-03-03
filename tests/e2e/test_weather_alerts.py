@@ -396,11 +396,19 @@ class TestWeatherAPI:
         """GET /api/weather/route-alerts-for-run/{run_id} works with extraction run."""
         client = self._get_client()
 
-        # Seed an extraction run
+        # Seed an extraction run (with parent document and auction_type for FK)
         from api.database import get_connection
         now = datetime.now(timezone.utc).isoformat()
         outputs = json.dumps({"pickup_zip": "75201", "pickup_state": "TX", "pickup_city": "Dallas"})
         with get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO auction_types (id, name, code, is_base) "
+                "VALUES (1, 'Copart', 'COPART', 1)"
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (1, 'weather-doc-1', 1, 'test.pdf', '/tmp/test.pdf', 'train')"
+            )
             conn.execute(
                 "INSERT INTO extraction_runs (id, uuid, document_id, auction_type_id, status, outputs_json, created_at) "
                 "VALUES (1, 'test-uuid-1', 1, 1, 'needs_review', ?, ?)",
@@ -433,6 +441,14 @@ class TestWeatherAPI:
         now = datetime.now(timezone.utc).isoformat()
         outputs = json.dumps({"pickup_zip": "30301", "pickup_state": "GA"})
         with get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO auction_types (id, name, code, is_base) "
+                "VALUES (1, 'Copart', 'COPART', 1)"
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (2, 'weather-doc-2', 1, 'test2.pdf', '/tmp/test2.pdf', 'train')"
+            )
             conn.execute(
                 "INSERT INTO extraction_runs (id, uuid, document_id, auction_type_id, status, outputs_json, created_at) "
                 "VALUES (2, 'test-uuid-2', 2, 1, 'needs_review', ?, ?)",
@@ -470,6 +486,14 @@ class TestWeatherAPI:
         now = datetime.now(timezone.utc).isoformat()
         outputs = json.dumps({"pickup_city": "Dallas"})  # No pickup_zip
         with get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO auction_types (id, name, code, is_base) "
+                "VALUES (1, 'Copart', 'COPART', 1)"
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (3, 'weather-doc-3', 1, 'test3.pdf', '/tmp/test3.pdf', 'train')"
+            )
             conn.execute(
                 "INSERT INTO extraction_runs (id, uuid, document_id, auction_type_id, status, outputs_json, created_at) "
                 "VALUES (3, 'test-uuid-3', 3, 1, 'needs_review', ?, ?)",

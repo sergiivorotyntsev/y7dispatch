@@ -81,6 +81,12 @@ def _create_email_log(subject, sender, run_ids):
                VALUES (?, ?, ?, ?, ?, 'processed')""",
             (msg_id, sender, "Test Sender", subject, json.dumps(run_ids)),
         )
+        email_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        for rid in run_ids:
+            conn.execute(
+                "INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (?, ?)",
+                (email_log_id, rid),
+            )
         conn.commit()
 
 

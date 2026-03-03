@@ -283,7 +283,7 @@ ZoneField:
 
 **File:** `api/routes/extractions.py:57-131` — `detect_vin_duplicates()`
 
-- Queries `extraction_runs` for other runs with same `vehicle_vin` in `outputs_json`
+- Queries `extraction_runs` for other runs with same `vehicle_vin` in `outputs_json` (uses `idx_runs_vin_expr` expression index on `json_extract(outputs_json, '$.vehicle_vin')` for fast lookups)
 - Excludes failed/cancelled runs
 - Joins with `email_log` for sender context
 - Stores bidirectional entries in `vin_duplicates` table

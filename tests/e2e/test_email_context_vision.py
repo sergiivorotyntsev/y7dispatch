@@ -173,6 +173,10 @@ def _seed_email_data(conn, tmp_path):
         ),
     )
 
+    # Junction table links
+    conn.execute("INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (1, 1)")
+    conn.execute("INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (2, 2)")
+
     conn.commit()
 
 

@@ -311,7 +311,7 @@ _CD_PAYMENT_TIME_MAP = {
 
 ### Flow
 1. After CD export completes → user clicks "Send Reply" on Review page
-2. System finds original email in `email_log` (by `extraction_run_ids`)
+2. System finds original email via `email_run_links` junction table (JOIN on `run_id`)
 3. Resolves Microsoft Graph message ID (RFC822 → Graph internal ID)
 4. Renders HTML template with Load ID, VIN, warehouse info
 5. Calls `GraphEmailReader.reply_to_message(graph_message_id, html_body)`

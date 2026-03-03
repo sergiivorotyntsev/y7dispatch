@@ -789,18 +789,44 @@ class EmailWorker:
             raise
 
     def _update_email_log(self, message_id: str, **kwargs):
-        """Update email_log entry by message_id."""
+        """Update email_log entry by message_id.
+
+        When extraction_run_ids is provided, also writes to email_run_links
+        junction table (dual-write for backward compatibility).
+        """
         allowed = {"status", "skip_reason", "processed_at", "extraction_run_ids",
                     "error_message", "gate_pass"}
         updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         if not updates:
             return
 
+        # Extract run_ids before building SET clause (for junction table write)
+        run_ids_json = updates.get("extraction_run_ids")
+
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [message_id]
 
         with get_connection() as conn:
             conn.execute(f"UPDATE email_log SET {set_clause} WHERE message_id = ?", values)
+
+            # Dual-write: also insert into junction table
+            if run_ids_json:
+                try:
+                    run_ids = json.loads(run_ids_json)
+                    if run_ids:
+                        row = conn.execute(
+                            "SELECT id FROM email_log WHERE message_id = ?", (message_id,)
+                        ).fetchone()
+                        if row:
+                            email_log_id = row["id"]
+                            for rid in run_ids:
+                                conn.execute(
+                                    "INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (?, ?)",
+                                    (email_log_id, rid),
+                                )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
             conn.commit()
 
     def _lookup_graph_message_id(self, rfc822_message_id: str) -> str | None:
@@ -1843,13 +1869,20 @@ class EmailWorker:
             # Gather known message_ids and VINs from DB
             with get_connection() as conn:
                 known_rows = conn.execute(
-                    "SELECT message_id, status, extraction_run_ids FROM email_log"
+                    "SELECT el.id, el.message_id, el.status FROM email_log el"
                 ).fetchall()
+                # Build run_ids per email from junction table
+                link_rows = conn.execute(
+                    "SELECT email_log_id, run_id FROM email_run_links ORDER BY run_id"
+                ).fetchall()
+                email_id_to_run_ids = {}
+                for lr in link_rows:
+                    email_id_to_run_ids.setdefault(lr["email_log_id"], []).append(lr["run_id"])
                 known_map = {}
                 for row in known_rows:
                     known_map[row["message_id"]] = {
                         "status": row["status"],
-                        "run_ids": row["extraction_run_ids"],
+                        "run_ids": email_id_to_run_ids.get(row["id"], []),
                     }
 
                 # Build VIN set from all extraction runs
@@ -1883,17 +1916,15 @@ class EmailWorker:
                     existing_run_id = None
                     existing_status = None
                     if known and known["run_ids"]:
+                        existing_run_id = known["run_ids"][0]
                         try:
-                            run_ids = json.loads(known["run_ids"])
-                            if run_ids:
-                                existing_run_id = run_ids[0]
-                                with get_connection() as conn:
-                                    rrow = conn.execute(
-                                        "SELECT status FROM extraction_runs WHERE id = ?",
-                                        (existing_run_id,),
-                                    ).fetchone()
-                                    if rrow:
-                                        existing_status = rrow["status"]
+                            with get_connection() as conn:
+                                rrow = conn.execute(
+                                    "SELECT status FROM extraction_runs WHERE id = ?",
+                                    (existing_run_id,),
+                                ).fetchone()
+                                if rrow:
+                                    existing_status = rrow["status"]
                         except Exception:
                             pass
 

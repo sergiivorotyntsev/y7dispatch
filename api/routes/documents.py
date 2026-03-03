@@ -715,9 +715,8 @@ async def get_document_stats():
         # Transport requests — emails that generated extraction runs
         try:
             transport_requests = conn.execute(
-                """SELECT COUNT(DISTINCT el.id) FROM email_log el
-                   WHERE el.extraction_run_ids IS NOT NULL
-                     AND el.extraction_run_ids != '[]'"""
+                """SELECT COUNT(DISTINCT erl.email_log_id)
+                   FROM email_run_links erl"""
             ).fetchone()[0]
         except Exception:
             transport_requests = 0
@@ -810,8 +809,9 @@ async def list_documents(
                     OR json_extract(er.outputs_json, '$.load_id') LIKE ?
                     OR d.filename LIKE ?
                     OR EXISTS (
-                        SELECT 1 FROM email_log el
-                        WHERE el.extraction_run_ids LIKE '%' || CAST(er.id AS TEXT) || '%'
+                        SELECT 1 FROM email_run_links erl
+                        INNER JOIN email_log el ON el.id = erl.email_log_id
+                        WHERE erl.run_id = er.id
                           AND el.subject LIKE ?
                     )
                 )

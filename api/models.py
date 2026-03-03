@@ -13,6 +13,7 @@ Schema Version: 4
 """
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from enum import Enum
 from typing import Any, Optional
 
 from api.database import get_connection
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # ENUMS
@@ -2303,6 +2306,58 @@ def init_schema():
     _run_migrations()
 
 
+def _migrate_extraction_run_ids(conn):
+    """Migrate email_log.extraction_run_ids JSON arrays into email_run_links junction table.
+
+    Idempotent: uses INSERT OR IGNORE with UNIQUE(email_log_id, run_id).
+    Data format confirmed by audit: all values are JSON arrays of ints, e.g. "[42, 55]".
+    """
+    try:
+        # Check if email_log table exists (some test fixtures don't have it)
+        has_table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='email_log'"
+        ).fetchone()
+        if not has_table:
+            return
+
+        rows = conn.execute("""
+            SELECT id, extraction_run_ids
+            FROM email_log
+            WHERE extraction_run_ids IS NOT NULL
+              AND extraction_run_ids != ''
+              AND extraction_run_ids != '[]'
+        """).fetchall()
+
+        if not rows:
+            return
+
+        migrated = 0
+        for row in rows:
+            email_id = row[0]
+            raw = row[1]
+            try:
+                run_ids = json.loads(raw)
+                if not isinstance(run_ids, list):
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            for rid in run_ids:
+                try:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (?, ?)",
+                        (email_id, int(rid)),
+                    )
+                    migrated += 1
+                except (ValueError, TypeError, Exception):
+                    continue
+
+        if migrated > 0:
+            logger.info("Migrated %d email_run_links from extraction_run_ids", migrated)
+    except Exception:
+        pass  # Non-critical — migration will retry on next startup
+
+
 def _run_migrations():
     """Run database migrations for new columns."""
     with get_connection() as conn:
@@ -2426,5 +2481,29 @@ def _run_migrations():
             """)
         except Exception:
             pass  # May fail on tables without outputs_json column (test fixtures)
+
+        # --- Junction table: email_run_links (replaces email_log.extraction_run_ids JSON) ---
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_run_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email_log_id INTEGER NOT NULL REFERENCES email_log(id) ON DELETE CASCADE,
+                    run_id INTEGER NOT NULL REFERENCES extraction_runs(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP DEFAULT (datetime('now')),
+                    UNIQUE(email_log_id, run_id)
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_email_run_links_email
+                ON email_run_links(email_log_id)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_email_run_links_run
+                ON email_run_links(run_id)
+            """)
+        except Exception:
+            pass  # email_log table may not exist in some test fixtures
+
+        _migrate_extraction_run_ids(conn)
 
         conn.commit()

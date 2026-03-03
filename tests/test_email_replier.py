@@ -96,6 +96,17 @@ def test_db(tmp_path):
         )
     """)
 
+    # email_run_links (junction table)
+    conn.execute("""
+        CREATE TABLE email_run_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email_log_id INTEGER NOT NULL REFERENCES email_log(id) ON DELETE CASCADE,
+            run_id INTEGER NOT NULL REFERENCES extraction_runs(id) ON DELETE CASCADE,
+            created_at TIMESTAMP DEFAULT (datetime('now')),
+            UNIQUE(email_log_id, run_id)
+        )
+    """)
+
     # email_replies
     conn.execute("""
         CREATE TABLE email_replies (
@@ -146,6 +157,8 @@ def populated_db(test_db):
         VALUES (10, '<test@example.com>', 'seller@auction.com', 'Jane Doe', 'Invoice #12345',
                 ?, 'AAMkAGI1AAAoZCfHAAA=', 'processed')
     """, (json.dumps([42]),))
+    # Junction table link
+    conn.execute("INSERT INTO email_run_links (email_log_id, run_id) VALUES (10, 42)")
 
     conn.commit()
     return conn
@@ -1123,6 +1136,7 @@ class TestReRunEmailLog:
             "VALUES (10, '<test@example.com>', 'seller@auction.com', 'Jane Doe', 'Invoice', ?, 'AAMkAGI1AAAoZCfHAAA=', 'processed')",
             (json.dumps([42]),),
         )
+        conn.execute("INSERT INTO email_run_links (email_log_id, run_id) VALUES (10, 42)")
         conn.commit()
 
         _patch_get_connection(monkeypatch, conn)
@@ -1155,7 +1169,7 @@ class TestReRunEmailLog:
         assert replier._find_email_log_for_run(50) is None
 
     def test_link_rerun_to_email_log(self, test_db, monkeypatch):
-        """_link_rerun_to_email_log adds new run_id to email_log.extraction_run_ids."""
+        """_link_rerun_to_email_log adds new run_id to junction table."""
         conn = test_db
 
         # Setup: original run 42, email_log has [42]
@@ -1170,6 +1184,7 @@ class TestReRunEmailLog:
             "VALUES (10, '<test@example.com>', 'seller@auction.com', 'Jane', ?, 'processed')",
             (json.dumps([42]),),
         )
+        conn.execute("INSERT INTO email_run_links (email_log_id, run_id) VALUES (10, 42)")
         conn.commit()
 
         from contextlib import contextmanager
@@ -1183,9 +1198,11 @@ class TestReRunEmailLog:
         from api.routes.extractions import _link_rerun_to_email_log
         _link_rerun_to_email_log(document_id=1, new_run_id=55)
 
-        # Verify email_log was updated
-        row = conn.execute("SELECT extraction_run_ids FROM email_log WHERE id = 10").fetchone()
-        run_ids = json.loads(row["extraction_run_ids"])
+        # Verify junction table was updated
+        links = conn.execute(
+            "SELECT run_id FROM email_run_links WHERE email_log_id = 10 ORDER BY run_id"
+        ).fetchall()
+        run_ids = [r["run_id"] for r in links]
         assert 42 in run_ids
         assert 55 in run_ids
 
@@ -1204,6 +1221,7 @@ class TestReRunEmailLog:
             "VALUES (10, '<test@example.com>', 'seller@auction.com', 'Jane', ?, 'processed')",
             (json.dumps([42]),),
         )
+        conn.execute("INSERT INTO email_run_links (email_log_id, run_id) VALUES (10, 42)")
         conn.commit()
 
         from contextlib import contextmanager
@@ -1218,6 +1236,8 @@ class TestReRunEmailLog:
         _link_rerun_to_email_log(document_id=1, new_run_id=55)
         _link_rerun_to_email_log(document_id=1, new_run_id=55)  # second call
 
-        row = conn.execute("SELECT extraction_run_ids FROM email_log WHERE id = 10").fetchone()
-        run_ids = json.loads(row["extraction_run_ids"])
-        assert run_ids.count(55) == 1  # no duplicates
+        # Verify no duplicates in junction table
+        links = conn.execute(
+            "SELECT run_id FROM email_run_links WHERE email_log_id = 10 AND run_id = 55"
+        ).fetchall()
+        assert len(links) == 1  # no duplicates

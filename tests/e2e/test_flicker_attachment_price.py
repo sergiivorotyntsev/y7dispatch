@@ -412,6 +412,15 @@ class TestEmailContextAttachmentUrls:
                     status TEXT DEFAULT 'processed'
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_run_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email_log_id INTEGER NOT NULL,
+                    run_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT (datetime('now')),
+                    UNIQUE(email_log_id, run_id)
+                )
+            """)
             # Create document (email-sourced)
             conn.execute(
                 "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split, source, email_metadata_json) "
@@ -434,6 +443,7 @@ class TestEmailContextAttachmentUrls:
                 "VALUES (9920, '<test9920@auction.com>', 'test@auction.com', 'Invoice for vehicle', 'Here is your invoice.', ?, '2026-02-22T10:00:00', ?)",
                 (json.dumps(["invoice.pdf", "photo.png"]), json.dumps([9920])),
             )
+            conn.execute("INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (9920, 9920)")
             conn.commit()
 
     def test_email_context_returns_view_url_for_all_attachments(self, client):
@@ -491,6 +501,7 @@ class TestEmailContextAttachmentUrls:
                 "VALUES (9921, '<ghost@test.com>', 'x@x.com', 'test', 'body', ?, '2026-02-22', ?)",
                 (json.dumps(["main.pdf", "ghost_image.png"]), json.dumps([9921])),
             )
+            conn.execute("INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (9921, 9921)")
             conn.commit()
 
         resp = client.get("/api/extractions/9921/email-context")
@@ -697,6 +708,15 @@ class TestAttachmentDedup:
                     status TEXT DEFAULT 'processed'
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_run_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email_log_id INTEGER NOT NULL,
+                    run_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT (datetime('now')),
+                    UNIQUE(email_log_id, run_id)
+                )
+            """)
             # Document
             conn.execute(
                 "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split, source, email_metadata_json) "
@@ -721,6 +741,7 @@ class TestAttachmentDedup:
                 "VALUES (9970, '<dedup@test.com>', 'a@b.com', 'Vehicle', 'body', ?, '2026-02-22', ?)",
                 (json.dumps(["2019 DODGE GRAND CARAVAN.pdf", "20260222_report.pdf"]), json.dumps([9970])),
             )
+            conn.execute("INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (9970, 9970)")
             conn.commit()
 
         resp = client.get("/api/extractions/9970/email-context")
@@ -744,6 +765,15 @@ class TestAttachmentDedup:
                     status TEXT DEFAULT 'processed'
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_run_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email_log_id INTEGER NOT NULL,
+                    run_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT (datetime('now')),
+                    UNIQUE(email_log_id, run_id)
+                )
+            """)
             conn.execute(
                 "INSERT OR REPLACE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split, source, email_metadata_json) "
                 "VALUES (9971, '99710000-0000-0000-0000-000000009971', 1, 'main_doc.pdf', '/tmp/main_doc.pdf', 'train', 'email', ?)",
@@ -765,6 +795,7 @@ class TestAttachmentDedup:
                 "VALUES (9971, '<url@test.com>', 'x@y.com', 'Test', 'body', ?, '2026-02-22', ?)",
                 (json.dumps(["Vehicle Report.pdf", "main_doc.pdf"]), json.dumps([9971])),
             )
+            conn.execute("INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (9971, 9971)")
             conn.commit()
 
         resp = client.get("/api/extractions/9971/email-context")

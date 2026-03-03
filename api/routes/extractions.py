@@ -81,7 +81,8 @@ def detect_vin_duplicates(run_id: int, vin: str) -> list[dict]:
             SELECT er.id, er.status, d.filename, el.subject, el.sender AS sender_email, el.received_date
             FROM extraction_runs er
             JOIN documents d ON er.document_id = d.id
-            LEFT JOIN email_log el ON el.extraction_run_ids LIKE '%' || CAST(er.id AS TEXT) || '%'
+            LEFT JOIN email_run_links erl ON erl.run_id = er.id
+            LEFT JOIN email_log el ON el.id = erl.email_log_id
             WHERE json_extract(er.outputs_json, '$.vehicle_vin') = ?
             AND er.id != ?
             AND er.document_id != ?
@@ -1630,9 +1631,10 @@ def run_extraction(
                 from api.database import get_connection
                 with get_connection() as conn:
                     email_gp = conn.execute(
-                        "SELECT gate_pass FROM email_log "
-                        "WHERE extraction_run_ids LIKE ? AND gate_pass IS NOT NULL LIMIT 1",
-                        (f"%{run_id}%",),
+                        "SELECT el.gate_pass FROM email_log el "
+                        "INNER JOIN email_run_links erl ON erl.email_log_id = el.id "
+                        "WHERE erl.run_id = ? AND el.gate_pass IS NOT NULL LIMIT 1",
+                        (run_id,),
                     ).fetchone()
                     if not email_gp:
                         # Try matching by document's email metadata
@@ -1912,45 +1914,44 @@ def _link_rerun_to_email_log(document_id: int, new_run_id: int):
 
     try:
         with get_connection() as conn:
-            # Find all other run_ids for the same document
-            sibling_rows = conn.execute(
-                "SELECT id FROM extraction_runs WHERE document_id = ? AND id != ?",
+            # Find email_log linked to any sibling run of the same document
+            email_row = conn.execute(
+                """SELECT erl.email_log_id
+                   FROM email_run_links erl
+                   INNER JOIN extraction_runs er ON er.id = erl.run_id
+                   WHERE er.document_id = ? AND er.id != ?
+                   LIMIT 1""",
                 (document_id, new_run_id),
-            ).fetchall()
-            if not sibling_rows:
-                return  # First run for this document — nothing to link
+            ).fetchone()
+            if not email_row:
+                return  # No email linked to any sibling run
 
-            # Search email_log for any sibling run_id
-            for sib in sibling_rows:
-                sib_id = sib[0]
-                email_row = conn.execute(
-                    """SELECT id, extraction_run_ids FROM email_log
-                       WHERE extraction_run_ids IS NOT NULL
-                       AND extraction_run_ids LIKE ?""",
-                    (f"%{sib_id}%",),
-                ).fetchone()
-                if not email_row:
-                    continue
+            # Insert link for the new run (IGNORE if already exists)
+            conn.execute(
+                "INSERT OR IGNORE INTO email_run_links (email_log_id, run_id) VALUES (?, ?)",
+                (email_row["email_log_id"], new_run_id),
+            )
 
-                # Verify it's a real match (not substring)
-                run_ids = _json.loads(email_row["extraction_run_ids"] or "[]")
-                if sib_id not in run_ids:
-                    continue
-
-                # Add new_run_id if not already present
+            # Also update legacy extraction_run_ids column for backward compat
+            legacy = conn.execute(
+                "SELECT extraction_run_ids FROM email_log WHERE id = ?",
+                (email_row["email_log_id"],),
+            ).fetchone()
+            if legacy:
+                run_ids = _json.loads(legacy["extraction_run_ids"] or "[]")
                 if new_run_id not in run_ids:
                     run_ids.append(new_run_id)
                     conn.execute(
                         "UPDATE email_log SET extraction_run_ids = ? WHERE id = ?",
-                        (_json.dumps(run_ids), email_row["id"]),
+                        (_json.dumps(run_ids), email_row["email_log_id"]),
                     )
-                    conn.commit()
-                    import logging as _log
-                    _log.getLogger(__name__).info(
-                        "Linked re-run %d to email_log %d (run_ids: %s)",
-                        new_run_id, email_row["id"], run_ids,
-                    )
-                return  # Found and updated
+
+            conn.commit()
+            import logging as _log
+            _log.getLogger(__name__).info(
+                "Linked re-run %d to email_log %d",
+                new_run_id, email_row["email_log_id"],
+            )
     except Exception as e:
         import logging as _log
         _log.getLogger(__name__).warning("Failed to link re-run %d to email_log: %s", new_run_id, e)
@@ -2924,29 +2925,18 @@ async def get_email_context(run_id: int):
         except (json.JSONDecodeError, TypeError):
             pass
 
-    # Look up full email from email_log by matching extraction_run_ids
+    # Look up full email from email_log via junction table
     body = None
     email_attachments = []
     with get_connection() as conn:
-        # Try to find email_log entry that references this run.
-        # Use exact JSON array element match to avoid LIKE false positives
-        # (e.g., run_id=48 matching "[348]", "[480]", etc.)
         try:
-            row = None
-            # Try exact JSON match patterns: [48], [48,...], [...,48], [...,48,...]
-            for pattern in [
-                f"[{run_id}]",
-                f"[{run_id},%",
-                f"%, {run_id}]",
-                f"%, {run_id},%",
-            ]:
-                row = conn.execute(
-                    "SELECT sender, subject, body_preview, attachment_names, received_date "
-                    "FROM email_log WHERE extraction_run_ids LIKE ?",
-                    (pattern,),
-                ).fetchone()
-                if row:
-                    break
+            row = conn.execute(
+                "SELECT el.sender, el.subject, el.body_preview, el.attachment_names, el.received_date "
+                "FROM email_log el "
+                "INNER JOIN email_run_links erl ON erl.email_log_id = el.id "
+                "WHERE erl.run_id = ? LIMIT 1",
+                (run_id,),
+            ).fetchone()
         except Exception:
             row = None
 
@@ -3087,7 +3077,8 @@ async def get_run_duplicates(run_id: int):
             SELECT er.id, er.status, d.filename, el.subject, el.sender AS sender_email, el.received_date
             FROM extraction_runs er
             JOIN documents d ON er.document_id = d.id
-            LEFT JOIN email_log el ON el.extraction_run_ids LIKE '%' || CAST(er.id AS TEXT) || '%'
+            LEFT JOIN email_run_links erl ON erl.run_id = er.id
+            LEFT JOIN email_log el ON el.id = erl.email_log_id
             WHERE json_extract(er.outputs_json, '$.vehicle_vin') = ?
             AND er.id != ?
             AND er.status NOT IN ('failed', 'cancelled')

@@ -70,11 +70,13 @@ const [finalPrice, setFinalPrice] = useState(null)
 ```
 
 **Data Loading Flow:**
-1. `getReviewItems(runId)` → run data, fields, outputs
+1. `getReviewCore(runId)` → combined: run + document + review items (single API call, single DB connection)
 2. `getValidation(runId)` → VIN decode + address validation results
 3. `getWarehouseOptionsForRun(runId)` → distance-sorted warehouse list
 4. `getFullPricing(runId)` → market intelligence pricing
 5. `getRunDuplicates(runId)` → VIN duplicate warnings
+
+> **Note:** `getReviewCore()` replaced 3 separate calls (`getExtraction` + `getDocument` + `getReviewItems`) via the combined `/review/{runId}/core` endpoint.
 
 **Field Update:**
 ```javascript
@@ -168,6 +170,7 @@ api.runExtraction(documentId, forceMl)  // async (sync=false)
 api.getRunStatus(runId)                 // Poll async status
 
 // Review
+api.getReviewCore(runId)               // Combined: run + doc + items (single call)
 api.getReviewItems(runId)
 api.updateExtraction(id, data)
 api.validateRun(runId)

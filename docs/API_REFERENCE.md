@@ -68,6 +68,7 @@ All endpoints require JWT auth via httpOnly cookie (except `/auth/login`, `/heal
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/review/{run_id}` | Get review items for run |
+| GET | `/review/{run_id}/core` | Combined: run + document + review items (replaces 3 calls) |
 | PUT | `/review/{run_id}/item/{item_id}` | Update single review item |
 | POST | `/review/submit` | Submit review corrections |
 | POST | `/review/{run_id}/approve` | Approve extraction |
@@ -276,7 +277,7 @@ All endpoints require JWT auth via httpOnly cookie (except `/auth/login`, `/heal
 
 ### Running Tests
 ```bash
-# Full suite (1455+ tests)
+# Full suite (1459+ tests)
 python -m pytest tests/ -q
 
 # Specific test file
@@ -292,7 +293,7 @@ cd web && npm run build
 | `tests/e2e/` | 39 | ~539 | End-to-end pipeline tests |
 | `tests/` (root) | 18 | ~546 | Unit tests |
 | `tests/evaluation/` | 3 | 5 | Golden dataset accuracy |
-| **Total** | **60** | **~1455** | |
+| **Total** | **60** | **~1459** | |
 
 ### Deployment
 ```bash

@@ -4,7 +4,34 @@
 
 ## Overview
 
-Single SQLite file with 33+ tables. Connection pooling via `get_connection()` context manager (`api/database.py`). Schema created at app startup via init functions in `api/main.py`.
+Single SQLite file with 33+ tables. Thread-local connection reuse via `get_connection()` context manager (`api/database.py`) — nested calls within the same thread share one connection (depth-tracked). Schema created at app startup via init functions in `api/main.py`.
+
+---
+
+## SQLite Configuration
+
+**File:** `api/database.py:24-31` — `_apply_pragmas()`
+
+Every new connection applies these PRAGMAs:
+
+| PRAGMA | Value | Purpose |
+|--------|-------|---------|
+| `journal_mode` | WAL | Concurrent reads during writes |
+| `busy_timeout` | 5000 | 5s wait instead of instant SQLITE_BUSY |
+| `synchronous` | NORMAL | Safe with WAL, ~2x faster than FULL |
+| `cache_size` | -8000 | 8MB cache (default 2MB) |
+| `temp_store` | MEMORY | Temp tables in RAM |
+| `foreign_keys` | ON | Enforce referential integrity (cascade deletes) |
+
+### Thread-Local Connection Reuse
+
+`get_connection()` stores one connection per thread in `threading.local()`. Nested `with get_connection()` blocks reuse the same connection (depth counter tracks nesting). The connection closes only when the outermost block exits. This reduces connection overhead (e.g., ~9 per Review page request → 1).
+
+### WAL-Safe Backup
+
+**File:** `scripts/backup.sh`
+
+Uses SQLite online backup API (`sqlite3 ... ".backup ..."`) which handles WAL correctly. Fallback: `PRAGMA wal_checkpoint(TRUNCATE)` + copy all DB files (`.db`, `-wal`, `-shm`).
 
 ---
 
@@ -177,12 +204,27 @@ CREATE TABLE email_log (
     status TEXT DEFAULT 'new',     -- new, ready, processing, processed, skipped, failed, duplicate, thread_reply
     skip_reason TEXT,
     processed_at TEXT,
-    extraction_run_ids TEXT,        -- JSON array of linked run IDs
+    extraction_run_ids TEXT,        -- DEPRECATED: use email_run_links junction table. Kept for backward compat (dual-write).
     error_message TEXT,
     graph_message_id TEXT,         -- Microsoft Graph internal ID (for replies)
     created_at TIMESTAMP
 )
 ```
+
+### email_run_links
+Junction table linking emails to extraction runs (replaces legacy `email_log.extraction_run_ids` JSON column).
+```sql
+CREATE TABLE email_run_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_log_id INTEGER NOT NULL REFERENCES email_log(id) ON DELETE CASCADE,
+    run_id INTEGER NOT NULL REFERENCES extraction_runs(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT (datetime('now')),
+    UNIQUE(email_log_id, run_id)
+)
+```
+**Indexes:** `idx_email_run_links_email(email_log_id)`, `idx_email_run_links_run(run_id)`
+
+All reads use this table via JOINs. Writes use dual-write (junction table primary + legacy JSON column for backward compatibility). Migration from legacy data runs automatically at startup via `_migrate_extraction_run_ids()` in `api/models.py`.
 
 ### email_replies
 Email reply tracking (idempotent send).
@@ -316,6 +358,21 @@ CREATE TABLE vin_decode_cache (
 
 ---
 
+## Performance Indexes
+
+Beyond standard FK indexes, these performance indexes exist:
+
+| Index | Table | Column(s) | Purpose |
+|-------|-------|-----------|---------|
+| `idx_extraction_runs_doc_id_desc` | extraction_runs | `document_id DESC, id DESC` | Fast latest-run-per-document lookup |
+| `idx_runs_vin_expr` | extraction_runs | `json_extract(outputs_json, '$.vehicle_vin')` | VIN duplicate detection without full-table scan |
+| `idx_email_run_links_email` | email_run_links | `email_log_id` | Email → runs lookup |
+| `idx_email_run_links_run` | email_run_links | `run_id` | Run → email reverse lookup |
+| `idx_documents_source` | documents | `source` | Filter by source (email/upload) |
+| `idx_documents_created_at` | documents | `created_at DESC` | Sort by date |
+
+---
+
 ## Key Relationships
 
 ```mermaid
@@ -327,6 +384,8 @@ erDiagram
     extraction_runs ||--o| validation_results : "1:1"
     auction_types ||--o{ documents : "1:many"
     auction_types ||--o{ extraction_runs : "1:many"
+    email_log ||--o{ email_run_links : "1:many"
+    extraction_runs ||--o{ email_run_links : "1:many"
     email_log ||--o{ email_replies : "1:many"
     warehouses ||--o{ documents : "delivery assignment"
 ```

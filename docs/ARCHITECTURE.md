@@ -49,7 +49,7 @@ Vehicle transport brokers who receive 50-200+ auction invoices daily and need to
 |-------|-----------|
 | **Backend** | Python 3.11+ / FastAPI / Uvicorn |
 | **Frontend** | React 18 / Vite 5 / Tailwind CSS 3.3 |
-| **Database** | SQLite (single file: `data/control_panel.db`) |
+| **Database** | SQLite (single file: `data/control_panel.db`, WAL mode, FK enforced) |
 | **AI Extraction** | Anthropic Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) |
 | **PDF Parsing** | pdfplumber (text + layout extraction) |
 | **HTTP Client** | httpx (sync + async) |
@@ -147,7 +147,7 @@ y7dispatch/
 │   │   ├── vin_decoder.py         # NHTSA VIN decode + cache
 │   │   └── email_replier.py       # Email reply composition
 │   └── workers/
-│       └── email_worker.py        # Email polling (IMAP/Graph, 1300 lines)
+│       └── email_worker.py        # Email polling (IMAP/Graph, 2400 lines)
 ├── services/                      # Core business logic
 │   ├── haiku_extractor.py         # Claude Haiku extraction (primary)
 │   ├── auction_directory.py       # Copart/IAA/Manheim location directories
@@ -177,7 +177,7 @@ y7dispatch/
 │   │   │   └── ExportPreviewModal.jsx
 │   │   └── hooks/useDocuments.js  # Documents state management
 │   └── vite.config.js             # Dev server, API proxy, build output
-├── tests/                         # 1455+ tests
+├── tests/                         # 1459+ tests
 │   ├── e2e/                       # 39 E2E test files
 │   ├── evaluation/                # Golden dataset accuracy tests
 │   └── conftest.py                # Session fixtures

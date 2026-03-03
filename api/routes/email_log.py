@@ -71,6 +71,18 @@ def init_email_log_table():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_status ON email_log(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_sender ON email_log(sender)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_email_log_date ON email_log(received_date)")
+        # Junction table for email_log ↔ extraction_runs (replaces extraction_run_ids TEXT)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS email_run_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email_log_id INTEGER NOT NULL REFERENCES email_log(id) ON DELETE CASCADE,
+                run_id INTEGER NOT NULL REFERENCES extraction_runs(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT (datetime('now')),
+                UNIQUE(email_log_id, run_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_email_run_links_email ON email_run_links(email_log_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_email_run_links_run ON email_run_links(run_id)")
         conn.commit()
 
 
@@ -239,12 +251,22 @@ async def get_email_log(
                 item["attachment_names"] = json.loads(item["attachment_names"])
             except Exception:
                 item["attachment_names"] = []
-        if item.get("extraction_run_ids"):
-            try:
-                item["extraction_run_ids"] = json.loads(item["extraction_run_ids"])
-            except Exception:
-                item["extraction_run_ids"] = []
         items.append(item)
+
+    # Load run_ids from junction table for all email_log entries in this page
+    email_ids = [item["id"] for item in items if item.get("id")]
+    email_to_run_ids = {}
+    if email_ids:
+        with get_connection() as conn:
+            ph = ",".join("?" * len(email_ids))
+            link_rows = conn.execute(
+                f"SELECT email_log_id, run_id FROM email_run_links WHERE email_log_id IN ({ph})",
+                email_ids,
+            ).fetchall()
+            for lr in link_rows:
+                email_to_run_ids.setdefault(lr["email_log_id"], []).append(lr["run_id"])
+    for item in items:
+        item["extraction_run_ids"] = email_to_run_ids.get(item["id"], [])
 
     # Enrich with linked document IDs for download links
     all_run_ids = []
@@ -338,39 +360,40 @@ async def reprocess_email_from_source(email_id: int) -> dict[str, Any]:
 
     message_id = row["message_id"]
 
-    # Delete linked documents/runs
+    # Delete linked documents/runs via junction table
     with get_connection() as conn:
-        run_ids_json = row["extraction_run_ids"]
-        if run_ids_json:
-            try:
-                run_ids = json.loads(run_ids_json)
-                if run_ids:
-                    ph = ",".join("?" * len(run_ids))
-                    # Get doc IDs before deleting runs
-                    docs = conn.execute(
-                        f"SELECT document_id FROM extraction_runs WHERE id IN ({ph})",
-                        run_ids,
-                    ).fetchall()
-                    doc_ids = [d["document_id"] for d in docs if d["document_id"]]
+        link_rows = conn.execute(
+            "SELECT run_id FROM email_run_links WHERE email_log_id = ?", (email_id,)
+        ).fetchall()
+        run_ids = [lr["run_id"] for lr in link_rows]
 
-                    conn.execute(
-                        f"DELETE FROM review_items WHERE run_id IN ({ph})",
-                        run_ids,
-                    )
-                    conn.execute(
-                        f"DELETE FROM extraction_runs WHERE id IN ({ph})",
-                        run_ids,
-                    )
+        if run_ids:
+            ph = ",".join("?" * len(run_ids))
+            # Get doc IDs before deleting runs
+            docs = conn.execute(
+                f"SELECT document_id FROM extraction_runs WHERE id IN ({ph})",
+                run_ids,
+            ).fetchall()
+            doc_ids = [d["document_id"] for d in docs if d["document_id"]]
 
-                    if doc_ids:
-                        dph = ",".join("?" * len(doc_ids))
-                        conn.execute(
-                            f"DELETE FROM documents WHERE id IN ({dph})",
-                            doc_ids,
-                        )
-            except (json.JSONDecodeError, TypeError):
-                pass
+            conn.execute(
+                f"DELETE FROM review_items WHERE run_id IN ({ph})",
+                run_ids,
+            )
+            conn.execute(
+                f"DELETE FROM extraction_runs WHERE id IN ({ph})",
+                run_ids,
+            )
 
+            if doc_ids:
+                dph = ",".join("?" * len(doc_ids))
+                conn.execute(
+                    f"DELETE FROM documents WHERE id IN ({dph})",
+                    doc_ids,
+                )
+
+        # Delete junction table links
+        conn.execute("DELETE FROM email_run_links WHERE email_log_id = ?", (email_id,))
         # Delete email_log entry so dedup allows re-ingestion
         conn.execute("DELETE FROM email_log WHERE id = ?", (email_id,))
         conn.commit()

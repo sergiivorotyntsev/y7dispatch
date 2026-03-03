@@ -412,27 +412,19 @@ class EmailReplier:
         return None
 
     def _search_email_log_by_run_id(self, run_id: int) -> Optional[dict]:
-        """Search email_log for a specific run_id in extraction_run_ids."""
-        run_id_str = str(run_id)
+        """Search email_log for a specific run_id via junction table."""
         with get_connection() as conn:
-            rows = conn.execute(
-                """SELECT id, message_id, sender, sender_name, subject,
-                          graph_message_id, extraction_run_ids
-                   FROM email_log
-                   WHERE extraction_run_ids IS NOT NULL
-                   AND extraction_run_ids LIKE ?""",
-                (f"%{run_id_str}%",),
-            ).fetchall()
+            row = conn.execute(
+                """SELECT el.id, el.message_id, el.sender, el.sender_name, el.subject,
+                          el.graph_message_id, el.extraction_run_ids
+                   FROM email_log el
+                   INNER JOIN email_run_links erl ON erl.email_log_id = el.id
+                   WHERE erl.run_id = ?
+                   LIMIT 1""",
+                (run_id,),
+            ).fetchone()
 
-        for row in rows:
-            try:
-                run_ids = json.loads(row["extraction_run_ids"] or "[]")
-                if run_id in run_ids:
-                    return dict(row)
-            except (json.JSONDecodeError, TypeError):
-                continue
-
-        return None
+        return dict(row) if row else None
 
     def _resolve_and_cache_graph_id(self, rfc822_message_id: str, email_log_id: int) -> Optional[str]:
         """Resolve Graph message ID from RFC822 Message-ID via Graph API.

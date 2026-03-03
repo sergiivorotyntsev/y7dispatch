@@ -28,7 +28,7 @@ def _apply_pragmas(conn):
     conn.execute("PRAGMA synchronous=NORMAL")        # Safe with WAL, ~2x faster than FULL
     conn.execute("PRAGMA cache_size=-8000")           # 8MB cache (default 2MB)
     conn.execute("PRAGMA temp_store=MEMORY")          # Temp tables in RAM
-    # conn.execute("PRAGMA foreign_keys=ON")           # Enable after data cleanup — tests have orphan rows
+    conn.execute("PRAGMA foreign_keys=ON")              # Enforce referential integrity
 
 
 def init_db():

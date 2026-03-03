@@ -368,6 +368,11 @@ class TestTransportPricePersistence:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
+            # Parent document for FK
+            conn.execute(
+                "INSERT OR IGNORE INTO documents (id, uuid, auction_type_id, filename, file_path, dataset_split) "
+                "VALUES (1, 'price-test-doc', 1, 'test.pdf', '/tmp/test.pdf', 'train')"
+            )
             conn.execute(
                 "INSERT INTO extraction_runs (id, document_id, uuid, auction_type_id, status, outputs_json) "
                 "VALUES (100, 1, 'price-test-uuid', 1, 'needs_review', '{\"vehicle_vin\": \"TEST\"}')"
